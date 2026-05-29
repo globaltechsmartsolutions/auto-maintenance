@@ -16,19 +16,19 @@ export function ScheduleBoard() {
   const [columns, setColumns] = React.useState<Column[]>(scheduleColumns);
   const [draggedId, setDraggedId] = React.useState<string | null>(null);
 
-  function moveAppointment(targetColumnId: string) {
-    if (!draggedId) return;
+  function moveAppointment(targetColumnId: string, appointmentId = draggedId) {
+    if (!appointmentId) return;
 
     const appointment = columns
       .flatMap((column) => column.appointments)
-      .find((item) => item.id === draggedId);
+      .find((item) => item.id === appointmentId);
 
     if (!appointment) return;
 
     setColumns((current) =>
       current.map((column) => {
         const appointments = column.appointments.filter(
-          (item) => item.id !== draggedId
+          (item) => item.id !== appointmentId
         );
 
         if (column.id === targetColumnId) {
@@ -53,7 +53,14 @@ export function ScheduleBoard() {
         <div
           key={column.id}
           onDragOver={(event) => event.preventDefault()}
-          onDrop={() => moveAppointment(column.id)}
+          onDrop={(event) => {
+            event.preventDefault();
+            moveAppointment(
+              column.id,
+              event.dataTransfer.getData("text/plain") || draggedId
+            );
+          }}
+          data-testid={`schedule-column-${column.id}`}
           className="rounded-lg border border-border/70 bg-card/75 p-3"
         >
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -65,7 +72,12 @@ export function ScheduleBoard() {
               <div
                 key={appointment.id}
                 draggable
-                onDragStart={() => setDraggedId(appointment.id)}
+                onDragStart={(event) => {
+                  setDraggedId(appointment.id);
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", appointment.id);
+                }}
+                data-testid={`schedule-appointment-${appointment.id}`}
                 className="cursor-grab rounded-md border border-border bg-background/70 p-3 shadow-sm active:cursor-grabbing"
               >
                 <div className="flex items-start justify-between gap-3">

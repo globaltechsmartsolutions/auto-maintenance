@@ -8,7 +8,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +53,9 @@ export function AuthCard({
             <Icon className="size-5" />
           </div>
           <div>
-            <CardTitle className="text-2xl">{title}</CardTitle>
+            <h1 className="font-heading text-2xl leading-snug font-medium">
+              {title}
+            </h1>
             <CardDescription className="mt-2">{description}</CardDescription>
           </div>
         </CardHeader>

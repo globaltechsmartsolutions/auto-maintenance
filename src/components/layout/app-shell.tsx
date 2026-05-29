@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -38,6 +39,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -131,6 +133,8 @@ function ThemeToggle() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+
   return (
     <div className="min-h-screen bg-background">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-sidebar-border bg-sidebar/95 lg:block">
@@ -161,7 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 border-b border-border bg-background/92 backdrop-blur">
           <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
-            <Sheet>
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon" className="lg:hidden">
                   <Menu className="size-4" />
@@ -173,9 +177,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <SheetTitle>
                     <Brand />
                   </SheetTitle>
+                  <SheetDescription className="sr-only">
+                    Navegación principal del CRM.
+                  </SheetDescription>
                 </SheetHeader>
                 <div className="px-4">
-                  <NavList />
+                  <NavList onNavigate={() => setMobileNavOpen(false)} />
                 </div>
               </SheetContent>
             </Sheet>
