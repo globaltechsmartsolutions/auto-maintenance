@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  companyScope,
+  requireApiRole,
+  resolveCompanyId,
+} from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { leadPipeline } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
@@ -26,8 +31,12 @@ export async function GET() {
     return NextResponse.json({ leads: leadPipeline });
   }
 
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
   const leads = await prisma.lead.findMany({
+    where: companyScope(auth.profile),
     orderBy: { updatedAt: "desc" },
     include: {
       assignedTo: {
@@ -60,11 +69,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
+  const companyId = resolveCompanyId(auth.profile, payload.companyId);
 
   const lead = await prisma.lead.create({
     data: {
       ...payload,
+      companyId,
       nextFollowUp: payload.nextFollowUp
         ? new Date(payload.nextFollowUp)
         : undefined,

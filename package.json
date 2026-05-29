@@ -10,7 +10,10 @@
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "node prisma/seed.mjs",
+    "db:studio": "prisma studio",
+    "preprod:verify": "npm run lint && prisma validate && npm run build && npm audit --omit=dev"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

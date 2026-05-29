@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  companyScope,
+  requireApiRole,
+  resolveCompanyId,
+} from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { services as demoServices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
@@ -30,8 +35,17 @@ export async function GET() {
     return NextResponse.json({ services: demoServices });
   }
 
+  const auth = await requireApiRole([
+    "SUPER_ADMIN",
+    "ADMIN",
+    "MANAGER",
+    "EMPLOYEE",
+  ]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
   const services = await prisma.service.findMany({
+    where: companyScope(auth.profile),
     orderBy: { scheduledStart: "asc" },
     include: {
       customer: true,
@@ -66,11 +80,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
+  const companyId = resolveCompanyId(auth.profile, payload.companyId);
 
   const service = await prisma.service.create({
     data: {
-      companyId: payload.companyId,
+      companyId,
       customerId: payload.customerId,
       title: payload.title,
       description: payload.description,

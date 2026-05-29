@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  companyScope,
+  requireApiRole,
+  resolveCompanyId,
+} from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { invoices as demoInvoices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
@@ -25,8 +30,12 @@ export async function GET() {
     return NextResponse.json({ invoices: demoInvoices });
   }
 
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
   const invoices = await prisma.invoice.findMany({
+    where: companyScope(auth.profile),
     orderBy: { issueDate: "desc" },
     include: {
       customer: true,
@@ -67,11 +76,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
+  const companyId = resolveCompanyId(auth.profile, payload.companyId);
 
   const invoice = await prisma.invoice.create({
     data: {
-      companyId: payload.companyId,
+      companyId,
       customerId: payload.customerId,
       number: payload.number,
       dueDate: payload.dueDate ? new Date(payload.dueDate) : undefined,

@@ -1,7 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isDemoMode } from "@/lib/demo-mode";
+
+const authRoutes = ["/login", "/register", "/reset-password"];
+const protectedPrefixes = [
+  "/",
+  "/dashboard",
+  "/crm",
+  "/services",
+  "/calendar",
+  "/employees",
+  "/invoices",
+  "/payments",
+  "/automations",
+  "/portal",
+  "/admin",
+];
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
   let response = NextResponse.next({
     request,
   });
@@ -9,7 +26,7 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (isDemoMode() || !supabaseUrl || !supabaseAnonKey) {
     return response;
   }
 
@@ -34,7 +51,27 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (pathname.startsWith("/api")) {
+    return response;
+  }
+
+  if (authRoutes.includes(pathname) && user) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  const isProtectedRoute = protectedPrefixes.some((prefix) =>
+    prefix === "/" ? pathname === "/" : pathname.startsWith(prefix)
+  );
+
+  if (isProtectedRoute && !user) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return response;
 }
