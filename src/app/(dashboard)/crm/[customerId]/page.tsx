@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CalendarDays,
   FileText,
+  Lightbulb,
   Mail,
   MapPin,
   MessageSquare,
@@ -17,7 +18,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { customers, invoices, services } from "@/lib/mock-data";
+import {
+  customerPlaybook,
+  customers,
+  invoices,
+  services,
+} from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export default async function CustomerProfilePage({
@@ -38,6 +44,7 @@ export default async function CustomerProfilePage({
   const customerInvoices = invoices.filter(
     (invoice) => invoice.customer === customer.name
   );
+  const playbook = customerPlaybook[customer.id as keyof typeof customerPlaybook];
 
   return (
     <div className="space-y-6">
@@ -111,9 +118,39 @@ export default async function CustomerProfilePage({
 
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Notas internas</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="size-4 text-primary" />
+              Siguiente mejor acción
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {playbook ? (
+              <div className="space-y-3 rounded-md border border-border/70 bg-background/50 p-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Acción recomendada
+                  </p>
+                  <p className="mt-1 font-medium">{playbook.nextAction}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Oportunidad
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      {playbook.opportunity}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Riesgo
+                    </p>
+                    <p className="mt-1 text-muted-foreground">{playbook.risk}</p>
+                  </div>
+                </div>
+                <p className="text-muted-foreground">{playbook.internalNote}</p>
+              </div>
+            ) : null}
             <Textarea
               placeholder="Añadir nota comercial u operativa"
               className="min-h-28"

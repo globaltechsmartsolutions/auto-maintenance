@@ -1,8 +1,11 @@
 import {
+  AlertTriangle,
   CalendarPlus,
+  CheckCircle2,
   ClipboardCheck,
   Euro,
   FileClock,
+  Handshake,
   Sparkles,
   TrendingUp,
   Users,
@@ -24,11 +27,13 @@ import {
   dashboardMetrics,
   employeePerformance,
   invoices,
+  operationsBrief,
   services,
 } from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 const metricIcons = [Euro, ClipboardCheck, Users, FileClock, Sparkles, TrendingUp];
+const briefIcons = [AlertTriangle, CheckCircle2, Handshake];
 
 export default function DashboardPage() {
   return (
@@ -65,6 +70,33 @@ export default function DashboardPage() {
               icon={Icon}
               tone={index === 3 ? "warning" : index === 5 ? "success" : "default"}
             />
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {operationsBrief.map((item, index) => {
+          const Icon = briefIcons[index] ?? Sparkles;
+
+          return (
+            <Card key={item.title} className="border-border/70 bg-card/85 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Icon className="size-4 text-primary" />
+                  {item.title}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={item.status} />
+                  <span className="text-sm text-muted-foreground">
+                    {item.customer}
+                  </span>
+                </div>
+                <p className="text-sm font-medium">{item.impact}</p>
+                <p className="text-sm text-muted-foreground">{item.helper}</p>
+              </CardContent>
+            </Card>
           );
         })}
       </div>

@@ -1,4 +1,4 @@
-import { CalendarClock, ClipboardList, Plus } from "lucide-react";
+import { CalendarClock, ClipboardList, Plus, ShieldCheck } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,8 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { services } from "@/lib/mock-data";
+import { serviceHealth, services } from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
+
+const healthIcons = [ClipboardList, CalendarClock, ShieldCheck];
 
 export default function ServicesPage() {
   return (
@@ -49,39 +51,27 @@ export default function ServicesPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ClipboardList className="size-4 text-primary" />
-              Recurrentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">238</p>
-            <p className="text-sm text-muted-foreground">contratos activos</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarClock className="size-4 text-primary" />
-              Puntuales
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">74</p>
-            <p className="text-sm text-muted-foreground">servicios este mes</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Ticket medio</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">{formatCurrency(864)}</p>
-            <p className="text-sm text-muted-foreground">IVA no incluido</p>
-          </CardContent>
-        </Card>
+        {serviceHealth.map((item, index) => {
+          const Icon = healthIcons[index] ?? ClipboardList;
+
+          return (
+            <Card key={item.label} className="border-border/70 bg-card/85 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Icon className="size-4 text-primary" />
+                  {item.label}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-2xl font-semibold">{item.value}</p>
+                  <StatusBadge status={item.status} />
+                </div>
+                <p className="text-sm text-muted-foreground">{item.helper}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="border-border/70 bg-card/85 shadow-sm">

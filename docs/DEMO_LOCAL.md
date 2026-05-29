@@ -54,6 +54,8 @@ dashboard sin depender de Supabase.
 
 ## Rutas recomendadas para enseñar
 
+Guion detallado: `docs/GUION_DEMO_CLIENTE.md`.
+
 1. `/dashboard`: visión ejecutiva, ingresos, servicios, clientes, leads y equipo.
 2. `/crm`: pipeline comercial y base de clientes.
 3. `/crm/cust-atrium`: ficha de cliente con historial, notas, servicios y facturas.

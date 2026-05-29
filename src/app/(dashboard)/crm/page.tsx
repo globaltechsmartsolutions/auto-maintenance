@@ -15,7 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { customers } from "@/lib/mock-data";
+import { customerSegments, customers } from "@/lib/mock-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 
 export default function CrmPage() {
@@ -110,28 +110,44 @@ export default function CrmPage() {
         </TabsContent>
 
         <TabsContent value="segments">
-          <div className="grid gap-4 md:grid-cols-3">
-            {["Premium", "Alta prioridad", "Mensual", "Temporada alta"].map(
-              (segment) => (
-                <Card
-                  key={segment}
-                  className="border-border/70 bg-card/85 shadow-sm"
-                >
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Tag className="size-4 text-primary" />
-                      {segment}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      Segmento listo para campañas, automatizaciones y reporting
-                      comercial.
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {customerSegments.map((segment) => (
+              <Card
+                key={segment.name}
+                className="border-border/70 bg-card/85 shadow-sm"
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Tag className="size-4 text-primary" />
+                    {segment.name}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {segment.description}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-md border border-border/70 bg-background/50 p-3">
+                      <p className="text-muted-foreground">Clientes</p>
+                      <p className="mt-1 font-semibold">{segment.count}</p>
+                    </div>
+                    <div className="rounded-md border border-border/70 bg-background/50 p-3">
+                      <p className="text-muted-foreground">Conversión</p>
+                      <p className="mt-1 font-semibold">{segment.conversion}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background/50 p-3 text-sm">
+                    <p className="text-muted-foreground">Valor estimado</p>
+                    <p className="mt-1 font-semibold">
+                      {formatCurrency(segment.revenue)}
                     </p>
-                  </CardContent>
-                </Card>
-              )
-            )}
+                  </div>
+                  <div className="rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
+                    {segment.action}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
       </Tabs>

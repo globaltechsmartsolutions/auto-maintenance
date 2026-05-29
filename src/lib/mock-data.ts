@@ -68,6 +68,30 @@ export const employeePerformance = [
   { name: "Irene", score: 86, services: 31 },
 ];
 
+export const operationsBrief = [
+  {
+    title: "Cerrar presupuesto sanitario",
+    customer: "Clínica Alameda",
+    status: "Pendiente",
+    impact: "943 € hoy / 3.800 € mensual potencial",
+    helper: "Revisar protocolo de desinfección antes de las 12:00.",
+  },
+  {
+    title: "Reasignar equipo por ausencia",
+    customer: "Comunidad Torres Norte",
+    status: "En seguimiento",
+    impact: "Servicio mensual crítico",
+    helper: "Hugo está de vacaciones; Nadia puede cubrir cristales interiores.",
+  },
+  {
+    title: "Confirmar ampliación premium",
+    customer: "Atrium Labs",
+    status: "Programado",
+    impact: "+1.260 € de ticket recurrente",
+    helper: "Añadir cristales exteriores y reposición de consumibles.",
+  },
+];
+
 export const leadPipeline = [
   {
     status: "Nuevo",
@@ -92,6 +116,41 @@ export const leadPipeline = [
     value: "4.000 €",
     count: 3,
     leads: ["Arco Dental", "Atrium Labs", "Mistral Hub"],
+  },
+];
+
+export const customerSegments = [
+  {
+    name: "Premium B2B",
+    count: 18,
+    revenue: 128400,
+    conversion: "96 %",
+    action: "Renovar contratos anuales antes de julio.",
+    description: "Oficinas, despachos y laboratorios con servicio recurrente.",
+  },
+  {
+    name: "Alta prioridad",
+    count: 9,
+    revenue: 72600,
+    conversion: "84 %",
+    action: "Seguimiento comercial cada 72 horas.",
+    description: "Clientes con oportunidad abierta o riesgo operativo puntual.",
+  },
+  {
+    name: "Comunidades mensuales",
+    count: 34,
+    revenue: 91800,
+    conversion: "91 %",
+    action: "Ofrecer cristales, garaje y mantenimiento estacional.",
+    description: "Administradores de fincas con contratos previsibles.",
+  },
+  {
+    name: "Temporada alta",
+    count: 12,
+    revenue: 104500,
+    conversion: "78 %",
+    action: "Bloquear disponibilidad de junio y julio.",
+    description: "Hoteles, alquiler vacacional y refuerzos puntuales.",
   },
 ];
 
@@ -181,6 +240,33 @@ export const customers = [
   },
 ];
 
+export const customerPlaybook = {
+  "cust-atrium": {
+    nextAction: "Proponer renovación anual con ampliación de cristales exteriores.",
+    opportunity: "Incrementar contrato recurrente en 1.260 € mensuales.",
+    risk: "Bajo: cliente satisfecho, pero pide respuesta rápida en incidencias.",
+    internalNote: "Marta quiere recibir un resumen mensual de servicios y consumibles.",
+  },
+  "cust-alameda": {
+    nextAction: "Enviar protocolo sanitario y convertir presupuesto en servicio.",
+    opportunity: "Servicio recurrente de desinfección de 3.800 € mensuales.",
+    risk: "Medio: exige trazabilidad de productos y equipo certificado.",
+    internalNote: "No llamar durante horario de consulta; mejor correo antes de las 10:00.",
+  },
+  "cust-bruma": {
+    nextAction: "Cerrar refuerzo de temporada alta para junio y julio.",
+    opportunity: "Ampliación temporal de 8.400 € con limpieza de zonas comunes.",
+    risk: "Bajo: alto volumen, pero necesita cobertura de fines de semana.",
+    internalNote: "Lucía aprueba rápido si se incluye planificación por plantas.",
+  },
+  "cust-torres": {
+    nextAction: "Revisar incidencia del ascensor B y confirmar sustitución de Hugo.",
+    opportunity: "Añadir cristales trimestrales y limpieza de garaje profunda.",
+    risk: "Bajo: contrato estable con sensibilidad a incidencias visibles.",
+    internalNote: "El administrador pide fotos de antes/después en cada visita mensual.",
+  },
+};
+
 export const services = [
   {
     id: "srv-1001",
@@ -229,6 +315,27 @@ export const services = [
     city: "Getafe",
     price: 540,
     vatRate: 21,
+  },
+];
+
+export const serviceHealth = [
+  {
+    label: "Servicios críticos hoy",
+    value: "7",
+    helper: "2 sanitarios, 3 oficinas premium y 2 hoteles.",
+    status: "Programado",
+  },
+  {
+    label: "Equipos con margen",
+    value: "5",
+    helper: "Disponibles para urgencias o ampliaciones.",
+    status: "Activo",
+  },
+  {
+    label: "Incidencias abiertas",
+    value: "2",
+    helper: "Ascensor B y reposición de consumibles.",
+    status: "En seguimiento",
   },
 ];
 
