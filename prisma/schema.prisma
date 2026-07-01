@@ -96,6 +96,35 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum EmployeeFieldStatus {
+  AVAILABLE
+  ASSIGNED
+  VACATION
+  SICK_LEAVE
+  INACTIVE
+}
+
+enum BookingRequestStatus {
+  PENDING
+  SCHEDULED
+  AUTO_ASSIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentMode {
+  PENDING
+  RECOMMENDED
+  MANUAL
+  AUTO_ASSIGNED
+}
+
+enum AssignmentDecisionType {
+  AUTO_ASSIGNED
+  MANAGER_CONFIRMED
+  MANAGER_OVERRIDE
+}
+
 enum AutomationTrigger {
   SERVICE_REMINDER
   SERVICE_CONFIRMATION
@@ -136,6 +165,8 @@ model Company {
   invoices    Invoice[]
   payments    Payment[]
   automations AutomationRule[]
+  bookingRequests BookingRequest[]
+  assignmentDecisions AssignmentDecision[]
   integrations Integration[]
   auditLogs   AuditLog[]
 
@@ -170,10 +201,17 @@ model Employee {
   companyId        String
   userId           String   @unique
   position         String?
+  fieldStatus      EmployeeFieldStatus @default(AVAILABLE)
   hourlyRate       Decimal? @db.Decimal(10, 2)
   availability     Json?
   performanceScore Int      @default(0)
   internalNotes    String?
+  skills           String[] @default([])
+  zones            String[] @default([])
+  preferredServiceTypes String[] @default([])
+  maxJobsPerDay    Int?
+  maxHoursPerDay   Int?
+  incidentRate     Decimal  @default(0) @db.Decimal(5, 2)
   hiredAt          DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -181,8 +219,13 @@ model Employee {
   company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobs      ServiceAssignment[]
+  assignedBookingRequests BookingRequest[] @relation("BookingAssignedEmployee")
+  suggestedBookingRequests BookingRequest[] @relation("BookingSuggestedEmployee")
+  recommendedDecisions AssignmentDecision[] @relation("AssignmentRecommendedEmployee")
+  selectedDecisions AssignmentDecision[] @relation("AssignmentSelectedEmployee")
 
   @@index([companyId])
+  @@index([companyId, fieldStatus])
 }
 
 model Customer {
@@ -208,6 +251,7 @@ model Customer {
   services Service[]
   quotes   Quote[]
   invoices Invoice[]
+  bookingRequests BookingRequest[]
   notesLog CustomerNote[]
 
   @@index([companyId, status])
@@ -244,6 +288,7 @@ model Lead {
   company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   assignedTo User?      @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
   notes      LeadNote[]
+  bookingRequests BookingRequest[]
 
   @@index([companyId, status])
   @@index([assignedToId])
@@ -283,11 +328,84 @@ model Service {
   customer     Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   sourceQuote  Quote?              @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
   assignments  ServiceAssignment[]
+  bookingRequest BookingRequest?
+  assignmentDecisions AssignmentDecision[]
   invoiceItems InvoiceItem[]
 
   @@index([companyId, status])
   @@index([customerId])
   @@index([scheduledStart])
+}
+
+model BookingRequest {
+  id                  String               @id @default(uuid())
+  companyId           String
+  customerId          String?
+  leadId              String?
+  serviceId           String?              @unique
+  assignedEmployeeId  String?
+  suggestedEmployeeId String?
+  customerName        String
+  contactName         String?
+  email               String?
+  phone               String?
+  title               String
+  city                String?
+  address             String?
+  preferredStart      DateTime?
+  description         String?
+  status              BookingRequestStatus @default(PENDING)
+  assignmentMode      AssignmentMode       @default(PENDING)
+  estimatedPrice      Decimal              @default(0) @db.Decimal(12, 2)
+  assignmentSummary   String?
+  assignmentReasons   String[]             @default([])
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company           Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead              Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  service           Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  assignedEmployee  Employee?            @relation("BookingAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  suggestedEmployee Employee?            @relation("BookingSuggestedEmployee", fields: [suggestedEmployeeId], references: [id], onDelete: SetNull)
+  assignmentDecisions AssignmentDecision[]
+
+  @@index([companyId, status])
+  @@index([companyId, preferredStart])
+  @@index([customerId])
+  @@index([leadId])
+  @@index([assignedEmployeeId])
+  @@index([suggestedEmployeeId])
+}
+
+model AssignmentDecision {
+  id                    String                 @id @default(uuid())
+  companyId             String
+  serviceId             String?
+  bookingRequestId      String?
+  recommendedEmployeeId String?
+  selectedEmployeeId    String?
+  serviceTitle          String
+  serviceFamily         String?
+  customerName          String
+  city                  String?
+  decisionType          AssignmentDecisionType
+  wasAcceptedByManager  Boolean                @default(false)
+  resultLabel           String?
+  reasons               String[]               @default([])
+  createdAt             DateTime               @default(now())
+
+  company             Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  service             Service?        @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  bookingRequest      BookingRequest? @relation(fields: [bookingRequestId], references: [id], onDelete: SetNull)
+  recommendedEmployee Employee?       @relation("AssignmentRecommendedEmployee", fields: [recommendedEmployeeId], references: [id], onDelete: SetNull)
+  selectedEmployee    Employee?       @relation("AssignmentSelectedEmployee", fields: [selectedEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([serviceId])
+  @@index([bookingRequestId])
+  @@index([recommendedEmployeeId])
+  @@index([selectedEmployeeId])
 }
 
 model ServiceAssignment {

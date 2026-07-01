@@ -11,8 +11,57 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useDemo, type DemoService } from "@/components/demo/demo-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { revenueSeries, serviceMix } from "@/lib/mock-data";
+
+const monthLabels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun"];
+
+function getServiceCategory(service: DemoService) {
+  const text = `${service.title} ${service.customer} ${service.recurrence}`.toLowerCase();
+  if (text.includes("oficina") || text.includes("cowork")) return "Oficinas";
+  if (text.includes("comunidad") || text.includes("residencial") || text.includes("garaje")) {
+    return "Comunidades";
+  }
+  if (text.includes("hotel")) return "Hoteles";
+  if (text.includes("obra")) return "Final de obra";
+  if (text.includes("desinfección") || text.includes("desinfeccion") || text.includes("industrial")) {
+    return "Industrial";
+  }
+  return "Otros";
+}
+
+function buildRevenueSeries(services: DemoService[]) {
+  return monthLabels.map((month, index) => {
+    const monthServices = services.filter((service) => {
+      const date = new Date(service.start);
+      return date.getFullYear() === 2026 && date.getMonth() === index;
+    });
+
+    return {
+      month,
+      revenue: Math.round(
+        monthServices.reduce(
+          (total, service) => total + service.price * (1 + service.vatRate / 100),
+          0
+        )
+      ),
+      services: monthServices.length,
+    };
+  });
+}
+
+function buildServiceMix(services: DemoService[]) {
+  const totals = services.reduce<Record<string, number>>((current, service) => {
+    const category = getServiceCategory(service);
+    current[category] = (current[category] ?? 0) + 1;
+    return current;
+  }, {});
+
+  return Object.entries(totals)
+    .map(([name, value]) => ({ name, value }))
+    .sort((first, second) => second.value - first.value)
+    .slice(0, 5);
+}
 
 function useElementWidth() {
   const ref = React.useRef<HTMLDivElement>(null);
@@ -37,36 +86,11 @@ function useElementWidth() {
 }
 
 export function DashboardCharts() {
-  const [mounted, setMounted] = React.useState(false);
+  const { services } = useDemo();
   const [revenueRef, revenueWidth] = useElementWidth();
   const [mixRef, mixWidth] = useElementWidth();
-
-  React.useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Ingresos y servicios</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[320px] rounded-md border border-border/70 bg-muted/30" />
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Mix de servicios</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[320px] rounded-md border border-border/70 bg-muted/30" />
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const revenueSeries = React.useMemo(() => buildRevenueSeries(services), [services]);
+  const serviceMix = React.useMemo(() => buildServiceMix(services), [services]);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
@@ -79,7 +103,7 @@ export function DashboardCharts() {
             {revenueWidth > 0 ? (
               <AreaChart
                 data={revenueSeries}
-                margin={{ left: 0, right: 8 }}
+                margin={{ left: 8, right: 8 }}
                 width={Math.max(revenueWidth, 320)}
                 height={320}
               >
@@ -107,7 +131,7 @@ export function DashboardCharts() {
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  width={44}
+                  width={56}
                   tick={{ fill: "var(--muted-foreground)", fontSize: 12 }}
                 />
                 <Tooltip
@@ -127,7 +151,9 @@ export function DashboardCharts() {
                   fill="url(#revenueFill)"
                 />
               </AreaChart>
-            ) : null}
+            ) : (
+              <div className="h-full rounded-md border border-border/70 bg-muted/30" />
+            )}
           </div>
         </CardContent>
       </Card>
@@ -172,7 +198,9 @@ export function DashboardCharts() {
                   radius={5}
                 />
               </BarChart>
-            ) : null}
+            ) : (
+              <div className="h-full rounded-md border border-border/70 bg-muted/30" />
+            )}
           </div>
         </CardContent>
       </Card>

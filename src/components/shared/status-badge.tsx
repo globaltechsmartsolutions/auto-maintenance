@@ -10,9 +10,21 @@ const statusStyles: Record<string, string> = {
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
   Completado:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
+  Aceptada:
+    "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
+  Ganado:
+    "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
   Programado: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  Nuevo: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  Cualificado: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
   Pendiente:
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
+  Presupuesto:
+    "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
+  Enviada:
+    "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
+  Borrador:
+    "border-muted-foreground/25 bg-muted text-muted-foreground",
   "En curso": "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
   "En seguimiento":
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
@@ -21,6 +33,8 @@ const statusStyles: Record<string, string> = {
   "Past due":
     "border-destructive/35 bg-destructive/10 text-destructive dark:bg-destructive/15",
   Pausado:
+    "border-muted-foreground/25 bg-muted text-muted-foreground",
+  Cancelado:
     "border-muted-foreground/25 bg-muted text-muted-foreground",
   Trial:
     "border-accent/40 bg-accent/30 text-accent-foreground dark:text-foreground",

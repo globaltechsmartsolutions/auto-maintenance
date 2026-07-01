@@ -1,8 +1,9 @@
 import { CalendarDays, Link2, Plus } from "lucide-react";
+import { MonthOverview } from "@/components/calendar/month-overview";
 import { ScheduleBoard } from "@/components/calendar/schedule-board";
-import { Button } from "@/components/ui/button";
+import { DemoActionButton } from "@/components/demo/demo-widgets";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function CalendarPage() {
   return (
@@ -13,33 +14,38 @@ export default function CalendarPage() {
           <h1 className="mt-1 text-3xl font-semibold">Calendario</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline">
+          <DemoActionButton action="google-calendar" variant="outline">
             <Link2 className="size-4" />
             Google Calendar
-          </Button>
-          <Button>
+          </DemoActionButton>
+          <DemoActionButton action="new-visit">
             <Plus className="size-4" />
             Nueva visita
-          </Button>
+          </DemoActionButton>
         </div>
       </div>
 
       <Card className="border-border/70 bg-card/85 shadow-sm">
-        <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarDays className="size-4 text-primary" />
-            Semana operativa
-          </CardTitle>
-          <Tabs defaultValue="week">
+        <Tabs defaultValue="week" className="gap-0">
+          <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarDays className="size-4 text-primary" />
+              Calendario operativo
+            </CardTitle>
             <TabsList>
               <TabsTrigger value="week">Semana</TabsTrigger>
               <TabsTrigger value="month">Mes</TabsTrigger>
             </TabsList>
-          </Tabs>
-        </CardHeader>
-        <CardContent>
-          <ScheduleBoard />
-        </CardContent>
+          </CardHeader>
+          <CardContent>
+            <TabsContent value="week" className="mt-0">
+              <ScheduleBoard />
+            </TabsContent>
+            <TabsContent value="month" className="mt-0">
+              <MonthOverview />
+            </TabsContent>
+          </CardContent>
+        </Tabs>
       </Card>
     </div>
   );

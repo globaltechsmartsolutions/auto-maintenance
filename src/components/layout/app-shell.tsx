@@ -7,16 +7,17 @@ import {
   BadgeEuro,
   Bell,
   Bot,
-  Building2,
   CalendarDays,
   ChevronDown,
   CreditCard,
+  DatabaseZap,
   Gauge,
   LayoutDashboard,
   LogOut,
   Menu,
   Moon,
   ReceiptText,
+  RefreshCw,
   Search,
   Settings,
   Sparkles,
@@ -33,7 +34,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -49,6 +54,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DemoActionButton,
+  DemoProvider,
+  useDemo,
+  type DemoAction,
+} from "@/components/demo/demo-provider";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -60,7 +71,6 @@ const navigation = [
   { href: "/invoices", label: "Facturas", icon: ReceiptText },
   { href: "/payments", label: "Pagos", icon: CreditCard },
   { href: "/automations", label: "Automatizaciones", icon: Bot },
-  { href: "/portal", label: "Portal cliente", icon: Building2 },
   { href: "/admin", label: "SaaS admin", icon: Gauge },
 ];
 
@@ -132,10 +142,85 @@ function ThemeToggle() {
   );
 }
 
+function DemoDropdownAction({
+  action,
+  children,
+}: {
+  action: DemoAction;
+  children: React.ReactNode;
+}) {
+  const { runAction } = useDemo();
+
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.preventDefault();
+        runAction(action);
+      }}
+    >
+      {children}
+    </DropdownMenuItem>
+  );
+}
+
+function DemoResetMenuItem() {
+  const { resetDemo } = useDemo();
+
+  return (
+    <DropdownMenuItem
+      onSelect={(event) => {
+        event.preventDefault();
+        resetDemo();
+      }}
+    >
+      <RefreshCw className="size-4" />
+      Restaurar entorno local
+    </DropdownMenuItem>
+  );
+}
+
+function DemoDataToolsMenu() {
+  const { clearDemoScope } = useDemo();
+  const scopes = [
+    { label: "Reservas web", scope: "web" },
+    { label: "Servicios", scope: "services" },
+    { label: "Leads", scope: "leads" },
+    { label: "Empleados", scope: "employees" },
+    { label: "Notas", scope: "notes" },
+  ] as const;
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        <DatabaseZap className="size-4" />
+        Herramientas internas
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent className="w-56">
+          <DropdownMenuLabel>Datos locales</DropdownMenuLabel>
+          {scopes.map((item) => (
+            <DropdownMenuItem
+              key={item.scope}
+              onSelect={(event) => {
+                event.preventDefault();
+                clearDemoScope(item.scope);
+              }}
+            >
+              <DatabaseZap className="size-4" />
+              Limpiar {item.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   return (
+    <DemoProvider>
     <div className="min-h-screen bg-background">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r border-sidebar-border bg-sidebar/95 lg:block">
         <div className="flex h-full flex-col">
@@ -199,9 +284,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <ThemeToggle />
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" size="icon" aria-label="Alertas">
+                  <DemoActionButton
+                    action="notifications"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Alertas"
+                  >
                     <Bell className="size-4" />
-                  </Button>
+                  </DemoActionButton>
                 </TooltipTrigger>
                 <TooltipContent>Alertas</TooltipContent>
               </Tooltip>
@@ -219,10 +309,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>Limpiezas Demo SL</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DemoDropdownAction action="settings">
                     <Settings className="size-4" />
                     Configuración
-                  </DropdownMenuItem>
+                  </DemoDropdownAction>
+                  <DemoDataToolsMenu />
+                  <DemoResetMenuItem />
                   <DropdownMenuItem asChild>
                     <Link href="/login">
                       <LogOut className="size-4" />
@@ -238,5 +330,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="page-shell">{children}</main>
       </div>
     </div>
+    </DemoProvider>
   );
 }

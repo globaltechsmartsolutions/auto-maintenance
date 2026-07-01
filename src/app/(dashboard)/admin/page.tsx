@@ -1,6 +1,6 @@
 import { Activity, Building2, CreditCard, TrendingDown, Users } from "lucide-react";
+import { DemoActionButton } from "@/components/demo/demo-widgets";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -24,10 +24,10 @@ export default function AdminPage() {
           <p className="text-sm text-muted-foreground">Super admin SaaS</p>
           <h1 className="mt-1 text-3xl font-semibold">Panel de plataforma</h1>
         </div>
-        <Button variant="outline">
+        <DemoActionButton action="analytics" variant="outline">
           <Activity className="size-4" />
           Analítica
-        </Button>
+        </DemoActionButton>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -86,34 +86,36 @@ export default function AdminPage() {
           <CardTitle className="text-base">Empresas y suscripciones</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Empresa</TableHead>
-                <TableHead>Plan</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Usuarios</TableHead>
-                <TableHead>Riesgo churn</TableHead>
-                <TableHead className="text-right">MRR</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {adminCompanies.map((company) => (
-                <TableRow key={company.name}>
-                  <TableCell className="font-medium">{company.name}</TableCell>
-                  <TableCell>{company.plan}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={company.status} />
-                  </TableCell>
-                  <TableCell>{company.users}</TableCell>
-                  <TableCell>{company.churnRisk}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatCurrency(company.mrr)}
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Plan</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Usuarios</TableHead>
+                  <TableHead>Riesgo churn</TableHead>
+                  <TableHead className="text-right">MRR</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {adminCompanies.map((company) => (
+                  <TableRow key={company.name}>
+                    <TableCell className="font-medium">{company.name}</TableCell>
+                    <TableCell>{company.plan}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={company.status} />
+                    </TableCell>
+                    <TableCell>{company.users}</TableCell>
+                    <TableCell>{company.churnRisk}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(company.mrr)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </div>

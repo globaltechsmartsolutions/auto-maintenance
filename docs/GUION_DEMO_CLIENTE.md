@@ -22,10 +22,11 @@ LimpiaPro CRM centraliza la operación diaria de una empresa de limpieza:
 
 ## Preparación antes de enseñar
 
-1. Arrancar la app en local:
+1. Arrancar la app en local en modo producción:
 
 ```bash
-npm run dev
+npm run build
+npm run demo:start
 ```
 
 2. Abrir:
@@ -40,6 +41,14 @@ http://127.0.0.1:3000/login
 
 ```text
 390 x 844
+```
+
+Alternativa más limpia para cliente: abrir una ventana tipo app móvil, sin la
+barra normal del navegador:
+
+```bash
+npm run demo:mobile:employee
+npm run demo:mobile:booking
 ```
 
 ## Recorrido recomendado
@@ -91,7 +100,37 @@ Puntos fuertes:
 - Las prioridades de hoy ayudan a decidir qué hacer primero.
 - La tabla de servicios próximos conecta ventas con operación real.
 
-### 3. CRM comercial
+### 3. Reserva de cliente final
+
+Ruta:
+
+```text
+/reserva
+```
+
+Qué enseñar:
+
+- Formulario público de solicitud de servicio.
+- Datos de contacto, fecha, dirección, servicio y presupuesto estimado.
+- Confirmación de reserva.
+- Accesos directos para ver el lead, el servicio y la solicitud en el CRM.
+
+Historia recomendada:
+
+> "Aquí vemos cómo un cliente de la empresa de limpieza puede pedir un servicio
+> desde el navegador. Al enviar la reserva, el CRM crea automáticamente la
+> oportunidad comercial, la solicitud del portal y el servicio pendiente para
+> operaciones."
+
+Acciones para enseñar:
+
+- Revisar los datos precargados.
+- Pulsar `Enviar solicitud`.
+- Entrar en `/crm` y enseñar el nuevo lead.
+- Entrar en `/services` y enseñar el servicio pendiente.
+- Entrar en `/portal` y enseñar la solicitud recibida.
+
+### 4. CRM comercial
 
 Ruta:
 
@@ -118,7 +157,7 @@ Acciones para enseñar:
 - Entrar en `Atrium Labs`.
 - Enseñar `Segmentos` para explicar campañas y automatizaciones.
 
-### 4. Ficha de cliente
+### 5. Ficha de cliente
 
 Ruta:
 
@@ -148,7 +187,7 @@ Punto clave:
 - La sección `Siguiente mejor acción` ayuda a vender la idea de CRM inteligente,
   aunque ahora esté alimentada con datos demo.
 
-### 5. Servicios
+### 6. Servicios
 
 Ruta:
 
@@ -176,7 +215,7 @@ Punto fuerte:
 - Este módulo conecta directamente con la realidad diaria de una empresa de
   limpieza: planificación, equipos, clientes y estados.
 
-### 6. Calendario
+### 7. Calendario
 
 Ruta:
 
@@ -201,7 +240,7 @@ Aviso honesto:
 - En local, el drag and drop es visual.
 - En preproducción, tu socio debe conectar persistencia real en base de datos.
 
-### 7. Empleados
+### 8. Empleados
 
 Ruta:
 
@@ -223,7 +262,26 @@ Historia recomendada:
 > "La empresa puede saber quién está disponible, quién está asignado, qué
 > rendimiento tiene cada empleado y dónde conviene reforzar equipos."
 
-### 8. Facturación
+Ruta complementaria:
+
+```text
+/empleado
+```
+
+Acciones para enseñar:
+
+- Abrir la vista de empleado.
+- Pulsar `Iniciar` en un servicio.
+- Volver a `/services` para enseñar el cambio de estado.
+- Pulsar `Completar` o `Incidencia` para enseñar la interacción desde campo.
+
+Historia recomendada:
+
+> "El empleado no necesita ver todo el CRM. Puede entrar desde móvil, consultar
+> sus trabajos, iniciar un servicio, completarlo o reportar una incidencia. Esa
+> acción vuelve al panel de operaciones."
+
+### 9. Facturación
 
 Ruta:
 
@@ -249,7 +307,7 @@ Aviso honesto:
 - La generación real de PDF queda como siguiente fase técnica.
 - La estructura ya está preparada en interfaz y modelo de datos.
 
-### 9. Pagos
+### 10. Pagos
 
 Ruta:
 
@@ -275,7 +333,7 @@ Aviso honesto:
 - En local, Stripe está simulado.
 - En preproducción, debe probarse con Stripe en modo test.
 
-### 10. Automatizaciones
+### 11. Automatizaciones
 
 Ruta:
 
@@ -295,7 +353,7 @@ Historia recomendada:
 > "La plataforma reduce trabajo administrativo: confirma servicios, recuerda
 > visitas, pide reseñas y ayuda a recuperar pagos fallidos."
 
-### 11. Portal cliente
+### 12. Portal cliente
 
 Ruta:
 
@@ -315,7 +373,7 @@ Historia recomendada:
 > "El cliente final también puede entrar, ver qué servicios tiene, descargar
 > documentos y pedir nuevos trabajos sin llamar ni mandar correos sueltos."
 
-### 12. Panel SaaS admin
+### 13. Panel SaaS admin
 
 Ruta:
 
@@ -352,7 +410,9 @@ Rutas recomendadas para enseñar en móvil:
 - `/crm/cust-atrium`
 - `/services`
 - `/calendar`
+- `/empleado`
 - `/portal`
+- `/reserva`
 
 Qué contar:
 
@@ -375,9 +435,11 @@ Respuesta recomendada:
 - Dashboard.
 - CRM.
 - Fichas de cliente.
+- Reserva pública de cliente final.
 - Servicios.
 - Calendario visual.
 - Empleados.
+- Vista de empleado en formato móvil.
 - Facturación.
 - Pagos SaaS.
 - Automatizaciones.
