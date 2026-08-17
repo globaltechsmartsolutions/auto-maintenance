@@ -277,3 +277,30 @@ are true:
 
 Do not mark the product complete merely because the local demo looks finished.
 The standard is reliable operational use by a real service company.
+
+
+## 6a. Translation fixes required
+
+Track every accidental non-English string found on core routes here, with the
+exact file, line, and the approved English replacement. Update this table as
+new occurrences are found or fixed; do not remove a row until the fix has
+merged and the detection test (see section 6, item 1) passes.
+
+| File | Line | Current string | Replace with |
+| --- | --- | --- | --- |
+| `components/controler/worksites-dashboard.tsx` | 160 | "Radio permitido (metros)" | "Allowed radius (meters)" |
+
+
+## 5a. Work log
+
+Track daily progress here in chronological order. Each entry should be short
+and dated, so the next contributor (or the same one, later) can see what state
+the project was left in.
+
+### 2026-08-17
+
+1. Pulled the project from GitHub.
+2. Ran the project on the local system.
+3. Reviewed and understood the project structure and codebase.
+4. Connected the project to the database.
+5. Checked Coverage and Worksites page, and fix the translation issues.
