@@ -80,6 +80,8 @@ Internal routes:
 
 The implementation roadmap is available in
 [`docs/WIACONTROL_PRODUCT_ROADMAP.md`](docs/WIACONTROL_PRODUCT_ROADMAP.md).
+The developer execution handoff is available in
+[`docs/WIACONTROL_DEVELOPER_HANDOFF.md`](docs/WIACONTROL_DEVELOPER_HANDOFF.md).
 
 ## Database
 
