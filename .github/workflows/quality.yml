@@ -1,4 +1,4 @@
-name: Calidad WIA Control
+name: WIAControl Quality
 
 on:
   pull_request:
