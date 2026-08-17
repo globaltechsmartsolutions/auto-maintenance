@@ -7,7 +7,10 @@ observable, pilot-ready workforce operations platform.
 
 Read this document first, then use
 [`WIACONTROL_PRODUCT_ROADMAP.md`](WIACONTROL_PRODUCT_ROADMAP.md) as the detailed
-product roadmap. This handoff turns that roadmap into an execution order.
+product roadmap. For the practical implementation order, existing-versus-missing
+capabilities, API ownership, and acceptance demonstrations, use
+[`WIACONTROL_IMPLEMENTATION_PLAYBOOK.md`](WIACONTROL_IMPLEMENTATION_PLAYBOOK.md).
+This handoff turns those documents into an execution order.
 
 ## 1. Product mission
 
