@@ -287,3 +287,472 @@ the following without demo mode:
 
 Only after this demonstration passes should the team invite the first pilot
 customer.
+
+## 10. Product scope and explicit non-scope
+
+Build the core operational system first. The pilot must support the following
+outcomes end to end:
+
+- A company can create people, worksites, and planned shifts.
+- An employee can see only their own assigned work and record attendance.
+- A coordinator can find, own, and resolve attendance or coverage exceptions.
+- A coordinator can select an eligible replacement and explain an override.
+- An administrator can inspect the resulting history and export company-scoped
+  records.
+
+The following features are deliberately **not** required before the first
+pilot: automatic staffing decisions, continuous location tracking, biometric
+attendance, payroll calculation, native mobile applications, SMS/WhatsApp,
+advanced CRM automation, or predictive machine learning. Do not let any of
+them delay the core workflow.
+
+If a pilot customer requests an out-of-scope feature, capture the request,
+impact, and acceptance test in the product roadmap. Do not silently change the
+operational rules to satisfy a one-off request.
+
+## 11. Roles, permissions, and tenant boundary
+
+The recognised application roles are defined in `src/lib/auth/roles.ts`:
+
+| Role | Intended responsibility | Minimum permissions in the current code |
+| --- | --- | --- |
+| `SUPER_ADMIN` | Platform operator. Use only for explicitly reviewed platform-wide work. | Platform, company, and billing read/write. |
+| `ADMIN` | Company owner or administrator. | Company read/write and billing write. |
+| `MANAGER` | Operational coordinator. | Company read/write. |
+| `EMPLOYEE` | Field worker. | Company read, restricted to their employee identity. |
+
+The permission list is not enough on its own. Every server operation must also
+enforce the following data boundary:
+
+```text
+Authenticated Supabase user
+        -> User profile in PostgreSQL
+        -> profile.companyId and profile.role
+        -> server-side WiaActor
+        -> company-scoped domain service query or transaction
+```
+
+Never use this unsafe pattern:
+
+```ts
+// Unsafe: the browser controls the tenant boundary.
+prisma.plannedShift.findMany({ where: { companyId: body.companyId } });
+```
+
+Use the authenticated profile to resolve company scope instead. A supplied
+`companyId` may be accepted only for a reviewed `SUPER_ADMIN` operation; it is
+ignored or replaced for every other role. For `EMPLOYEE`, also include the
+employee ID in reads and writes, and compare it with the shift employee ID.
+
+Security regression tests must cover all of these attempts:
+
+1. No session calling a protected route receives `401`.
+2. A valid user with a disallowed role receives `403`.
+3. A Company A user cannot read a Company B object by changing an ID in a URL,
+   query parameter, JSON body, export filter, or nested relation.
+4. An employee cannot clock a shift assigned to another employee.
+5. An employee cannot create, edit, cancel, or assign shifts or worksites.
+6. An archived/inactive person or worksite cannot be selected for new work.
+
+## 12. Core data model
+
+`prisma/schema.prisma` is the source of truth. The developer must update it,
+create a migration, and add tests together when a persistent rule changes.
+
+### Operational entities
+
+| Entity | Purpose | Important integrity rule |
+| --- | --- | --- |
+| `Company` | Tenant and company-level policy. | Every operational record belongs to one company. |
+| `User` | Authenticated profile and role. | A non-platform user must have a company. |
+| `Employee` | Field-worker profile, skills, zones, availability, and field status. | An employee is selectable only within their company and valid status. |
+| `Worksite` | Address, time zone, verification method, optional coordinates and radius. | Do not archive while it has open shifts. |
+| `PlannedShift` | Planned work window, worksite, optional employee, skills, and status. | An employee cannot have overlapping active/planned shifts. |
+| `ClockEvent` | Immutable attendance evidence. | Unique `(companyId, idempotencyKey)` and no in-place correction. |
+| `TimeCorrectionRequest` | A proposed correction linked to an original event. | The original `ClockEvent` remains unchanged. |
+| `AttendanceIncident` | A detected exception attached to a shift/worksite. | Repeated detection must not create duplicates. |
+| `CoverageDecision` | Human staffing decision for an incident. | Chosen employee must be eligible and same-tenant. |
+| `CommunicationOutbox` | Intent to send an operational message. | Delivery is idempotent and stateful. |
+| `AuditLog` | Evidence of meaningful state changes. | Store actor, company, entity, action, time, and safe metadata. |
+
+### Supporting entities
+
+`Customer`, `Service`, `BookingRequest`, `Lead`, `Quote`, `Invoice`, `Payment`,
+`AutomationRule`, and `Integration` support commercial workflows. Preserve
+their tenant scope, but do not add work to them until the core operational
+pilot succeeds.
+
+### Required state machines
+
+Do not invent new statuses in a component. Add a database migration, a Prisma
+enum update when applicable, domain validation, display labels, tests, and
+documentation together.
+
+```text
+Clock event sequence:
+  no event -> CLOCK_IN -> BREAK_START -> BREAK_END -> CLOCK_OUT
+
+Shift status:
+  PLANNED or COVERED -> ACTIVE -> PAUSED -> ACTIVE -> COMPLETED
+  PLANNED -> UNCOVERED when no employee is assigned
+  any non-completed shift -> CANCELLED by an authorised coordinator
+
+Incident status:
+  OPEN -> ACKNOWLEDGED -> RESOLVED
+  OPEN or ACKNOWLEDGED -> DISMISSED (requires a note)
+
+Correction status:
+  PENDING -> APPROVED or REJECTED
+  PENDING/APPROVED -> DISPUTED when the employee does not acknowledge it
+
+Communication status:
+  PENDING -> PROCESSING -> SENT
+  PENDING/PROCESSING -> RETRYING -> SENT or FAILED
+```
+
+The current domain service validates clock-event transition order and updates
+the shift status. When extending the state machine, first write a failing unit
+test in `src/lib/wia-control/domain.test.ts`, then implement the smallest safe
+change.
+
+## 13. API contract and input requirements
+
+Route handlers live in `src/app/api/control`. They should remain thin:
+
+1. Authenticate and authorise with `requireApiRole`.
+2. Parse input through the schema in `src/lib/wia-control/domain.ts`.
+3. Create a server-side actor through the existing API context helpers.
+4. Call the transactional domain service.
+5. Convert known domain errors to safe client responses through the common HTTP
+   helper. Do not expose a stack trace, database query, or secret.
+
+Use ISO 8601 timestamps with an explicit offset. For example:
+
+```json
+{
+  "shiftId": "shift_123",
+  "type": "CLOCK_IN",
+  "method": "MOBILE",
+  "occurredAt": "2026-08-17T08:00:00+02:00",
+  "idempotencyKey": "device-8f4f1d0c-1",
+  "deviceId": "hashed-device-reference",
+  "latitude": 40.4168,
+  "longitude": -3.7038,
+  "accuracyMeters": 18,
+  "isOffline": false
+}
+```
+
+### Existing validation contracts
+
+| Operation | Required input | Important validation |
+| --- | --- | --- |
+| Create worksite | name, address, city | Name 2–140 chars; radius 20–2,000m; valid latitude/longitude if provided. |
+| Create shift | worksite, title, start, end | End later than start; no employee overlap; inactive/unavailable employee rejected. |
+| Record clock event | shift, type, occurredAt, idempotency key | Valid event sequence; caller owns the shift if an employee; shift is open. |
+| Request correction | clock event, proposed time, reason | Reason 10–1,000 chars; event must belong to caller company. |
+| Review correction | status, optional note | Only `APPROVED`/`REJECTED`; use separate acknowledgement action. |
+| Update incident | status, resolution note | Resolve/dismiss requires a 5–1,000 char note. |
+| Confirm coverage | shift, incident, selected employee | Selected employee must pass eligibility checks; override reason is retained. |
+| Update settings | time zone, retention, CRM toggle | Retention is 4–10 years; administrator only. |
+
+Client code must treat `201`/success, validation failure, unauthorised,
+forbidden, conflict/idempotent retry, and temporary network failure as distinct
+states. Always render a useful English message and an available next action.
+
+## 14. Detailed implementation of the operational workflows
+
+### A. Company setup
+
+1. An administrator registers or is invited through Supabase.
+2. A `User` profile is created and associated with the company and `ADMIN`
+   role.
+3. The administrator configures company time zone, clock-retention period,
+   optional CRM visibility, and default verification policy.
+4. The administrator creates at least one active worksite.
+5. The administrator adds or invites employees, records their skills/zones, and
+   assigns roles.
+6. The administrator creates a first shift and verifies it appears to the
+   assigned employee.
+
+The onboarding UI is complete only when it prevents starting production work
+without a time zone, a worksite, an employee, and one successfully tested
+clocking method.
+
+### B. Shift planning and coverage
+
+1. Coordinator selects worksite, time window, title, skills, grace period, and
+   optionally an employee.
+2. Server validates the worksite, employee status, tenant, time interval, and
+   overlapping shifts inside one transaction.
+3. If unassigned, the shift is `UNCOVERED` and one related open incident is
+   created. Creating the same condition again must reuse rather than duplicate
+   the incident.
+4. When an employee is assigned, the shift becomes `PLANNED` or `COVERED` and
+   relevant open coverage incidents are resolved in the same transaction.
+5. A coordinator can cancel an unstarted shift. A shift with clock evidence
+   must not be casually edited; use a documented administrative correction
+   path.
+
+### C. Attendance and location verification
+
+1. Employee loads their own assigned shift from `/api/control/day`.
+2. Device creates an idempotency key before attempting the event.
+3. Device requests location only at the attendance action when the worksite
+   verification policy needs it. It never starts background tracking.
+4. Server validates event sequence, company, employee ownership, shift status,
+   and idempotency key.
+5. Server calculates point-in-time location verification from coordinates and
+   worksite radius, or permits configured QR/PIN/NFC/KIOSK alternatives.
+6. Server writes a new `ClockEvent`, computes the integrity-chain hash, updates
+   shift state, creates any late-arrival incident, and writes audit data in one
+   transaction.
+7. UI shows recorded time, verification result, and the next permitted action.
+
+Location denial is not a reason to silently collect more data. Show the
+configured alternative verification method or a contact-coordinator path.
+
+### D. Offline clocking design
+
+Implement offline support as a small, explicit subsystem, not an ad-hoc retry.
+
+- Store only the minimum attendance command in IndexedDB: payload, generated
+  ID, creation time, retry count, and UI state. Do not store passwords or full
+  employee records.
+- Generate a UUID idempotency key once and persist it before the first send.
+- Send commands in chronological order per employee/shift. A later event that
+  depends on an unsent earlier event stays pending.
+- Retry on network restoration and manual retry, with bounded exponential
+  backoff. Never create a new idempotency key for the same user action.
+- Treat server validation rejection as `needs attention`, not as retryable.
+- Set an explicit expiry policy approved by the product owner; after expiry,
+  preserve a visible correction-request path rather than fabricating an event.
+- Test browser reload, application close/reopen, duplicate retry, wrong order,
+  expired session, denied location, and server clock disagreement.
+
+### E. Corrections and evidence review
+
+1. Employee selects one of their own events and submits a proposed timestamp
+   plus a clear reason.
+2. System stores `TimeCorrectionRequest`; it does not modify `ClockEvent`.
+3. Reviewer approves or rejects with a note when appropriate.
+4. Employee can acknowledge the review or disagree with a mandatory reason.
+5. Export and admin timeline display original evidence, proposal, reviewer,
+   acknowledgement/disagreement, and timestamps.
+
+Before connecting payroll, obtain an explicit product and legal decision about
+how an approved correction affects payable time. WIAControl should preserve the
+attendance evidence independently of any payroll export.
+
+### F. Incidents and replacement decisions
+
+An incident must always contain: company, shift, worksite, type, status,
+detection time, human-readable title/detail, and its next accountable action.
+
+For every recommendation, evaluate hard exclusions before scoring:
+
+1. Same company and active employee.
+2. Eligible field status and declared availability.
+3. No absence or overlapping shift.
+4. Required skills and policy constraints.
+5. Work-zone/travel and working-time/rest limits.
+
+Only eligible employees are scored. Return a deterministic breakdown such as
+skills, availability, zone fit, workload, and transparent reliability signal.
+The UI must show why a person was excluded as well as why a candidate ranked
+well. The final coordinator action must write `CoverageDecision`, update the
+shift/incidence state, audit the actor, and enqueue communication atomically.
+
+## 15. Communications worker specification
+
+`CommunicationOutbox` is a durable intent to notify somebody; it is not proof
+that a message has been delivered. Implement a separate worker before claiming
+that reassignment communications work.
+
+The worker must:
+
+1. Claim only due `PENDING`/retryable records using a transaction-safe locking
+   strategy.
+2. Move a claimed record to `PROCESSING` before contacting a provider.
+3. Use a stable provider idempotency key based on the outbox record ID.
+4. Render a versioned template with safe, minimal payload data.
+5. On success, set `SENT`, `sentAt`, provider reference, and audit metadata.
+6. On retryable failure, increase attempts, calculate `nextAttemptAt`, store a
+   safe error summary, and return it to the retryable state.
+7. After the configured maximum attempts, set `FAILED` and expose manual
+   resend to an authorised coordinator.
+8. Never log message content, raw location, passwords, access tokens, or full
+   provider payloads.
+
+Start with in-app plus email. Add SMS or WhatsApp only after consent language,
+cost ceiling, template approval, opt-out behaviour, and failure ownership have
+been agreed in writing.
+
+## 16. Testing strategy and minimum test matrix
+
+Use three layers of tests. A feature is not complete if it has only a visual
+demo.
+
+| Layer | Location/tool | What it proves |
+| --- | --- | --- |
+| Unit | Vitest in `src/lib/**/**.test.ts` | State transitions, schema validation, eligibility, hashing, and pure rules. |
+| API/integration | Vitest with a test database or isolated service adapter | Roles, company scope, transactions, idempotency, persistence, and error mapping. |
+| Browser end-to-end | Playwright or equivalent to be added | A real user can complete the critical flow on desktop and mobile viewport. |
+
+Minimum test cases before pilot:
+
+- Valid clock-in/break-start/break-end/clock-out sequence.
+- Invalid first event and invalid duplicate sequence.
+- Same idempotency key submitted twice creates one event.
+- Employee A cannot clock Employee B's shift.
+- Company A cannot retrieve or mutate Company B data by any route input.
+- Overlapping shift assignment is rejected.
+- Uncovered shift results in exactly one actionable incident.
+- Repeated detection creates no duplicate incident or notification.
+- Ineligible coverage candidate is never returned; a valid override is audited.
+- Correction leaves the original clock event unchanged.
+- Failed communication follows retry then final-failure behaviour.
+- Export is limited to the authenticated company and contains the required
+  evidence fields.
+- Mobile viewport presents usable clock actions and accessible error feedback.
+
+Run these commands on every pull request:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run prisma:generate
+npm run preprod:verify
+```
+
+`npm run preprod:verify` is the release gate. GitHub Actions runs it for pull
+requests and pushes to `main`; do not weaken or bypass it.
+
+## 17. Database, migrations, backups, and recovery
+
+For every schema change:
+
+1. Change `prisma/schema.prisma` and explain the user/operational reason.
+2. Create a named migration with `npm run db:migrate` in a disposable local
+   database. Do not use `db push` as a production deployment mechanism.
+3. Review the generated SQL for locks, table rewrites, index creation, foreign
+   keys, defaults, data backfill, and rollback/forward-fix implications.
+4. Apply the migration to an empty database and a representative seeded copy.
+5. Add the migration to the pull request and update tests plus this guide if
+   behaviour changes.
+6. Deploy with `npm run db:migrate:deploy` exactly once per environment.
+
+The production procedure must include automated backups, a documented restore
+owner, a restore rehearsal, and an agreed recovery objective. For an
+append-only attendance system, prefer forward-fix migrations and application
+corrections over destructive rollback of operational data.
+
+## 18. Environments and deployment checklist
+
+Maintain three isolated environments:
+
+| Environment | Purpose | Data rule |
+| --- | --- | --- |
+| Local | Development and demo. | Synthetic/demo data only. |
+| Staging | Integration, release rehearsal, and test accounts. | No production credentials or customer data. |
+| Production | Pilot and live customers. | Real data, controlled access, monitored backups. |
+
+Before enabling real users in an environment, configure and verify:
+
+- `DATABASE_URL` for the correct PostgreSQL/Supabase project.
+- `NEXT_PUBLIC_APP_URL` for the deployed HTTPS origin.
+- `NEXT_PUBLIC_DEMO_MODE=false` and `DEMO_MODE=false`.
+- Supabase URL, anonymous key, service role key, redirect URLs, and email
+  templates.
+- Stripe test/live keys and webhook secret only where billing is enabled.
+- Separate secrets for every environment; rotate immediately if a secret is
+  exposed.
+- Health endpoint, structured logs, error alert, database backup, and an owner
+  for each external integration.
+
+Deployment order:
+
+1. Confirm a green pull request and reviewed migration.
+2. Back up the target database and confirm restore instructions.
+3. Apply the migration.
+4. Deploy the application.
+5. Run the staging smoke flow: login, day view, clock event, incident,
+   correction, coverage decision, and export.
+6. Watch errors, latency, outbox failures, and failed attendance submissions.
+7. Announce completion only after the smoke flow succeeds.
+
+## 19. Observability and support runbooks
+
+Add structured events, not unstructured console messages. Every event should
+include a request/correlation ID, safe company identifier, action, result,
+latency, and error code. Never log raw passwords, full access tokens, precise
+location, message content, or unfiltered personal data.
+
+Track at least:
+
+- successful/failed clock attempts and reason codes;
+- duplicate/idempotent clock retries;
+- incident count, age, owner, and resolution time;
+- coverage gap age, recommendation acceptance, and override reason;
+- outbox attempts, delivery status, and final failures;
+- API error rate, p95 latency, authentication failures, and database errors;
+- migration version, backup success, and restore-rehearsal date.
+
+Write a short runbook and nominate an owner for each event below:
+
+| Situation | First response |
+| --- | --- |
+| Employee cannot clock | Check session, assigned shift, device time, verification method, and event history; do not create evidence manually without a correction trail. |
+| Duplicate attendance report | Search by company/idempotency key; return existing event rather than adding one. |
+| Wrong replacement | Record coordinator correction, preserve original decision, notify affected people, and review eligibility rule. |
+| Message not delivered | Inspect outbox status/attempts, retry only through the worker/manual resend action, then contact provider support if needed. |
+| Suspected cross-tenant access | Stop affected action, preserve logs, revoke access if needed, notify the security owner, and investigate before continuing. |
+| Failed migration | Stop deployment, assess data state, restore only through the approved runbook, and use a reviewed forward fix where possible. |
+
+## 20. Delivery plan, sequencing, and decision log
+
+Use small pull requests. The following is the recommended order and definition
+of completion for a single developer:
+
+| Order | Work package | Finish only when |
+| --- | --- | --- |
+| 1 | Staging identity and tenant tests | Three roles work in staging; Company A/B isolation tests pass. |
+| 2 | Mobile clocking and offline queue | Complete event sequence, replay safety, and mobile E2E tests pass. |
+| 3 | Incident inbox and scheduled detection | One incident per condition, ownership, filters, and audit trail work. |
+| 4 | Coverage decision hardening | Hard exclusions, explanations, override evidence, and transaction tests pass. |
+| 5 | Outbox worker | Delivery/retry/failure/manual resend are observable and tested. |
+| 6 | Monitoring, backups, and support | Alerts, restore rehearsal, and runbooks have named owners. |
+| 7 | Controlled pilot | Pilot metrics meet the success criteria for four to six weeks. |
+| 8 | Supporting commerce modules | Only after core operations is stable or explicitly contracted. |
+
+The developer may make ordinary technical decisions that preserve this guide.
+Stop and ask the product owner before changing any of these product decisions:
+
+- retention period, permitted verification method, or location policy;
+- automatic assignment, AI ranking inputs, or employee-performance penalties;
+- biometric collection, continuous tracking, or new communication channel;
+- payroll calculation or legal employment-policy behaviour;
+- pricing, subscription entitlement, data deletion, or customer-facing terms.
+
+## 21. Final commercial-launch gate
+
+WIAControl is ready to sell only when a release owner can answer **yes** to all
+of the following:
+
+- Is real Supabase authentication enabled and tested for all roles?
+- Does every protected route enforce company and employee scope server-side?
+- Can a real employee complete attendance reliably, including safe retry?
+- Are original clock events immutable and corrections fully traceable?
+- Can a coordinator resolve an incident and document a coverage decision?
+- Are eligibility, recommendation explanations, overrides, and communication
+  outcomes auditable?
+- Are monitoring, backups, restore rehearsal, migrations, support runbooks,
+  privacy/retention policy, and named owners in place?
+- Has a pilot met the agreed success rate without a critical integrity or tenant
+  isolation defect?
+- Do CI, production audit, and the full smoke flow pass for the release?
+
+If any answer is “no”, WIAControl is still in pilot preparation. Keep the
+remaining work visible and do not compensate with manual, undocumented data
+changes.
