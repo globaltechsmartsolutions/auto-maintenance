@@ -1,22 +1,21 @@
-# Arquitectura
+# Architecture
 
-## Principios
+## Principles
 
-- Multiempresa desde el modelo de datos: todas las entidades operativas cuelgan
-  de `Company`.
-- Autenticación delegada en Supabase Auth y autorización por roles internos.
-- Prisma ORM sobre PostgreSQL para mantener un dominio tipado y migrable.
-- Stripe como sistema de suscripciones, portal de facturación y webhooks.
-- UI SaaS modular, responsive y con dark mode por defecto.
+- Multi-tenancy starts in the data model: every operational entity belongs to a `Company`.
+- Authentication is delegated to Supabase Auth; authorization uses internal roles.
+- Prisma ORM runs on PostgreSQL to keep the domain typed and migratable.
+- Stripe handles subscriptions, the billing portal, and webhooks.
+- The SaaS interface is modular, responsive, and dark by default.
 
 ## Roles
 
-- `SUPER_ADMIN`: gestión de plataforma, MRR, churn, empresas y usuarios.
-- `ADMIN`: administración completa de una empresa.
-- `MANAGER`: gestión operativa y comercial.
-- `EMPLOYEE`: acceso operativo a servicios asignados.
+- `SUPER_ADMIN`: platform management, MRR, churn, companies, and users.
+- `ADMIN`: full administration of one company.
+- `MANAGER`: operational and sales management.
+- `EMPLOYEE`: operational access to assigned services.
 
-## Rutas principales
+## Main routes
 
 - `/dashboard`
 - `/crm`
@@ -30,9 +29,9 @@
 - `/portal`
 - `/admin`
 
-## Integraciones preparadas
+## Prepared integrations
 
-- Supabase Auth y PostgreSQL.
-- Google Calendar desde el módulo de calendario.
-- Stripe Checkout, Billing Portal y webhooks.
-- Automatizaciones por email/SMS mediante reglas persistidas.
+- Supabase Auth and PostgreSQL.
+- Google Calendar through the calendar module.
+- Stripe Checkout, Billing Portal, and webhooks.
+- Email/SMS automations through persisted rules.

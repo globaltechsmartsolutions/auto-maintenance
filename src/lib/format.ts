@@ -1,5 +1,5 @@
 export function formatCurrency(value: number) {
-  return new Intl.NumberFormat("es-ES", {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency: "EUR",
     maximumFractionDigits: 0,
@@ -7,7 +7,7 @@ export function formatCurrency(value: number) {
 }
 
 export function formatDate(value: string | Date) {
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -15,7 +15,7 @@ export function formatDate(value: string | Date) {
 }
 
 export function formatPercent(value: number) {
-  return new Intl.NumberFormat("es-ES", {
+  return new Intl.NumberFormat("en-GB", {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(value);

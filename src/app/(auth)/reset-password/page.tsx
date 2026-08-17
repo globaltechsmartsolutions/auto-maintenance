@@ -11,22 +11,22 @@ export default async function ResetPasswordPage({
 
   return (
     <AuthCard
-      title="Recuperar contraseña"
-      description="Te enviaremos un enlace seguro para restablecer el acceso."
+      title="Reset password"
+      description="We will send you a secure link to restore access."
       icon={KeyRound}
       action={resetPasswordAction}
-      submitLabel="Enviar enlace"
+      submitLabel="Send link"
       error={params.error}
       fields={[
         {
           name: "email",
-          label: "Correo electrónico",
+          label: "Email address",
           type: "email",
-          placeholder: "admin@empresa.es",
+          placeholder: "admin@company.com",
         },
       ]}
-      footerText="¿La recuerdas?"
-      footerLabel="Volver al login"
+      footerText="Remember it?"
+      footerLabel="Back to sign in"
       footerHref="/login"
     />
   );

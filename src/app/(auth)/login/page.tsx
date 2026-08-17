@@ -11,31 +11,31 @@ export default async function LoginPage({
 
   return (
     <AuthCard
-      title="Acceso a LimpiaPro"
-      description="Gestiona clientes, servicios, cobros y equipos desde un único panel."
+      title="Sign in to WIA Control"
+      description="Manage customers, services, payments, and teams from one workspace."
       icon={LogIn}
       action={signInAction}
-      submitLabel="Entrar"
+      submitLabel="Sign in"
       error={params.error}
-      message={params.message === "reset-sent" ? "Revisa tu correo." : undefined}
+      message={params.message === "reset-sent" ? "Check your email." : undefined}
       fields={[
         {
           name: "email",
-          label: "Correo electrónico",
+          label: "Email address",
           type: "email",
-          placeholder: "admin@empresa.es",
-          defaultValue: "demo@limpiapro.es",
+          placeholder: "admin@company.com",
+          defaultValue: "demo@cleaningdemo.com",
         },
         {
           name: "password",
-          label: "Contraseña",
+          label: "Password",
           type: "password",
           placeholder: "********",
           defaultValue: "demo-local",
         },
       ]}
-      footerText="¿No tienes cuenta?"
-      footerLabel="Crear cuenta"
+      footerText="Don't have an account?"
+      footerLabel="Create account"
       footerHref="/register"
     />
   );

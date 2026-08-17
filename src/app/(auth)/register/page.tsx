@@ -11,38 +11,38 @@ export default async function RegisterPage({
 
   return (
     <AuthCard
-      title="Crear empresa"
-      description="Configura tu cuenta administradora y activa el espacio de trabajo."
+      title="Create company"
+      description="Set up your administrator account and activate the workspace."
       icon={Building2}
       action={signUpAction}
-      submitLabel="Crear workspace"
+      submitLabel="Create workspace"
       error={params.error}
       fields={[
         {
           name: "companyName",
-          label: "Empresa",
-          placeholder: "Limpiezas Demo SL",
+          label: "Company",
+          placeholder: "CleanWorks Demo Ltd",
         },
         {
           name: "fullName",
-          label: "Nombre completo",
+          label: "Full name",
           placeholder: "Alejandro Martín",
         },
         {
           name: "email",
-          label: "Correo electrónico",
+          label: "Email address",
           type: "email",
-          placeholder: "admin@empresa.es",
+          placeholder: "admin@company.com",
         },
         {
           name: "password",
-          label: "Contraseña",
+          label: "Password",
           type: "password",
-          placeholder: "Mínimo 8 caracteres",
+          placeholder: "At least 8 characters",
         },
       ]}
-      footerText="¿Ya tienes cuenta?"
-      footerLabel="Entrar"
+      footerText="Already have an account?"
+      footerLabel="Sign in"
       footerHref="/login"
     />
   );

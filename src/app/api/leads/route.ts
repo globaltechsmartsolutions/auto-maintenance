@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  companyScope,
+  requireApiRole,
+  resolveCompanyId,
+} from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { leadPipeline } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { apiRoute } from "@/lib/http/api-route";
 
 const leadSchema = z.object({
   companyId: z.string().min(1),
@@ -21,13 +27,21 @@ const leadSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-export async function GET() {
-  if (isDemoMode() || !hasDatabaseConfig()) {
+export const GET = apiRoute(async () => {
+  if (isDemoMode()) {
     return NextResponse.json({ leads: leadPipeline });
   }
 
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
+  }
+
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
   const leads = await prisma.lead.findMany({
+    where: companyScope(auth.profile),
     orderBy: { updatedAt: "desc" },
     include: {
       assignedTo: {
@@ -42,12 +56,12 @@ export async function GET() {
   });
 
   return NextResponse.json({ leads });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const payload = leadSchema.parse(await request.json());
 
-  if (isDemoMode() || !hasDatabaseConfig()) {
+  if (isDemoMode()) {
     return NextResponse.json(
       {
         lead: {
@@ -60,11 +74,20 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
+  }
+
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
+  const companyId = resolveCompanyId(auth.profile, payload.companyId);
 
   const lead = await prisma.lead.create({
     data: {
       ...payload,
+      companyId,
       nextFollowUp: payload.nextFollowUp
         ? new Date(payload.nextFollowUp)
         : undefined,
@@ -72,4 +95,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ lead }, { status: 201 });
-}
+});

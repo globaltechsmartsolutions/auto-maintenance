@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import {
+  companyScope,
+  requireApiRole,
+  resolveCompanyId,
+} from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { services as demoServices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { apiRoute } from "@/lib/http/api-route";
 
 const serviceSchema = z.object({
   companyId: z.string().min(1),
@@ -25,13 +31,26 @@ const serviceSchema = z.object({
   employeeIds: z.array(z.string()).default([]),
 });
 
-export async function GET() {
-  if (isDemoMode() || !hasDatabaseConfig()) {
+export const GET = apiRoute(async () => {
+  if (isDemoMode()) {
     return NextResponse.json({ services: demoServices });
   }
 
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
+  }
+
+  const auth = await requireApiRole([
+    "SUPER_ADMIN",
+    "ADMIN",
+    "MANAGER",
+    "EMPLOYEE",
+  ]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
   const services = await prisma.service.findMany({
+    where: companyScope(auth.profile),
     orderBy: { scheduledStart: "asc" },
     include: {
       customer: true,
@@ -48,12 +67,12 @@ export async function GET() {
   });
 
   return NextResponse.json({ services });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const payload = serviceSchema.parse(await request.json());
 
-  if (isDemoMode() || !hasDatabaseConfig()) {
+  if (isDemoMode()) {
     return NextResponse.json(
       {
         service: {
@@ -66,11 +85,19 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
+  }
+
+  const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
+  if (auth.response) return auth.response;
+
   const prisma = getPrisma();
+  const companyId = resolveCompanyId(auth.profile, payload.companyId);
 
   const service = await prisma.service.create({
     data: {
-      companyId: payload.companyId,
+      companyId,
       customerId: payload.customerId,
       title: payload.title,
       description: payload.description,
@@ -94,4 +121,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ service }, { status: 201 });
-}
+});

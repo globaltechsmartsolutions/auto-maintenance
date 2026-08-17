@@ -18,11 +18,11 @@ export function MetricCard({
   tone?: "default" | "success" | "warning";
 }) {
   return (
-    <Card className="overflow-hidden border-border/70 bg-card/85 shadow-sm">
-      <CardContent className="p-4">
+    <Card className="h-full min-h-[166px] overflow-hidden border-border/70 bg-card/85 shadow-sm">
+      <CardContent className="flex h-full flex-col p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
+            <p className="min-h-8 text-xs font-medium uppercase leading-4 text-muted-foreground">
               {label}
             </p>
             <p className="mt-2 text-2xl font-semibold text-foreground">
@@ -42,7 +42,7 @@ export function MetricCard({
             <Icon className="size-4" />
           </div>
         </div>
-        <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+        <div className="mt-auto flex items-center justify-between gap-3 pt-4 text-xs">
           <span className="font-medium text-primary">{delta}</span>
           <span className="truncate text-muted-foreground">{helper}</span>
         </div>

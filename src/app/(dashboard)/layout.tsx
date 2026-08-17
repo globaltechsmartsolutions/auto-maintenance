@@ -1,9 +1,13 @@
 import { AppShell } from "@/components/layout/app-shell";
+import { getDashboardViewer } from "@/lib/auth/viewer";
+import { redirect } from "next/navigation";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const viewer = await getDashboardViewer();
+  if (viewer.role === "EMPLOYEE") redirect("/employee");
+  return <AppShell viewer={viewer}>{children}</AppShell>;
 }

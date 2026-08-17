@@ -6,12 +6,12 @@ export default function NotFound() {
     <main className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <p className="text-sm text-muted-foreground">404</p>
-        <h1 className="mt-2 text-3xl font-semibold">Página no encontrada</h1>
+        <h1 className="mt-2 text-3xl font-semibold">Page not found</h1>
         <p className="mt-3 text-sm text-muted-foreground">
-          La ruta solicitada no existe o no está disponible para tu rol.
+          The requested route does not exist or is not available for your role.
         </p>
         <Button asChild className="mt-6">
-          <Link href="/dashboard">Volver al dashboard</Link>
+          <Link href="/dashboard">Back to dashboard</Link>
         </Button>
       </div>
     </main>

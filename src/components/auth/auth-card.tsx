@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Route } from "next";
 import type { LucideIcon } from "lucide-react";
 import { AlertCircle, ArrowRight } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -39,7 +40,7 @@ export function AuthCard({
   action: (formData: FormData) => void | Promise<void>;
   submitLabel: string;
   footerLabel: string;
-  footerHref: string;
+  footerHref: Route;
   footerText: string;
   error?: string;
   message?: string;
@@ -63,14 +64,14 @@ export function AuthCard({
           {error ? (
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="size-4" />
-              <AlertTitle>No se ha podido continuar</AlertTitle>
+              <AlertTitle>Unable to continue</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
           {message ? (
             <Alert className="mb-4">
               <AlertCircle className="size-4" />
-              <AlertTitle>Solicitud enviada</AlertTitle>
+              <AlertTitle>Request sent</AlertTitle>
               <AlertDescription>{message}</AlertDescription>
             </Alert>
           ) : null}
