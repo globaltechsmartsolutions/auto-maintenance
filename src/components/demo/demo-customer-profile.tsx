@@ -30,14 +30,14 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
     return (
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardContent className="flex min-h-56 flex-col items-center justify-center gap-3 text-center">
-          <p className="text-lg font-semibold">Cliente no encontrado</p>
+          <p className="text-lg font-semibold">Customer not found</p>
           <p className="max-w-md text-sm text-muted-foreground">
-            Puede que se haya borrado el lead, servicio o reserva que generaba esta ficha.
+            The lead, service, or booking that created this profile may have been deleted.
           </p>
           <Button asChild>
             <Link href="/crm">
               <ArrowLeft className="size-4" />
-              Volver al CRM
+              Back to CRM
             </Link>
           </Button>
         </CardContent>
@@ -49,10 +49,10 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
   const customerInvoices = invoices.filter((invoice) => invoice.customer === customer.name);
   const playbook =
     customerPlaybook[customer.id as keyof typeof customerPlaybook] ?? {
-      nextAction: "Confirmar disponibilidad y convertir la solicitud en servicio recurrente.",
-      opportunity: `Valor operativo registrado: ${formatCurrency(customer.lifetimeValue)}.`,
-      risk: `Riesgo ${customer.risk.toLowerCase()} según facturas, servicios y solicitudes abiertas.`,
-      internalNote: "Ficha generada automáticamente desde los datos vivos de la demo.",
+      nextAction: "Confirm availability and convert the request into a recurring service.",
+      opportunity: `Recorded operational value: ${formatCurrency(customer.lifetimeValue)}.`,
+      risk: `${customer.risk} risk based on invoices, services, and open requests.`,
+      internalNote: "Profile generated automatically from live demo data.",
     };
 
   return (
@@ -70,7 +70,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
             <StatusBadge status={customer.status} />
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            {customer.type} · riesgo {customer.risk}
+            {customer.type} · risk {customer.risk}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -80,11 +80,11 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
             payload={{ customer: customer.name }}
           >
             <FileText className="size-4" />
-            Presupuesto
+            Quote
           </DemoActionButton>
           <DemoActionButton action="new-service" payload={{ customer: customer.name }}>
             <Plus className="size-4" />
-            Servicio
+            Service
           </DemoActionButton>
         </div>
       </div>
@@ -92,7 +92,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Ficha del cliente</CardTitle>
+            <CardTitle className="text-base">Customer profile</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -119,7 +119,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
             </div>
             <p className="text-sm text-muted-foreground">{customer.notes}</p>
             <div className="rounded-md border border-border/70 bg-background/50 p-3">
-              <p className="text-xs uppercase text-muted-foreground">Valor registrado</p>
+              <p className="text-xs uppercase text-muted-foreground">Recorded value</p>
               <p className="mt-1 text-2xl font-semibold">
                 {formatCurrency(customer.lifetimeValue)}
               </p>
@@ -131,22 +131,22 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Lightbulb className="size-4 text-primary" />
-              Siguiente mejor acción
+              Next best action
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-3 rounded-md border border-border/70 bg-background/50 p-3 text-sm">
               <div>
-                <p className="text-xs uppercase text-muted-foreground">Acción recomendada</p>
+                <p className="text-xs uppercase text-muted-foreground">Recommended action</p>
                 <p className="mt-1 font-medium">{playbook.nextAction}</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs uppercase text-muted-foreground">Oportunidad</p>
+                  <p className="text-xs uppercase text-muted-foreground">Opportunity</p>
                   <p className="mt-1 text-muted-foreground">{playbook.opportunity}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase text-muted-foreground">Riesgo</p>
+                  <p className="text-xs uppercase text-muted-foreground">Risk</p>
                   <p className="mt-1 text-muted-foreground">{playbook.risk}</p>
                 </div>
               </div>
@@ -159,9 +159,9 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
 
       <Tabs defaultValue="history" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="history">Historial</TabsTrigger>
-          <TabsTrigger value="services">Servicios</TabsTrigger>
-          <TabsTrigger value="invoices">Facturas</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="services">Services</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
         </TabsList>
 
         <TabsContent value="history">
@@ -177,7 +177,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
                 </div>
               ))}
               {customer.serviceHistory.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sin historial operativo todavía.</p>
+                <p className="text-sm text-muted-foreground">No operational history yet.</p>
               ) : null}
             </CardContent>
           </Card>
@@ -202,7 +202,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
               </Card>
             ))}
             {customerServices.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin servicios asociados.</p>
+              <p className="text-sm text-muted-foreground">No linked services.</p>
             ) : null}
           </div>
         </TabsContent>
@@ -224,7 +224,7 @@ export function DemoCustomerProfile({ customerId }: { customerId: string }) {
               </Card>
             ))}
             {customerInvoices.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin facturas asociadas.</p>
+              <p className="text-sm text-muted-foreground">No linked invoices.</p>
             ) : null}
           </div>
         </TabsContent>

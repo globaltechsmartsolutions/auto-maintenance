@@ -8,6 +8,7 @@ import {
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { invoices as demoInvoices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { apiRoute } from "@/lib/http/api-route";
 
 const invoiceItemSchema = z.object({
   serviceId: z.string().optional(),
@@ -25,9 +26,13 @@ const invoiceSchema = z.object({
   items: z.array(invoiceItemSchema).min(1),
 });
 
-export async function GET() {
-  if (isDemoMode() || !hasDatabaseConfig()) {
+export const GET = apiRoute(async () => {
+  if (isDemoMode()) {
     return NextResponse.json({ invoices: demoInvoices });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
   }
 
   const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
@@ -45,9 +50,9 @@ export async function GET() {
   });
 
   return NextResponse.json({ invoices });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const payload = invoiceSchema.parse(await request.json());
 
   const subtotal = payload.items.reduce(
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
     0
   );
 
-  if (isDemoMode() || !hasDatabaseConfig()) {
+  if (isDemoMode()) {
     return NextResponse.json(
       {
         invoice: {
@@ -74,6 +79,10 @@ export async function POST(request: Request) {
       },
       { status: 201 }
     );
+  }
+
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
   }
 
   const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
@@ -101,4 +110,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ invoice }, { status: 201 });
-}
+});

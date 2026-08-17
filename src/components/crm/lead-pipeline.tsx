@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/format";
 
-const statuses: DemoLeadStatus[] = ["Nuevo", "Cualificado", "Presupuesto", "Ganado"];
+const statuses: DemoLeadStatus[] = ["New", "Qualified", "Quote", "Won"];
 
 export function LeadPipeline() {
   const { deleteLead, leads, openDialog, updateLeadStatus } = useDemo();
@@ -57,8 +57,8 @@ export function LeadPipeline() {
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Editar lead ${lead.companyName}`}
-                      title="Editar lead"
+                      aria-label={`Edit lead ${lead.companyName}`}
+                      title="Edit lead"
                       onClick={() =>
                         openDialog("lead", {
                           companyName: lead.companyName,
@@ -76,9 +76,9 @@ export function LeadPipeline() {
                       <Pencil className="size-4" />
                     </Button>
                     <DemoConfirmActionButton
-                      label={`Borrar lead ${lead.companyName}`}
-                      title="¿Borrar este lead?"
-                      description="Se eliminará del pipeline comercial. Las reservas o servicios asociados no se borran desde esta acción."
+                      label={`Delete lead ${lead.companyName}`}
+                      title="Delete this lead?"
+                      description="This will be removed from the sales pipeline. Linked bookings and services will not be deleted."
                       onConfirm={() => deleteLead(lead.id)}
                     >
                       <Trash2 className="size-4" />
@@ -89,7 +89,7 @@ export function LeadPipeline() {
                   {formatCurrency(lead.value)} · {lead.contactName}
                 </div>
                 <select
-                  aria-label={`Cambiar estado de ${lead.companyName}`}
+                  aria-label={`Change status of ${lead.companyName}`}
                   value={lead.status}
                   onChange={(event) =>
                     updateLeadStatus(lead.id, event.target.value as DemoLeadStatus)
@@ -106,7 +106,7 @@ export function LeadPipeline() {
             ))}
             {stage.leads.length === 0 ? (
               <div className="rounded-md border border-dashed border-border/70 px-3 py-6 text-center text-xs text-muted-foreground">
-                Sin oportunidades
+                No opportunities
               </div>
             ) : null}
           </CardContent>

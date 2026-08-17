@@ -11,12 +11,12 @@ export default function ServicesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Planificación operativa</p>
-          <h1 className="mt-1 text-3xl font-semibold">Servicios</h1>
+          <p className="text-sm text-muted-foreground">Operations planning</p>
+          <h1 className="mt-1 text-3xl font-semibold">Services</h1>
         </div>
         <DemoActionButton action="new-service">
           <Plus className="size-4" />
-          Crear servicio
+          Create service
         </DemoActionButton>
       </div>
 

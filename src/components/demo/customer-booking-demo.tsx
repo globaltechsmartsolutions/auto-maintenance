@@ -18,9 +18,9 @@ function getDefaultDate() {
 }
 
 function estimateServicePrice(serviceTitle: string) {
-  if (serviceTitle.includes("oficinas")) return 1260;
-  if (serviceTitle.includes("obra")) return 1800;
-  if (serviceTitle.includes("Desinfección")) return 780;
+  if (serviceTitle.includes("office")) return 1260;
+  if (serviceTitle.includes("construction")) return 1800;
+  if (serviceTitle.includes("Disinfection")) return 780;
   return 680;
 }
 
@@ -34,15 +34,15 @@ export function CustomerBookingDemo() {
   const { createBookingRequest } = useDemo();
   const [customer, setCustomer] = React.useState("Residencial Prado");
   const [contactName, setContactName] = React.useState("Ana Martín");
-  const [email, setEmail] = React.useState("ana@residencialprado.demo");
+  const [email, setEmail] = React.useState("ana@residentialprado.demo");
   const [phone, setPhone] = React.useState("+34 622 140 900");
-  const [title, setTitle] = React.useState("Limpieza extra de cristales");
+  const [title, setTitle] = React.useState("Extra window cleaning");
   const [city, setCity] = React.useState("Madrid");
-  const [address, setAddress] = React.useState("Calle Alcalá 120, Madrid");
+  const [address, setAddress] = React.useState("120 Alcala Street, Madrid");
   const [preferredDate, setPreferredDate] = React.useState(getDefaultDate);
   const [preferredTime, setPreferredTime] = React.useState("10:00");
   const [description, setDescription] = React.useState(
-    "Necesitamos limpieza de cristales exteriores y repaso de zonas comunes antes de una visita de propietarios."
+    "We need exterior window cleaning and a touch-up of the common areas before a residents' visit."
   );
   const [submitted, setSubmitted] = React.useState<SubmittedBooking | null>(null);
 
@@ -79,10 +79,10 @@ export function CustomerBookingDemo() {
             </span>
             <span>
               <span className="block text-sm font-semibold leading-none">
-                Limpiezas Demo SL
+                CleanWorks Demo Ltd
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Reserva online
+                Online booking
               </span>
             </span>
           </div>
@@ -94,20 +94,20 @@ export function CustomerBookingDemo() {
         <Card className="border-border/70 bg-card/90 shadow-sm">
           <CardHeader className="gap-2">
             <Badge variant="secondary" className="w-fit rounded-md">
-              Cliente final
+              Customer
             </Badge>
             <CardTitle className="text-2xl sm:text-3xl">
-              <h1>Solicitar limpieza</h1>
+              <h1>Request a cleaning service</h1>
             </CardTitle>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Indica los datos del servicio y el equipo confirmará disponibilidad.
+              Enter the service details and our team will confirm availability.
             </p>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="customer">Empresa o comunidad</Label>
+                  <Label htmlFor="customer">Company or residential community</Label>
                   <Input
                     id="customer"
                     value={customer}
@@ -116,7 +116,7 @@ export function CustomerBookingDemo() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="contactName">Persona de contacto</Label>
+                  <Label htmlFor="contactName">Contact person</Label>
                   <Input
                     id="contactName"
                     value={contactName}
@@ -135,7 +135,7 @@ export function CustomerBookingDemo() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Teléfono</Label>
+                  <Label htmlFor="phone">Phone</Label>
                   <Input
                     id="phone"
                     value={phone}
@@ -147,21 +147,21 @@ export function CustomerBookingDemo() {
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Servicio</Label>
+                  <Label htmlFor="title">Service</Label>
                   <select
                     id="title"
                     value={title}
                     onChange={(event) => setTitle(event.target.value)}
                     className="h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
                   >
-                    <option>Limpieza extra de cristales</option>
-                    <option>Limpieza recurrente de oficinas</option>
-                    <option>Limpieza fin de obra</option>
-                    <option>Desinfección y mantenimiento</option>
+                    <option>Extra window cleaning</option>
+                    <option>Recurring office cleaning</option>
+                    <option>Post-construction cleaning</option>
+                    <option>Disinfection and maintenance</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="city">Ciudad</Label>
+                  <Label htmlFor="city">City</Label>
                   <Input
                     id="city"
                     value={city}
@@ -171,7 +171,7 @@ export function CustomerBookingDemo() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Dirección</Label>
+                <Label htmlFor="address">Address</Label>
                 <Input
                   id="address"
                   value={address}
@@ -182,7 +182,7 @@ export function CustomerBookingDemo() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="preferredDate">Fecha</Label>
+                  <Label htmlFor="preferredDate">Date</Label>
                   <Input
                     id="preferredDate"
                     type="date"
@@ -192,7 +192,7 @@ export function CustomerBookingDemo() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="preferredTime">Hora</Label>
+                  <Label htmlFor="preferredTime">Time</Label>
                   <Input
                     id="preferredTime"
                     type="time"
@@ -204,7 +204,7 @@ export function CustomerBookingDemo() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Detalles</Label>
+                <Label htmlFor="description">Details</Label>
                 <Textarea
                   id="description"
                   value={description}
@@ -215,10 +215,10 @@ export function CustomerBookingDemo() {
 
               <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-muted-foreground">
-                  La empresa revisará la solicitud y enviará una confirmación.
+                  We will review your request and send you a confirmation.
                 </div>
                 <Button type="submit" className="gap-2">
-                  Enviar solicitud
+                  Send request
                   <ArrowRight className="size-4" />
                 </Button>
               </div>
@@ -227,11 +227,11 @@ export function CustomerBookingDemo() {
                   <div className="flex items-start gap-3">
                     <CheckCircle2 className="mt-0.5 size-5 text-primary" />
                     <div>
-                      <p className="font-semibold">Solicitud enviada correctamente</p>
+                      <p className="font-semibold">Request sent successfully</p>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        Hemos recibido {submitted.title} para {submitted.customer} el{" "}
-                        {formatDate(submitted.scheduledAt)}. Te contactaremos para confirmar
-                        disponibilidad y equipo.
+                        We received {submitted.title} for {submitted.customer} on{" "}
+                        {formatDate(submitted.scheduledAt)}. We will contact you to confirm
+                        availability and the assigned team.
                       </p>
                     </div>
                   </div>

@@ -3,9 +3,10 @@ import { companyScope, requireApiRole } from "@/lib/auth/api-auth";
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { automations } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { apiRoute } from "@/lib/http/api-route";
 
-export async function GET() {
-  if (isDemoMode() || !hasDatabaseConfig()) {
+export const GET = apiRoute(async () => {
+  if (isDemoMode()) {
     return NextResponse.json({
       reminders: automations.filter((automation) =>
         ["SERVICE_REMINDER", "SERVICE_CONFIRMATION", "REVIEW_REQUEST"].includes(
@@ -13,6 +14,10 @@ export async function GET() {
         )
       ),
     });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
   }
 
   const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
@@ -32,4 +37,4 @@ export async function GET() {
   return NextResponse.json({
     reminders,
   });
-}
+});

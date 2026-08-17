@@ -1,7 +1,7 @@
 export type DemoAssignmentState =
-  | "Lista para autoasignar"
-  | "Recomendación alta"
-  | "Revisar antes de asignar"
+  | "Ready for auto-assignment"
+  | "High recommendation"
+  | "Review before assignment"
   | "No recomendable";
 
 export type DemoAssignmentEmployeeInput = {
@@ -111,9 +111,9 @@ type Candidate = {
 };
 
 const GENERIC_EMPLOYEE_PROFILE: EmployeeProfile = {
-  skills: ["mantenimiento", "oficinas"],
+  skills: ["maintenance", "offices"],
   zones: ["madrid"],
-  preferredServiceTypes: ["mantenimiento general"],
+  preferredServiceTypes: ["maintenance general"],
   customerAffinity: [],
   maxJobsPerDay: 4,
   maxHoursPerDay: 8,
@@ -122,45 +122,45 @@ const GENERIC_EMPLOYEE_PROFILE: EmployeeProfile = {
 
 const EMPLOYEE_PROFILES: Record<string, EmployeeProfile> = {
   "laura mendez": {
-    skills: ["oficinas", "premium", "comunidades", "coordinacion"],
-    zones: ["madrid", "madrid centro", "salamanca", "retiro"],
-    preferredServiceTypes: ["oficinas", "comunidades"],
-    customerAffinity: ["atrium labs", "residencial prado"],
+    skills: ["offices", "premium", "communities", "coordination"],
+    zones: ["madrid", "madrid centre", "salamanca", "retiro"],
+    preferredServiceTypes: ["offices", "communities"],
+    customerAffinity: ["atrium labs", "residential prado"],
     maxJobsPerDay: 5,
     maxHoursPerDay: 8,
     incidentRate: 0.01,
   },
   "miguel prieto": {
-    skills: ["sanitario", "desinfeccion", "oficinas"],
+    skills: ["healthcare", "disinfection", "offices"],
     zones: ["madrid", "barcelona"],
-    preferredServiceTypes: ["sanitario", "desinfeccion"],
+    preferredServiceTypes: ["healthcare", "disinfection"],
     customerAffinity: ["clinica alameda"],
     maxJobsPerDay: 4,
     maxHoursPerDay: 8,
     incidentRate: 0.02,
   },
   "nadia ramos": {
-    skills: ["cristales", "garajes", "comunidades", "mantenimiento"],
-    zones: ["madrid", "madrid centro", "getafe", "salamanca", "retiro"],
-    preferredServiceTypes: ["cristales", "garajes", "comunidades"],
-    customerAffinity: ["comunidad torres norte", "residencial prado"],
+    skills: ["windows", "garages", "communities", "maintenance"],
+    zones: ["madrid", "madrid centre", "getafe", "salamanca", "retiro"],
+    preferredServiceTypes: ["windows", "garages", "communities"],
+    customerAffinity: ["community torres norte", "residential prado"],
     maxJobsPerDay: 4,
     maxHoursPerDay: 8,
     incidentRate: 0.015,
   },
   "hugo vega": {
-    skills: ["cristales", "altura", "garajes"],
-    zones: ["madrid", "madrid centro", "getafe"],
-    preferredServiceTypes: ["cristales", "garajes"],
-    customerAffinity: ["comunidad torres norte"],
+    skills: ["windows", "high-rise", "garages"],
+    zones: ["madrid", "madrid centre", "getafe"],
+    preferredServiceTypes: ["windows", "garages"],
+    customerAffinity: ["community torres norte"],
     maxJobsPerDay: 4,
     maxHoursPerDay: 8,
     incidentRate: 0.025,
   },
   "irene costa": {
-    skills: ["hoteles", "oficinas", "zonas comunes"],
+    skills: ["hotels", "offices", "common areas"],
     zones: ["alicante", "valencia"],
-    preferredServiceTypes: ["hoteles", "zonas comunes"],
+    preferredServiceTypes: ["hotels", "common areas"],
     customerAffinity: ["hotel bruma"],
     maxJobsPerDay: 5,
     maxHoursPerDay: 8,
@@ -186,70 +186,70 @@ export function getServiceProfile(service: Pick<
 >): ServiceProfile {
   const text = normalize(`${service.title} ${service.customer} ${service.description ?? ""}`);
 
-  if (includesAny(text, ["desinfeccion", "sanitario", "clinica", "hospital"])) {
+  if (includesAny(text, ["disinfection", "healthcare", "clinica", "hospital"])) {
     return {
-      family: "Sanitario",
-      customerType: "Sanitario",
-      requiredSkills: service.requiredSkills ?? ["sanitario", "desinfeccion"],
+      family: "Healthcare",
+      customerType: "Healthcare",
+      requiredSkills: service.requiredSkills ?? ["healthcare", "disinfection"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 150,
       sensitive: true,
     };
   }
 
-  if (includesAny(text, ["cristal", "cristales", "ventana", "escaparate"])) {
+  if (includesAny(text, ["window", "windows", "window", "storefront"])) {
     return {
-      family: "Cristales",
-      customerType: includesAny(text, ["comunidad", "residencial"]) ? "Comunidad" : "General",
-      requiredSkills: service.requiredSkills ?? ["cristales"],
+      family: "Windows",
+      customerType: includesAny(text, ["community", "residential"]) ? "Community" : "General",
+      requiredSkills: service.requiredSkills ?? ["windows"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 150,
       sensitive: false,
     };
   }
 
-  if (includesAny(text, ["garaje", "parking"])) {
+  if (includesAny(text, ["garage", "parking"])) {
     return {
       family: "Garajes",
-      customerType: "Comunidad",
-      requiredSkills: service.requiredSkills ?? ["garajes"],
+      customerType: "Community",
+      requiredSkills: service.requiredSkills ?? ["garages"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 150,
       sensitive: false,
     };
   }
 
-  if (includesAny(text, ["oficina", "cowork", "despacho", "laboratorio"])) {
+  if (includesAny(text, ["office", "coworking", "workspace", "laboratory"])) {
     return {
-      family: "Oficinas",
-      customerType: "Empresa",
-      requiredSkills: service.requiredSkills ?? ["oficinas"],
+      family: "Offices",
+      customerType: "Company",
+      requiredSkills: service.requiredSkills ?? ["offices"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 180,
       sensitive: false,
     };
   }
 
-  if (includesAny(text, ["obra", "reforma", "final de obra"])) {
+  if (includesAny(text, ["construction", "renovation", "post-construction"])) {
     return {
-      family: "Fin de obra",
+      family: "Post-construction",
       customerType: "Proyecto",
-      requiredSkills: service.requiredSkills ?? ["fin de obra", "mantenimiento"],
+      requiredSkills: service.requiredSkills ?? ["post-construction", "maintenance"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 240,
       sensitive: false,
     };
   }
 
-  if (includesAny(text, ["hotel", "habitacion", "zonas comunes"])) {
+  if (includesAny(text, ["hotel", "room", "common areas"])) {
     return {
-      family: "Hoteles",
+      family: "Hotels",
       customerType: "Hotel",
-      requiredSkills: service.requiredSkills ?? ["hoteles", "zonas comunes"],
+      requiredSkills: service.requiredSkills ?? ["hotels", "common areas"],
       estimatedDurationMinutes: service.estimatedDurationMinutes ?? 180,
       sensitive: false,
     };
   }
 
   return {
-    family: "Mantenimiento general",
+    family: "General maintenance",
     customerType: "General",
-    requiredSkills: service.requiredSkills ?? ["mantenimiento"],
+    requiredSkills: service.requiredSkills ?? ["maintenance"],
     estimatedDurationMinutes: service.estimatedDurationMinutes ?? 120,
     sensitive: false,
   };
@@ -297,15 +297,15 @@ function worksOnDate(employee: DemoAssignmentEmployeeInput, serviceDate: Date) {
   const isSunday = day === 0;
   const isSaturday = day === 6;
 
-  if (availability.includes("vuelve") || availability.includes("vacaciones")) {
+  if (availability.includes("returns") || availability.includes("on leave")) {
     return false;
   }
 
-  if (availability.includes("l-s")) {
+  if (availability.includes("mon-sat")) {
     return !isSunday;
   }
 
-  if (availability.includes("l-v")) {
+  if (availability.includes("mon-fri")) {
     return !isSaturday && !isSunday;
   }
 
@@ -327,7 +327,7 @@ function hasTimeConflict(
   const end = start + durationMinutes * 60_000;
 
   return services.some((item) => {
-    if (item.id === service.id || item.status === "Cancelado") return false;
+    if (item.id === service.id || item.status === "Cancelled") return false;
     if (!item.team.includes(employeeName)) return false;
 
     const otherProfile = getServiceProfile(item);
@@ -348,7 +348,7 @@ function countDailyServices(
   return services.filter(
     (item) =>
       item.id !== service.id &&
-      item.status !== "Cancelado" &&
+      item.status !== "Cancelled" &&
       getDayKey(item.start) === dayKey &&
       item.team.includes(employeeName)
   ).length;
@@ -371,7 +371,7 @@ function skillMatchScore(profile: EmployeeProfile, serviceProfile: ServiceProfil
     return { points: 18, exact: false };
   }
 
-  if (employeeSkills.includes("mantenimiento") || employeeSkills.includes("coordinacion")) {
+  if (employeeSkills.includes("maintenance") || employeeSkills.includes("coordination")) {
     return { points: 10, exact: false };
   }
 
@@ -421,7 +421,7 @@ function getLearningStats(
   const similarCompletedServices = services.filter(
     (item) =>
       item.id !== service.id &&
-      item.status !== "Cancelado" &&
+      item.status !== "Cancelled" &&
       item.team.some((member) => normalize(member) === normalizedEmployee) &&
       normalize(getServiceProfile(item).family) === normalize(serviceProfile.family)
   ).length;
@@ -458,7 +458,7 @@ function buildCandidate(
   const learningSignals: string[] = [];
   const warnings: string[] = [];
 
-  if (normalize(employee.status).includes("vacaciones")) {
+  if (normalize(employee.status).includes("holiday")) {
     return {
       employee,
       profile,
@@ -466,7 +466,7 @@ function buildCandidate(
       reasons,
       learningSignals,
       warnings,
-      rejectedReason: "está de vacaciones",
+      rejectedReason: "is on holiday",
       acceptedSimilar: 0,
     };
   }
@@ -479,7 +479,7 @@ function buildCandidate(
       reasons,
       learningSignals,
       warnings,
-      rejectedReason: "no trabaja en esa fecha",
+      rejectedReason: "does not work on that date",
       acceptedSimilar: 0,
     };
   }
@@ -496,7 +496,7 @@ function buildCandidate(
       reasons,
       learningSignals,
       warnings,
-      rejectedReason: "la franja solicitada queda fuera de su horario habitual",
+      rejectedReason: "the requested time slot is outside the usual schedule",
       acceptedSimilar: 0,
     };
   }
@@ -509,7 +509,7 @@ function buildCandidate(
       reasons,
       learningSignals,
       warnings,
-      rejectedReason: "ya tiene otro servicio en una franja cercana",
+      rejectedReason: "already has another service in a nearby time slot",
       acceptedSimilar: 0,
     };
   }
@@ -522,7 +522,7 @@ function buildCandidate(
       reasons,
       learningSignals,
       warnings,
-      rejectedReason: "ya tiene la carga máxima para ese día",
+      rejectedReason: "has reached the maximum workload for that day",
       acceptedSimilar: 0,
     };
   }
@@ -532,44 +532,44 @@ function buildCandidate(
   score += skillScore.points;
 
   if (skillScore.exact) {
-    reasons.push(`Tiene la especialidad adecuada para ${serviceProfile.family.toLowerCase()}.`);
+    reasons.push(`Has the right specialisation for ${serviceProfile.family.toLowerCase()}.`);
   } else {
-    warnings.push("Puede cubrir el servicio, pero no es la persona más especializada.");
+    warnings.push("Can cover the service but is not the most specialised person.");
   }
 
   score += 18;
-  reasons.push("Tiene disponibilidad en la franja solicitada.");
+  reasons.push("Is available in the requested time slot.");
 
   if (matchesZone(profile, service)) {
     score += 14;
-    reasons.push(`Trabaja habitualmente en ${service.city}.`);
+    reasons.push(`Usually works in ${service.city}.`);
   } else {
     score += 4;
-    warnings.push("La zona no es su área habitual.");
+    warnings.push("The area is outside their usual zone.");
   }
 
   const freeSlots = profile.maxJobsPerDay - dailyLoad;
   if (freeSlots >= 3) {
     score += 14;
-    reasons.push("Tiene carga baja ese día.");
+    reasons.push("Has a low workload that day.");
   } else if (freeSlots >= 1) {
     score += 8;
-    reasons.push("Todavía tiene margen en la agenda.");
+    reasons.push("Still has capacity in the schedule.");
   }
 
   if (employee.score >= 95) {
     score += 10;
-    reasons.push("Tiene rendimiento excelente en el equipo.");
+    reasons.push("Has excellent team performance.");
   } else if (employee.score >= 90) {
     score += 8;
-    reasons.push("Tiene buen rendimiento operativo.");
+    reasons.push("Has good operational performance.");
   } else {
     score += 5;
   }
 
   if (profile.customerAffinity.map(normalize).includes(normalize(service.customer))) {
     score += 8;
-    reasons.push("Ya encaja con este cliente o tipo de cuenta.");
+    reasons.push("Already fits this customer or account type.");
   }
 
   const learning = getLearningStats(employee.name, service, serviceProfile, services, decisions);
@@ -579,31 +579,31 @@ function buildCandidate(
   score -= Math.min(learning.managerOverridesAway * 8, 16);
 
   if (learning.similarCompletedServices > 0) {
-    learningSignals.push("Ya ha realizado servicios similares dentro de la empresa.");
+    learningSignals.push("Has delivered similar services within the company.");
   }
 
   if (learning.customerHistory > 0) {
-    learningSignals.push("Tiene historial previo con este cliente.");
+    learningSignals.push("Has previous history with this customer.");
   }
 
   if (learning.acceptedSimilar > 0) {
-    learningSignals.push("El responsable ya aceptó recomendaciones similares para esta persona.");
+    learningSignals.push("The manager has accepted similar recommendations for this person.");
   }
 
   if (learning.managerOverridesToEmployee > 0) {
-    learningSignals.push("El sistema ha aprendido correcciones previas hacia esta persona.");
+    learningSignals.push("The system has learned from previous corrections favouring this person.");
   }
 
   if (learning.managerOverridesAway > 0) {
-    warnings.push("En casos parecidos el responsable eligió a otra persona.");
+    warnings.push("In similar cases the manager selected someone else.");
   }
 
   if (profile.incidentRate <= 0.02) {
     score += 5;
-    reasons.push("No arrastra incidencias recientes relevantes.");
+    reasons.push("Has no relevant recent incidents.");
   } else if (profile.incidentRate > 0.04) {
     score -= 6;
-    warnings.push("Conviene revisar incidencias antes de asignar.");
+    warnings.push("Review incidents before assigning.");
   }
 
   return {
@@ -626,14 +626,14 @@ function stateFromCandidate(candidate: Candidate, serviceProfile: ServiceProfile
   const hasWarnings = candidate.warnings.length > 0;
 
   if (candidate.score >= 82 && hasLearningForAutoAssign && !hasWarnings && !serviceProfile.sensitive) {
-    return "Lista para autoasignar";
+    return "Ready for auto-assignment";
   }
 
   if (candidate.score >= 68) {
-    return "Recomendación alta";
+    return "High recommendation";
   }
 
-  return "Revisar antes de asignar";
+  return "Review before assignment";
 }
 
 export function recommendAssignee({
@@ -663,13 +663,13 @@ export function recommendAssignee({
 
   if (validCandidates.length === 0) {
     return {
-      employeeName: "Equipo por asignar",
-      state: "Revisar antes de asignar",
-      summary: "No hay una persona claramente disponible. Revisa la agenda antes de confirmar.",
+      employeeName: "Unassigned team",
+      state: "Review before assignment",
+      summary: "No person is clearly available. Review the schedule before confirming.",
       serviceFamily: serviceProfile.family,
       requiredSkills: serviceProfile.requiredSkills,
       estimatedDurationMinutes: serviceProfile.estimatedDurationMinutes,
-      reasons: ["La solicitud queda pendiente para revisión manual."],
+      reasons: ["The request remains pending for manual review."],
       learningSignals: [],
       warnings: rejected.slice(0, 3).map((item) => `${item.employeeName}: ${item.reason}.`),
       alternatives: [],
@@ -686,14 +686,14 @@ export function recommendAssignee({
     reason:
       candidate.reasons[0] ??
       candidate.learningSignals[0] ??
-      "Puede cubrir el servicio si el responsable lo prefiere.",
+      "Can cover the service if the manager prefers.",
     state: stateFromCandidate(candidate, serviceProfile),
   }));
 
   return {
     employeeName: best.employee.name,
     state,
-    summary: `${best.employee.name} es la mejor opción por encaje operativo, agenda y señales aprendidas.`,
+    summary: `${best.employee.name} is the best option based on operational fit, schedule, and learned signals.`,
     serviceFamily: serviceProfile.family,
     requiredSkills: serviceProfile.requiredSkills,
     estimatedDurationMinutes: serviceProfile.estimatedDurationMinutes,
@@ -702,7 +702,7 @@ export function recommendAssignee({
     warnings: best.warnings.slice(0, 3),
     alternatives,
     rejected,
-    canAutoAssign: state === "Lista para autoasignar",
+    canAutoAssign: state === "Ready for auto-assignment",
     internalScore: Math.round(best.score),
   };
 }

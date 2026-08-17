@@ -10,8 +10,12 @@ function getString(formData: FormData, key: string) {
 }
 
 export async function signInAction(formData: FormData) {
-  if (isDemoMode() || !hasSupabaseConfig()) {
-    redirect("/dashboard");
+  if (isDemoMode()) {
+    redirect("/control");
+  }
+
+  if (!hasSupabaseConfig()) {
+    redirect("/login?error=Authentication%20is%20not%20configured");
   }
 
   const email = getString(formData, "email");
@@ -27,12 +31,16 @@ export async function signInAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect("/control");
 }
 
 export async function signUpAction(formData: FormData) {
-  if (isDemoMode() || !hasSupabaseConfig()) {
-    redirect("/dashboard");
+  if (isDemoMode()) {
+    redirect("/control");
+  }
+
+  if (!hasSupabaseConfig()) {
+    redirect("/register?error=Authentication%20is%20not%20configured");
   }
 
   const email = getString(formData, "email");
@@ -57,12 +65,16 @@ export async function signUpAction(formData: FormData) {
     redirect(`/register?error=${encodeURIComponent(error.message)}`);
   }
 
-  redirect("/dashboard");
+  redirect("/control");
 }
 
 export async function resetPasswordAction(formData: FormData) {
-  if (isDemoMode() || !hasSupabaseConfig()) {
+  if (isDemoMode()) {
     redirect("/login?message=reset-sent");
+  }
+
+  if (!hasSupabaseConfig()) {
+    redirect("/reset-password?error=Authentication%20is%20not%20configured");
   }
 
   const email = getString(formData, "email");
@@ -80,8 +92,12 @@ export async function resetPasswordAction(formData: FormData) {
 }
 
 export async function signOutAction() {
-  if (isDemoMode() || !hasSupabaseConfig()) {
+  if (isDemoMode()) {
     redirect("/login");
+  }
+
+  if (!hasSupabaseConfig()) {
+    redirect("/login?error=Authentication%20is%20not%20configured");
   }
 
   const supabase = await createSupabaseServerClient();

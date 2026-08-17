@@ -8,6 +8,7 @@ import {
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { leadPipeline } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { apiRoute } from "@/lib/http/api-route";
 
 const leadSchema = z.object({
   companyId: z.string().min(1),
@@ -26,9 +27,13 @@ const leadSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-export async function GET() {
-  if (isDemoMode() || !hasDatabaseConfig()) {
+export const GET = apiRoute(async () => {
+  if (isDemoMode()) {
     return NextResponse.json({ leads: leadPipeline });
+  }
+
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
   }
 
   const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
@@ -51,12 +56,12 @@ export async function GET() {
   });
 
   return NextResponse.json({ leads });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const payload = leadSchema.parse(await request.json());
 
-  if (isDemoMode() || !hasDatabaseConfig()) {
+  if (isDemoMode()) {
     return NextResponse.json(
       {
         lead: {
@@ -67,6 +72,10 @@ export async function POST(request: Request) {
       },
       { status: 201 }
     );
+  }
+
+  if (!hasDatabaseConfig()) {
+    return NextResponse.json({ error: "The database is not configured." }, { status: 503 });
   }
 
   const auth = await requireApiRole(["SUPER_ADMIN", "ADMIN", "MANAGER"]);
@@ -86,4 +95,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ lead }, { status: 201 });
-}
+});

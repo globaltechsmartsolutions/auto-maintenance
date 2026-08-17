@@ -31,22 +31,22 @@ const briefIcons = [AlertTriangle, CheckCircle2, Handshake];
 export default function DashboardPage() {
   const { customers, employees, invoices, leads, portalRequests, services } = useDemo();
   const dashboardMetrics = React.useMemo(() => {
-    const activeServices = services.filter((service) => service.status !== "Cancelado");
-    const completedServices = services.filter((service) => service.status === "Completado");
+    const activeServices = services.filter((service) => service.status !== "Cancelled");
+    const completedServices = services.filter((service) => service.status === "Completed");
     const paidRevenue = invoices
-      .filter((invoice) => invoice.status === "Pagada")
+      .filter((invoice) => invoice.status === "Paid")
       .reduce((total, invoice) => total + invoice.total, 0);
     const projectedRevenue = activeServices.reduce(
       (total, service) => total + service.price * (1 + service.vatRate / 100),
       0
     );
-    const pendingInvoices = invoices.filter((invoice) => invoice.status !== "Pagada");
+    const pendingInvoices = invoices.filter((invoice) => invoice.status !== "Paid");
     const pendingInvoiceTotal = pendingInvoices.reduce(
       (total, invoice) => total + invoice.total,
       0
     );
-    const activeCustomers = customers.filter((customer) => customer.status === "Activo");
-    const newLeads = leads.filter((lead) => lead.status === "Nuevo");
+    const activeCustomers = customers.filter((customer) => customer.status === "Active");
+    const newLeads = leads.filter((lead) => lead.status === "New");
     const sla =
       activeServices.length > 0
         ? Math.round((completedServices.length / activeServices.length) * 1000) / 10
@@ -54,82 +54,82 @@ export default function DashboardPage() {
 
     return [
       {
-        label: "Ingresos mes",
+        label: "Monthly revenue",
         displayValue: formatCurrency(Math.max(paidRevenue, projectedRevenue)),
         delta: `+${formatCurrency(projectedRevenue)}`,
-        helper: "pipeline operativo actualizado",
+        helper: "operational pipeline updated",
       },
       {
-        label: "Servicios activos",
+        label: "Active services",
         displayValue: activeServices.length.toString(),
         delta: `+${portalRequests.length}`,
-        helper: "incluye reservas web",
+        helper: "includes web bookings",
       },
       {
-        label: "Clientes activos",
+        label: "Active customers",
         displayValue: activeCustomers.length.toString(),
         delta: `+${customers.length - activeCustomers.length}`,
-        helper: "clientes y leads sincronizados",
+        helper: "customers and leads synchronized",
       },
       {
-        label: "Facturas pendientes",
+        label: "Outstanding invoices",
         displayValue: formatCurrency(pendingInvoiceTotal),
         delta: `${pendingInvoices.length}`,
-        helper: "documentos por cobrar",
+        helper: "documents awaiting payment",
       },
       {
-        label: "Nuevos leads",
+        label: "New leads",
         displayValue: newLeads.length.toString(),
         delta: `+${leads.length}`,
-        helper: "pipeline comercial vivo",
+        helper: "active sales pipeline",
       },
       {
-        label: "SLA completado",
-        displayValue: `${sla.toLocaleString("es-ES")} %`,
+        label: "SLA completed",
+        displayValue: `${sla.toLocaleString("en-GB")} %`,
         delta: `${completedServices.length}`,
-        helper: "servicios completados",
+        helper: "completed services",
       },
     ];
   }, [customers, invoices, leads, portalRequests.length, services]);
 
   const operationsBrief = React.useMemo(() => {
-    const pendingInvoice = invoices.find((invoice) => invoice.status !== "Pagada");
+    const pendingInvoice = invoices.find((invoice) => invoice.status !== "Paid");
     const unassignedService = services.find((service) =>
-      service.team.includes("Equipo por asignar")
+      service.team.includes("Unassigned team")
     );
     const latestRequest = portalRequests[0];
 
     return [
       {
-        title: pendingInvoice ? "Cerrar factura pendiente" : "Cobros al día",
-        customer: pendingInvoice?.customer ?? "Sin incidencias",
-        status: pendingInvoice?.status ?? "Completado",
-        impact: pendingInvoice ? formatCurrency(pendingInvoice.total) : "Sin deuda crítica",
+        title: pendingInvoice ? "Close outstanding invoice" : "Payments up to date",
+        customer: pendingInvoice?.customer ?? "No incidents",
+        status: pendingInvoice?.status ?? "Completed",
+        impact: pendingInvoice ? formatCurrency(pendingInvoice.total) : "No critical debt",
         helper: pendingInvoice
-          ? `Revisar ${pendingInvoice.number} antes del vencimiento.`
-          : "La cartera no tiene facturas vencidas relevantes.",
+          ? `Review ${pendingInvoice.number} before its due date.`
+          : "The portfolio has no relevant overdue invoices.",
       },
       {
-        title: unassignedService ? "Asignar equipo pendiente" : "Equipo cubierto",
-        customer: unassignedService?.customer ?? "Operación estable",
-        status: unassignedService?.status ?? "Programado",
+        title: unassignedService ? "Assign pending team" : "Team coverage complete",
+        customer: unassignedService?.customer ?? "Stable operations",
+        status: unassignedService?.status ?? "Scheduled",
         impact: unassignedService
-          ? `${unassignedService.title} requiere responsable`
-          : "Todos los servicios tienen equipo",
+          ? `${unassignedService.title} requires an assignee`
+          : "All services have a team",
         helper: unassignedService
-          ? "Usar la recomendación inteligente antes de confirmar al cliente."
-          : "No hay servicios sin empleado asignado.",
+          ? "Use the intelligent recommendation before confirming with the customer."
+          : "There are no services without an assigned employee.",
       },
       {
-        title: latestRequest ? "Confirmar reserva web" : "Captación preparada",
-        customer: latestRequest?.customer ?? "Portal cliente",
-        status: latestRequest?.status ?? "Programado",
+        title: latestRequest ? "Confirm web booking" : "Acquisition ready",
+        customer: latestRequest?.customer ?? "Customer portal",
+        status: latestRequest?.status ?? "Scheduled",
         impact: latestRequest
-          ? `${latestRequest.title} entra en CRM y calendario`
-          : "Formulario público listo para nuevas solicitudes",
+          ? `${latestRequest.title} enters the CRM and calendar`
+          : "Public form ready for new requests",
         helper: latestRequest
-          ? "La solicitud está enlazada a lead, calendario y equipo."
-          : "Al enviar una reserva aparecerá aquí automáticamente.",
+          ? "The request is linked to a lead, calendar, and team."
+          : "A submitted booking will appear here automatically.",
       },
     ];
   }, [invoices, portalRequests, services]);
@@ -151,19 +151,19 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Operación de hoy</p>
+          <p className="text-sm text-muted-foreground">Today&apos;s operations</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-normal">
-            Dashboard ejecutivo
+            Executive dashboard
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <DemoActionButton action="export-dashboard" variant="outline">
             <FileClock className="size-4" />
-            Exportar
+            Export
           </DemoActionButton>
           <DemoActionButton action="new-service">
             <CalendarPlus className="size-4" />
-            Nuevo servicio
+            New service
           </DemoActionButton>
         </div>
       </div>
@@ -215,7 +215,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Servicios próximos</CardTitle>
+            <CardTitle className="text-base">Upcoming services</CardTitle>
           </CardHeader>
           <CardContent>
             <DemoDashboardServicesTable />
@@ -225,7 +225,7 @@ export default function DashboardPage() {
         <div className="grid gap-4">
           <Card className="border-border/70 bg-card/85 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">Rendimiento del equipo</CardTitle>
+              <CardTitle className="text-base">Team performance</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {employeePerformance.map((employee) => (
@@ -233,7 +233,7 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">{employee.name}</span>
                     <span className="text-muted-foreground">
-                      {employee.score}/100 · {employee.services} servicios
+                      {employee.score}/100 · {employee.services} services
                     </span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -249,7 +249,7 @@ export default function DashboardPage() {
 
           <Card className="border-border/70 bg-card/85 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-base">Cobros sensibles</CardTitle>
+              <CardTitle className="text-base">Payment attention</CardTitle>
             </CardHeader>
             <CardContent>
               <DemoDashboardInvoicesList />

@@ -1,12 +1,12 @@
 param(
-  [string]$Route = "empleado",
+  [string]$Route = "employee",
   [int]$Port = 3000,
   [switch]$DryRun
 )
 
 $cleanRoute = $Route.Trim().TrimStart("/")
 if ([string]::IsNullOrWhiteSpace($cleanRoute)) {
-  $cleanRoute = "empleado"
+  $cleanRoute = "employee"
 }
 
 $url = "http://127.0.0.1:$Port/$cleanRoute"
@@ -22,7 +22,7 @@ $browserCandidates = @(
 $browser = $browserCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 
 if (-not $browser) {
-  Write-Error "No se ha encontrado Microsoft Edge ni Google Chrome."
+  Write-Error "Microsoft Edge or Google Chrome could not be found."
   exit 1
 }
 
@@ -44,4 +44,4 @@ if ($DryRun) {
 }
 
 Start-Process -FilePath $browser -ArgumentList $arguments
-Write-Output "Demo movil abierta: $url"
+Write-Output "Mobile demo opened: $url"

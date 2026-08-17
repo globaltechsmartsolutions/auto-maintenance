@@ -22,7 +22,7 @@ type Column = {
 
 function formatColumnLabel(value: string) {
   const date = new Date(value);
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     weekday: "short",
   })
@@ -31,7 +31,7 @@ function formatColumnLabel(value: string) {
 }
 
 function formatAppointmentTime(value: string) {
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
@@ -152,12 +152,12 @@ export function ScheduleBoard() {
                   {appointment.team}
                 </p>
                 <select
-                  aria-label={`Asignar empleado a ${appointment.serviceTitle}`}
-                  value={appointment.team === "Equipo por asignar" ? "" : appointment.team.split(" + ")[0]}
+                  aria-label={`Assign employee to ${appointment.serviceTitle}`}
+                  value={appointment.team === "Unassigned team" ? "" : appointment.team.split(" + ")[0]}
                   onChange={(event) => assignServiceTeam(appointment.id, event.target.value)}
                   className="mt-3 h-8 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <option value="">Equipo por asignar</option>
+                  <option value="">Unassigned team</option>
                   {teamOptions.map((employeeName) => (
                     <option key={employeeName} value={employeeName}>
                       {employeeName}

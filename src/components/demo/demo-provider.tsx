@@ -31,9 +31,9 @@ import {
   type DemoAssignmentRecommendation,
 } from "@/lib/assignment/demo-assignment";
 
-const STORAGE_KEY = "limpiapro-demo-local-state-v2";
+const STORAGE_KEY = "wia-control-demo-local-state-v2";
 
-export type DemoLeadStatus = "Nuevo" | "Cualificado" | "Presupuesto" | "Ganado";
+export type DemoLeadStatus = "New" | "Qualified" | "Quote" | "Won";
 export type DemoDialogType =
   | "lead"
   | "service"
@@ -89,7 +89,7 @@ export type DemoService = {
   price: number;
   vatRate: number;
   address?: string;
-  assignmentMode?: "Pendiente" | "Recomendada" | "Manual" | "Autoasignada";
+  assignmentMode?: "Pending" | "Recommended" | "Manual" | "Auto-assigned";
   assignmentRecommendation?: DemoAssignmentRecommendation;
   description?: string;
   estimatedDurationMinutes?: number;
@@ -182,7 +182,7 @@ export type DemoPortalRequest = {
   serviceId?: string;
   scheduledAt?: string;
   suggestedTeam?: string[];
-  assignmentMode?: "Pendiente" | "Recomendada" | "Manual" | "Autoasignada";
+  assignmentMode?: "Pending" | "Recommended" | "Manual" | "Auto-assigned";
   assignmentRecommendation?: DemoAssignmentRecommendation;
 };
 
@@ -231,9 +231,9 @@ type ToastMessage = {
   description?: string;
 };
 
-// Mantener este contrato estable: las pantallas hablan con esta fachada.
-// En producción se sustituye la implementación local por llamadas API/Supabase,
-// sin reescribir las páginas del CRM.
+// Keep this contract stable: screens interact through this facade.
+// In production, the local implementation is replaced by API/Supabase calls
+// without rewriting the CRM pages.
 export type DemoContextValue = DemoState & {
   customers: DemoCustomer[];
   addNote: (customer: string, body: string) => void;
@@ -347,7 +347,7 @@ type CustomerAccumulator = DemoCustomer & {
 };
 
 function normalizeCustomerKey(value: string) {
-  return slugify(value || "cliente");
+  return slugify(value || "customer");
 }
 
 function addUnique(values: string[], nextValue?: string) {
@@ -358,40 +358,40 @@ function addUnique(values: string[], nextValue?: string) {
 }
 
 function leadStatusFromOperationalStatus(status: string): DemoLeadStatus | null {
-  if (status === "Completado") return "Ganado";
-  if (status === "Programado" || status === "Autoasignado" || status === "En curso") {
-    return "Cualificado";
+  if (status === "Completed") return "Won";
+  if (status === "Scheduled" || status === "Autoasignado" || status === "In progress") {
+    return "Qualified";
   }
-  if (status === "Pendiente") return "Nuevo";
+  if (status === "Pending") return "New";
   return null;
 }
 
 function inferCustomerType(value: string) {
   const normalized = value.toLowerCase();
   if (normalized.includes("hotel")) return "Hotel";
-  if (normalized.includes("clínica") || normalized.includes("clinica")) return "Sanitario";
-  if (normalized.includes("comunidad") || normalized.includes("residencial")) return "Comunidad";
-  if (normalized.includes("obra")) return "Final de obra";
-  return "Cliente";
+  if (normalized.includes("clinic")) return "Healthcare";
+  if (normalized.includes("community") || normalized.includes("residential")) return "Community";
+  if (normalized.includes("construction")) return "Post-construction";
+  return "Customer";
 }
 
 function createGeneratedCustomer(name: string): CustomerAccumulator {
-  const normalizedName = name.trim() || "Cliente demo";
+  const normalizedName = name.trim() || "Demo customer";
 
   return {
     id: `cust-${normalizeCustomerKey(normalizedName)}`,
     name: normalizedName,
     type: inferCustomerType(normalizedName),
-    contact: "Contacto principal",
-    email: `contacto@${normalizeCustomerKey(normalizedName)}.demo`,
+    contact: "Primary contact",
+    email: `contact@${normalizeCustomerKey(normalizedName)}.demo`,
     phone: "+34 600 000 000",
-    status: "En seguimiento",
-    tags: ["Demo local"],
+    status: "Follow-up",
+    tags: ["Local demo"],
     lifetimeValue: 0,
     nextService: "",
-    address: "Dirección pendiente",
-    risk: "Bajo",
-    notes: "Cliente creado automáticamente desde la demo local.",
+    address: "Address pending",
+    risk: "Low",
+    notes: "Customer created automatically from the local demo.",
     serviceHistory: [],
     dynamicValue: 0,
     generated: true,
@@ -460,10 +460,10 @@ function buildDemoCustomers(state: DemoState): DemoCustomer[] {
       customer.dynamicValue += serviceTotal;
     }
 
-    customer.hasOpenService ||= !["Cancelado", "Completado"].includes(service.status);
-    customer.hasPendingWork ||= service.status === "Pendiente";
+    customer.hasOpenService ||= !["Cancelled", "Completed"].includes(service.status);
+    customer.hasPendingWork ||= service.status === "Pending";
     customer.type =
-      customer.type === "Cliente" ? inferCustomerType(`${service.customer} ${service.title}`) : customer.type;
+      customer.type === "Customer" ? inferCustomerType(`${service.customer} ${service.title}`) : customer.type;
     customer.address = service.address ?? customer.address;
     customer.nextDates.push(service.start);
     customer.serviceHistoryDraft.push(`${service.title} - ${service.status.toLowerCase()}`);
@@ -476,20 +476,20 @@ function buildDemoCustomers(state: DemoState): DemoCustomer[] {
     if (!initialInvoiceIds.has(invoice.id)) {
       customer.dynamicValue += invoice.total;
     }
-    customer.hasOverdueInvoice ||= invoice.status === "Vencida";
-    customer.hasPendingWork ||= invoice.status === "Pendiente";
+    customer.hasOverdueInvoice ||= invoice.status === "Overdue";
+    customer.hasPendingWork ||= invoice.status === "Pending";
   });
 
   state.quotes.forEach((quote) => {
     const customer = ensureCustomer(quote.customer);
-    addUnique(customer.tags, "Presupuesto");
+    addUnique(customer.tags, "Quote");
   });
 
   state.portalRequests.forEach((request) => {
     const customer = ensureCustomer(request.customer);
-    customer.hasPendingWork ||= request.status === "Pendiente";
+    customer.hasPendingWork ||= request.status === "Pending";
     customer.nextDates.push(request.scheduledAt ?? request.preferredDate);
-    addUnique(customer.tags, "Reserva web");
+    addUnique(customer.tags, "Web booking");
   });
 
   state.notes.forEach((note) => {
@@ -510,16 +510,16 @@ function buildDemoCustomers(state: DemoState): DemoCustomer[] {
       customer.lifetimeValue + customer.dynamicValue + generatedLeadValue
     );
     const status = customer.hasOverdueInvoice
-      ? "En seguimiento"
+      ? "Follow-up"
       : customer.hasOpenService
-        ? "Activo"
+        ? "Active"
         : customer.hasLead
-          ? "En seguimiento"
+          ? "Follow-up"
           : customer.status;
     const risk = customer.hasOverdueInvoice
-      ? "Alto"
+      ? "High"
       : customer.hasPendingWork
-        ? "Medio"
+        ? "Medium"
         : customer.risk;
 
     return {
@@ -551,12 +551,12 @@ function createInitialState(): DemoState {
       status: stage.status as DemoLeadStatus,
       name: lead,
       companyName: lead,
-      contactName: index === 0 ? "Responsable principal" : "Contacto operaciones",
-      email: `contacto@${slugify(lead)}.demo`,
+      contactName: index === 0 ? "Primary contact" : "Operations contact",
+      email: `contact@${slugify(lead)}.demo`,
       phone: "+34 600 000 000",
       value: leadValue,
       tags: [stage.status, "Demo"],
-      nextStep: "Seguimiento comercial",
+      nextStep: "Sales follow-up",
       createdAt: new Date().toISOString(),
     }));
   });
@@ -581,30 +581,30 @@ function createInitialState(): DemoState {
     portalRequests: [],
     assignmentDecisions: [
       {
-        id: "decision-seed-cristales-nadia",
+        id: "decision-seed-windows-nadia",
         serviceId: "srv-1004",
-        serviceTitle: "Cristales y garaje",
-        serviceFamily: "Cristales",
-        customer: "Comunidad Torres Norte",
+        serviceTitle: "Windows and garage",
+        serviceFamily: "Windows",
+        customer: "Northern Towers Community",
         city: "Getafe",
         recommendedEmployee: "Nadia Ramos",
         selectedEmployee: "Nadia Ramos",
         wasAcceptedByManager: true,
         decisionType: "manager-confirmed",
-        resultLabel: "Servicio completado sin incidencias.",
+        resultLabel: "Service completed without incidents.",
         createdAt: "2026-06-10T12:00:00",
         reasons: [
-          "Especialista en cristales.",
-          "Buen encaje con comunidades.",
-          "Disponibilidad confirmada por el responsable.",
+          "Window-cleaning specialist.",
+          "Good fit for residential communities.",
+          "Availability confirmed by the manager.",
         ],
       },
     ],
     activities: [
       {
         id: "activity-seed",
-        title: "Demo local preparada",
-        description: "Los datos se guardan en este navegador para poder enseñar la aplicación sin backend real.",
+        title: "Local demo preparada",
+        description: "Data is stored in this browser so the application can be demonstrated without a live backend.",
         createdAt: new Date().toISOString(),
       },
     ],
@@ -826,7 +826,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     (customer: string, body: string) => {
       const noteBody = body.trim();
       if (!noteBody) {
-        notify("Nota vacía", "Escribe una nota antes de guardarla.");
+        notify("Empty note", "Write a note before saving it.");
         return;
       }
 
@@ -840,23 +840,23 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         ...current,
         notes: [note, ...current.notes],
       }));
-      addActivity("Nota guardada", `${customer}: ${noteBody.slice(0, 80)}`);
-      notify("Nota guardada", "La nota queda visible en la ficha del cliente.");
+      addActivity("Note saved", `${customer}: ${noteBody.slice(0, 80)}`);
+      notify("Note saved", "The note is now visible in the customer profile.");
     },
     [addActivity, notify]
   );
 
   const createBookingRequest = React.useCallback(
     (input: DemoBookingInput) => {
-      const customer = input.customer.trim() || "Nuevo cliente web";
-      const contactName = input.contactName.trim() || "Contacto principal";
-      const title = input.title.trim() || "Solicitud de limpieza";
+      const customer = input.customer.trim() || "New web customer";
+      const contactName = input.contactName.trim() || "Primary contact";
+      const title = input.title.trim() || "Cleaning request";
       const city = input.city.trim() || "Madrid";
-      const address = input.address.trim() || "Dirección pendiente";
+      const address = input.address.trim() || "Address pending";
       const preferredDate = input.preferredDate || addDays(5);
       const preferredTime = input.preferredTime || "10:00";
       const description =
-        input.description.trim() || "Reserva creada desde el formulario público.";
+        input.description.trim() || "Booking created from the public form.";
       const estimatedPrice = Number.isFinite(input.estimatedPrice)
         ? input.estimatedPrice
         : 650;
@@ -874,15 +874,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         id: serviceId,
         title,
         customer,
-        status: "Pendiente",
-        recurrence: "Puntual",
+        status: "Pending",
+        recurrence: "One-time",
         start: scheduledAt,
-        team: ["Equipo por asignar"],
+        team: ["Unassigned team"],
         city,
         price: estimatedPrice,
         vatRate: 21,
         address,
-        assignmentMode: "Pendiente",
+        assignmentMode: "Pending",
         description,
         estimatedDurationMinutes: serviceProfile.estimatedDurationMinutes,
         requiredSkills: serviceProfile.requiredSkills,
@@ -894,15 +894,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         services: state.services,
       });
       const canAutoAssign =
-        recommendation.canAutoAssign && recommendation.employeeName !== "Equipo por asignar";
-      const assignedTeam = canAutoAssign ? [recommendation.employeeName] : ["Equipo por asignar"];
+        recommendation.canAutoAssign && recommendation.employeeName !== "Unassigned team";
+      const assignedTeam = canAutoAssign ? [recommendation.employeeName] : ["Unassigned team"];
       const suggestedTeam =
-        recommendation.employeeName === "Equipo por asignar"
-          ? ["Revisar disponibilidad"]
+        recommendation.employeeName === "Unassigned team"
+          ? ["Review availability"]
           : [recommendation.employeeName];
       const assignmentMode: DemoService["assignmentMode"] = canAutoAssign
-        ? "Autoasignada"
-        : "Recomendada";
+        ? "Auto-assigned"
+        : "Recommended";
 
       const request: DemoPortalRequest = {
         id: requestId,
@@ -910,7 +910,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         title,
         preferredDate,
         description: `${address}. ${description}`,
-        status: canAutoAssign ? "Autoasignado" : "Pendiente",
+        status: canAutoAssign ? "Autoasignado" : "Pending",
         createdAt,
         assignedTeam,
         assignmentMode,
@@ -923,25 +923,25 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       const lead: DemoLead = {
         id: leadId,
-        status: "Nuevo",
+        status: "New",
         name: customer,
         companyName: customer,
         contactName,
-        email: input.email.trim() || `contacto@${slugify(customer)}.demo`,
+        email: input.email.trim() || `contact@${slugify(customer)}.demo`,
         phone: input.phone.trim() || "+34 600 000 000",
         value: estimatedPrice,
         tags: canAutoAssign
-          ? ["Reserva web", "Autoasignada", city]
-          : ["Reserva web", "Pendiente asignación", city],
+          ? ["Web booking", "Auto-assigned", city]
+          : ["Web booking", "Pending assignment", city],
         nextStep: canAutoAssign
-          ? `Reserva autoasignada a ${recommendation.employeeName}. Revisar confirmación al cliente.`
-          : `Revisar solicitud y asignar empleado. Recomendado: ${suggestedTeam.join(", ")}`,
+          ? `Booking auto-assigned to ${recommendation.employeeName}. Review customer confirmation.`
+          : `Review request and assign an employee. Recommended: ${suggestedTeam.join(", ")}`,
         createdAt,
       };
 
       const service: DemoService = {
         ...serviceForRecommendation,
-        status: canAutoAssign ? "Programado" : "Pendiente",
+        status: canAutoAssign ? "Scheduled" : "Pending",
         team: assignedTeam,
         assignmentMode,
         assignmentRecommendation: recommendation,
@@ -950,7 +950,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       const note: DemoNote = {
         id: createId("note"),
         customer,
-        body: `Reserva web recibida: ${title}. Dirección: ${address}. Recomendación: ${recommendation.employeeName} (${recommendation.state}).`,
+        body: `Web booking received: ${title}. Address: ${address}. Recommendation: ${recommendation.employeeName} (${recommendation.state}).`,
         createdAt,
       };
       const autoDecision: DemoAssignmentDecision | null = canAutoAssign
@@ -965,7 +965,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             selectedEmployee: recommendation.employeeName,
             wasAcceptedByManager: true,
             decisionType: "auto-assigned",
-            resultLabel: "Autoasignación pendiente de resultado.",
+            resultLabel: "Auto-assignment awaiting outcome.",
             createdAt,
             reasons: recommendation.reasons,
           }
@@ -986,19 +986,19 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
         return nextState;
       });
-      addActivity("Reserva web recibida", `${customer}: ${title}.`);
+      addActivity("Web booking received", `${customer}: ${title}.`);
       if (canAutoAssign) {
         addActivity(
-          "Autoasignación aplicada",
-          `${recommendation.employeeName} queda asignada por aprendizaje operativo.`
+          "Auto-assignment applied",
+          `${recommendation.employeeName} has been assigned through operational learning.`
         );
-        notify("Reserva autoasignada", "Solicitud, lead y calendario actualizados con empleado asignado.");
+        notify("Booking auto-assigned", "Request, lead, and calendar updated with the assigned employee.");
       } else {
         addActivity(
-          "Servicio pendiente de asignación",
-          `${title} queda en calendario. Recomendado: ${recommendation.employeeName}.`
+          "Service awaiting assignment",
+          `${title} is now in the calendar. Recommended: ${recommendation.employeeName}.`
         );
-        notify("Reserva recibida", "Solicitud, lead y calendario actualizados. Falta confirmar empleado.");
+        notify("Booking received", "Request, lead, and calendar updated. Employee confirmation is still required.");
       }
 
       return { assignedTeam, leadId, requestId, scheduledAt, serviceId, suggestedTeam };
@@ -1011,23 +1011,23 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       const invoice =
         state.invoices.find((item) => item.id === payload?.id) ?? state.invoices[0];
       const lines = [
-        "LimpiaPro CRM - Documento demo",
+        "WIAControl - Demo document",
         `Numero: ${payload?.number ?? invoice?.number ?? "DOC-DEMO"}`,
-        `Cliente: ${payload?.customer ?? invoice?.customer ?? "Atrium Labs"}`,
-        `Estado: ${payload?.status ?? invoice?.status ?? "Pendiente"}`,
+        `Customer: ${payload?.customer ?? invoice?.customer ?? "Atrium Labs"}`,
+        `Status: ${payload?.status ?? invoice?.status ?? "Pending"}`,
         `Base imponible: ${invoice?.subtotal ?? 1200} EUR`,
-        `IVA 21%: ${invoice?.vat ?? 252} EUR`,
+        `VAT 21%: ${invoice?.vat ?? 252} EUR`,
         `Total: ${invoice?.total ?? 1452} EUR`,
         "",
-        "Este PDF se genera en local para la demo comercial.",
+        "This PDF is generated locally for the sales demo.",
       ];
       downloadBlob(
-        `${payload?.number ?? invoice?.number ?? "documento-demo"}.pdf`,
+        `${payload?.number ?? invoice?.number ?? "demo-document"}.pdf`,
         createSimplePdf(lines),
         "application/pdf"
       );
-      addActivity("PDF descargado", payload?.number ?? invoice?.number ?? "Documento demo");
-      notify("PDF descargado", "Se ha generado un documento local de muestra.");
+      addActivity("PDF downloaded", payload?.number ?? invoice?.number ?? "Demo document");
+      notify("PDF downloaded", "A local sample document has been generated.");
     },
     [addActivity, notify, state.invoices]
   );
@@ -1039,12 +1039,12 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       const service: DemoService = {
         id: createId("srv"),
-        title: `Servicio desde ${quote.number}`,
+        title: `Service from ${quote.number}`,
         customer: quote.customer,
-        status: "Pendiente",
-        recurrence: "Puntual",
+        status: "Pending",
+        recurrence: "One-time",
         start: new Date(`${addDays(3)}T09:00:00`).toISOString(),
-        team: ["Equipo por asignar"],
+        team: ["Unassigned team"],
         city: "Madrid",
         price: Math.round(quote.total / 1.21),
         vatRate: 21,
@@ -1057,22 +1057,22 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           item.id === quoteId ? { ...item, status: "Aceptada" } : item
         ),
       }));
-      addActivity("Presupuesto convertido", `${quote.number} se ha convertido en servicio.`);
-      notify("Presupuesto convertido", "El nuevo servicio aparece en Servicios y Dashboard.");
+      addActivity("Quote converted", `${quote.number} has been converted into a service.`);
+      notify("Quote converted", "The new service appears in Services and the Dashboard.");
     },
     [addActivity, notify, state.quotes]
   );
 
   const toggleAutomation = React.useCallback(
     (id: string, active: boolean) => {
-      const nextStatus = active ? "Activo" : "Pausado";
+      const nextStatus = active ? "Active" : "Paused";
       setState((current) => ({
         ...current,
         automations: current.automations.map((automation) =>
           automation.id === id ? { ...automation, status: nextStatus } : automation
         ),
       }));
-      notify("Automatización actualizada", `Estado: ${nextStatus}.`);
+      notify("Automation updated", `Status: ${nextStatus}.`);
     },
     [notify]
   );
@@ -1099,8 +1099,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                         ...lead,
                         status: linkedLeadStatus,
                         nextStep:
-                          status === "Completado"
-                            ? "Servicio completado. Solicitar reseña y proponer recurrencia."
+                          status === "Completed"
+                            ? "Service completed. Request a review and propose recurrence."
                             : lead.nextStep,
                       }
                     : lead
@@ -1108,7 +1108,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
               : current.leads,
         };
       });
-      notify("Servicio actualizado", `Estado cambiado a ${status}.`);
+      notify("Service updated", `Status changed to ${status}.`);
     },
     [notify]
   );
@@ -1119,7 +1119,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         ...current,
         leads: current.leads.map((lead) => (lead.id === id ? { ...lead, status } : lead)),
       }));
-      notify("Lead actualizado", `Estado cambiado a ${status}.`);
+      notify("Lead updated", `Status changed to ${status}.`);
     },
     [notify]
   );
@@ -1132,7 +1132,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           employee.id === id ? { ...employee, status } : employee
         ),
       }));
-      notify("Empleado actualizado", `Estado cambiado a ${status}.`);
+      notify("Employee updated", `Status changed to ${status}.`);
     },
     [notify]
   );
@@ -1161,8 +1161,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                         ...lead,
                         status: linkedLeadStatus,
                         nextStep:
-                          status === "Completado"
-                            ? "Servicio completado. Pedir reseña y ofrecer mantenimiento."
+                          status === "Completed"
+                            ? "Service completed. Request a review and offer maintenance."
                             : lead.nextStep,
                       }
                     : lead
@@ -1170,7 +1170,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
               : current.leads,
         };
       });
-      notify("Solicitud actualizada", `Estado cambiado a ${status}.`);
+      notify("Request updated", `Status changed to ${status}.`);
     },
     [notify]
   );
@@ -1188,8 +1188,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           request.leadId === leadId ? { ...request, leadId: undefined } : request
         ),
       }));
-      addActivity("Lead eliminado", `${lead?.companyName ?? "Lead"} retirado del pipeline.`);
-      notify("Lead eliminado", "Ya no aparece en el CRM comercial.");
+      addActivity("Lead deleted", `${lead?.companyName ?? "Lead"} removed from the pipeline.`);
+      notify("Lead deleted", "It no longer appears in the sales CRM.");
     },
     [addActivity, notify, state.leads]
   );
@@ -1219,8 +1219,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           (decision) => decision.serviceId !== serviceId
         ),
       }));
-      addActivity("Servicio eliminado", `${service?.title ?? "Servicio"} retirado del calendario.`);
-      notify("Servicio eliminado", "Se ha eliminado junto a su solicitud web asociada si existía.");
+      addActivity("Service deleted", `${service?.title ?? "Service"} removed from the calendar.`);
+      notify("Service deleted", "It was deleted together with its linked web request, if one existed.");
     },
     [addActivity, notify, state.portalRequests, state.services]
   );
@@ -1249,8 +1249,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             )
           : current.assignmentDecisions,
       }));
-      addActivity("Reserva web eliminada", `${request?.customer ?? "Solicitud"} retirada de la demo.`);
-      notify("Reserva web eliminada", "Se han quitado también calendario y lead asociados.");
+      addActivity("Web booking deleted", `${request?.customer ?? "Request"} removed from the demo.`);
+      notify("Web booking deleted", "The linked calendar entry and lead were also removed.");
     },
     [addActivity, notify, state.portalRequests]
   );
@@ -1270,8 +1270,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
           return {
             ...service,
-            status: team.length === 0 ? "Pendiente" : service.status,
-            team: team.length > 0 ? team : ["Equipo por asignar"],
+            status: team.length === 0 ? "Pending" : service.status,
+            team: team.length > 0 ? team : ["Unassigned team"],
           };
         }),
         portalRequests: current.portalRequests.map((request) => {
@@ -1284,14 +1284,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
           return {
             ...request,
-            assignedTeam: assignedTeam?.length ? assignedTeam : ["Equipo por asignar"],
+            assignedTeam: assignedTeam?.length ? assignedTeam : ["Unassigned team"],
             suggestedTeam: suggestedTeam?.length ? suggestedTeam : request.suggestedTeam,
-            status: assignedTeam?.length ? request.status : "Pendiente",
+            status: assignedTeam?.length ? request.status : "Pending",
           };
         }),
       }));
-      addActivity("Empleado eliminado", `${employeeName ?? "Empleado"} retirado del equipo.`);
-      notify("Empleado eliminado", "Sus servicios quedan pendientes si se quedan sin equipo.");
+      addActivity("Employee deleted", `${employeeName ?? "Employee"} removed from the team.`);
+      notify("Employee deleted", "Their services remain pending if they are left without a team.");
     },
     [addActivity, notify, state.employees]
   );
@@ -1300,11 +1300,11 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     (scope: "web" | "services" | "leads" | "employees" | "notes") => {
       const initial = createInitialState();
       const scopeLabels = {
-        employees: "empleados",
+        employees: "employees",
         leads: "leads",
-        notes: "notas",
-        services: "servicios",
-        web: "reservas web",
+        notes: "notes",
+        services: "services",
+        web: "web bookings",
       } as const;
 
       setState((current) => {
@@ -1362,7 +1362,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
               const team = service.team.filter((member) => employeeNames.has(member));
               return {
                 ...service,
-                team: team.length > 0 ? team : ["Equipo por asignar"],
+                team: team.length > 0 ? team : ["Unassigned team"],
               };
             }),
           };
@@ -1374,15 +1374,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         };
       });
 
-      addActivity("Datos de demo limpiados", `Bloque limpiado: ${scopeLabels[scope]}.`);
-      notify("Datos limpiados", `Se ha limpiado el bloque de ${scopeLabels[scope]}.`);
+      addActivity("Demo data cleared", `Cleared section: ${scopeLabels[scope]}.`);
+      notify("Data cleared", `Cleared section: ${scopeLabels[scope]}.`);
     },
     [addActivity, notify]
   );
 
   const assignServiceTeam = React.useCallback(
     (serviceId: string, employeeName: string) => {
-      const nextTeam = employeeName ? [employeeName] : ["Equipo por asignar"];
+      const nextTeam = employeeName ? [employeeName] : ["Unassigned team"];
       const serviceBefore = state.services.find((service) => service.id === serviceId);
       const recommendationBefore = serviceBefore
         ? recommendAssignee({
@@ -1394,7 +1394,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         : null;
       const recommendedEmployee =
         recommendationBefore?.employeeName &&
-        recommendationBefore.employeeName !== "Equipo por asignar"
+        recommendationBefore.employeeName !== "Unassigned team"
           ? recommendationBefore.employeeName
           : undefined;
       const acceptedRecommendation = Boolean(
@@ -1403,7 +1403,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       setState((current) => {
         const previousService = current.services.find((service) => service.id === serviceId);
-        const nextStatus = employeeName ? "Programado" : "Pendiente";
+        const nextStatus = employeeName ? "Scheduled" : "Pending";
         const recommendation = previousService
           ? recommendAssignee({
               decisions: current.assignmentDecisions,
@@ -1414,14 +1414,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           : null;
         const selectedEmployee = employeeName.trim();
         const currentRecommendedEmployee =
-          recommendation?.employeeName && recommendation.employeeName !== "Equipo por asignar"
+          recommendation?.employeeName && recommendation.employeeName !== "Unassigned team"
             ? recommendation.employeeName
             : undefined;
         const assignmentMode: DemoService["assignmentMode"] = selectedEmployee
           ? selectedEmployee === currentRecommendedEmployee
-            ? "Recomendada"
+            ? "Recommended"
             : "Manual"
-          : "Pendiente";
+          : "Pending";
         const shouldRecordDecision = Boolean(
           previousService &&
             selectedEmployee &&
@@ -1443,7 +1443,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                   selectedEmployee === currentRecommendedEmployee
                     ? "manager-confirmed"
                     : "manager-override",
-                resultLabel: "Pendiente de resultado operativo.",
+                resultLabel: "Awaiting operational outcome.",
                 createdAt: new Date().toISOString(),
                 reasons: recommendation.reasons,
               }
@@ -1457,7 +1457,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                   ...service,
                   assignmentMode,
                   assignmentRecommendation: recommendation ?? service.assignmentRecommendation,
-                  status: service.status === "Completado" ? service.status : nextStatus,
+                  status: service.status === "Completed" ? service.status : nextStatus,
                   team: nextTeam,
                 }
               : service
@@ -1470,7 +1470,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                   assignmentMode,
                   assignmentRecommendation:
                     recommendation ?? request.assignmentRecommendation,
-                  status: employeeName ? "Programado" : "Pendiente",
+                  status: employeeName ? "Scheduled" : "Pending",
                 }
               : request
           ),
@@ -1487,7 +1487,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
             return {
               ...employee,
-              status: "Asignado",
+              status: "Assigned",
               jobs: employee.jobs + 1,
               revenue: employee.revenue + Math.round((previousService?.price ?? 0) / nextTeam.length),
             };
@@ -1497,17 +1497,17 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       if (employeeName) {
         addActivity(
-          acceptedRecommendation ? "Recomendación aceptada" : "Asignación manual guardada",
-          `${employeeName} queda asignado al servicio.`
+          acceptedRecommendation ? "Recommendation accepted" : "Manual assignment saved",
+          `${employeeName} has been assigned to the service.`
         );
         notify(
-          acceptedRecommendation ? "Recomendación aceptada" : "Cambio guardado",
+          acceptedRecommendation ? "Recommendation accepted" : "Change saved",
           acceptedRecommendation
-            ? "El sistema lo guarda como aprendizaje para próximas reservas."
-            : "La corrección queda guardada para ajustar futuras recomendaciones."
+            ? "The system stores it as learning for future bookings."
+            : "The correction is stored to adjust future recommendations."
         );
       } else {
-        notify("Asignación pendiente", "El servicio queda pendiente de equipo.");
+        notify("Assignment pending", "The service is awaiting a team.");
       }
     },
     [addActivity, notify, state.assignmentDecisions, state.employees, state.services]
@@ -1554,8 +1554,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             : request
         ),
       }));
-      addActivity("Servicio reprogramado", `${service.title} movido al ${nextDate}.`);
-      notify("Calendario actualizado", "Servicio, solicitud web y vistas operativas quedan sincronizados.");
+      addActivity("Service rescheduled", `${service.title} moved to ${nextDate}.`);
+      notify("Calendar updated", "Service, web request, and operational views remain synchronized.");
     },
     [addActivity, notify, state.services]
   );
@@ -1564,7 +1564,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
     const initial = createInitialState();
     setState(initial);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
-    notify("Demo reiniciada", "Se han restaurado los datos iniciales.");
+    notify("Demo reset", "The initial data has been restored.");
   }, [notify]);
 
   const runAction = React.useCallback(
@@ -1572,16 +1572,16 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       switch (action) {
         case "export-dashboard": {
           const rows = [
-            ["tipo", "nombre", "cliente", "estado", "total"],
+            ["type", "name", "customer", "status", "total"],
             ...state.services.map((service) => [
-              "servicio",
+              "service",
               service.title,
               service.customer,
               service.status,
               service.price,
             ]),
             ...state.invoices.map((invoice) => [
-              "factura",
+              "invoice",
               invoice.number,
               invoice.customer,
               invoice.status,
@@ -1589,17 +1589,17 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             ]),
           ];
           downloadBlob(
-            "limpiapro-export-demo.csv",
+            "wia-control-export-demo.csv",
             rows.map((row) => row.map(escapeCsv).join(",")).join("\n"),
             "text/csv;charset=utf-8"
           );
-          addActivity("Exportación generada", "CSV local con servicios y facturas.");
-          notify("Exportación lista", "Se ha descargado un CSV con los datos de la demo.");
+          addActivity("Export generated", "Local CSV with services and invoices.");
+          notify("Export ready", "A CSV containing the demo data has been downloaded.");
           break;
         }
         case "filters":
-          notify("Filtros aplicados", "La vista queda preparada para segmentar por estado y etiqueta.");
-          addActivity("Filtros revisados", "Vista comercial preparada para la demo.");
+          notify("Filters applied", "The view is ready for segmentation by status and tag.");
+          addActivity("Filters reviewed", "Sales view prepared for the demo.");
           break;
         case "new-lead":
           openDialog("lead");
@@ -1620,8 +1620,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           downloadDocument(payload);
           break;
         case "billing-portal":
-          notify("Portal de facturación abierto", "En demo local se simula la entrada al portal Stripe.");
-          addActivity("Portal Stripe demo", "Gestión de suscripción simulada en local.");
+          notify("Billing portal opened", "The local demo simulates entering the Stripe portal.");
+          addActivity("Stripe portal demo", "Subscription management simulated locally.");
           break;
         case "new-automation":
           openDialog("automation");
@@ -1630,22 +1630,22 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           openDialog("request");
           break;
         case "analytics":
-          notify("Analítica generada", "MRR, churn y empresas están listos para comentar en la demo.");
-          addActivity("Analítica consultada", "Panel SaaS revisado por super admin.");
+          notify("Analytics generated", "MRR, churn, and companies are ready for the demo walkthrough.");
+          addActivity("Analytics reviewed", "SaaS dashboard reviewed by the super administrator.");
           break;
         case "google-calendar":
-          notify("Integración preparada", "La conexión con Google Calendar queda simulada para preproducción.");
-          addActivity("Google Calendar demo", "Sincronización preparada para credenciales reales.");
+          notify("Integration ready", "The Google Calendar connection is simulated for pre-production.");
+          addActivity("Google Calendar demo", "Synchronization prepared for real credentials.");
           break;
         case "new-visit":
           openDialog("visit");
           break;
         case "settings":
-          notify("Configuración abierta", "Ajustes de empresa simulados para la demo local.");
-          addActivity("Configuración consultada", "Preferencias del workspace revisadas.");
+          notify("Settings opened", "Company settings simulated for the local demo.");
+          addActivity("Settings reviewed", "Workspace preferences reviewed.");
           break;
         case "notifications":
-          notify("Alertas operativas", "2 servicios críticos, 1 factura vencida y 1 pago fallido.");
+          notify("Operational alerts", "2 critical services, 1 overdue invoice, and 1 failed payment.");
           break;
         case "save-note":
           openDialog("note", payload);
@@ -1663,18 +1663,18 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
 
       if (dialog.type === "lead") {
         const existingLead = state.leads.find((item) => item.id === editingId);
-        const companyName = textFrom(formData.get("companyName"), "Nuevo lead");
+        const companyName = textFrom(formData.get("companyName"), "New lead");
         const lead: DemoLead = {
           id: editingId ?? createId("lead"),
-          status: textFrom(formData.get("status"), "Nuevo") as DemoLeadStatus,
+          status: textFrom(formData.get("status"), "New") as DemoLeadStatus,
           name: companyName,
           companyName,
-          contactName: textFrom(formData.get("contactName"), "Contacto principal"),
-          email: textFrom(formData.get("email"), `contacto@${slugify(companyName)}.demo`),
+          contactName: textFrom(formData.get("contactName"), "Primary contact"),
+          email: textFrom(formData.get("email"), `contact@${slugify(companyName)}.demo`),
           phone: textFrom(formData.get("phone"), "+34 600 000 000"),
           value: numberFrom(formData.get("value"), 1800),
           tags: csvListFrom(textFrom(formData.get("tags"), "Demo")),
-          nextStep: textFrom(formData.get("nextStep"), "Enviar presupuesto"),
+          nextStep: textFrom(formData.get("nextStep"), "Send quote"),
           createdAt: existingLead?.createdAt ?? new Date().toISOString(),
         };
         setState((current) => ({
@@ -1684,12 +1684,12 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             : [lead, ...current.leads],
         }));
         addActivity(
-          editingId ? "Lead actualizado" : "Lead creado",
-          `${lead.companyName} ${editingId ? "actualizado" : "añadido al pipeline"}.`
+          editingId ? "Lead updated" : "Lead created",
+          `${lead.companyName} ${editingId ? "updated" : "added to the pipeline"}.`
         );
         notify(
-          editingId ? "Lead actualizado" : "Lead creado",
-          editingId ? "Los cambios quedan guardados en el CRM." : "Aparece en el pipeline comercial."
+          editingId ? "Lead updated" : "Lead created",
+          editingId ? "The changes have been saved in the CRM." : "It appears in the sales pipeline."
         );
       }
 
@@ -1697,7 +1697,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         const existingService = state.services.find((item) => item.id === editingId);
         const title = textFrom(
           formData.get("title"),
-          dialog.type === "visit" ? "Nueva visita" : "Servicio de limpieza"
+          dialog.type === "visit" ? "New visit" : "Cleaning service"
         );
         const customer = textFrom(
           formData.get("customer"),
@@ -1705,16 +1705,16 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         );
         const date = textFrom(formData.get("date"), datePart(existingService?.start));
         const time = textFrom(formData.get("time"), timePart(existingService?.start));
-        const team = csvListFrom(textFrom(formData.get("team"), "Equipo por asignar"), [
-          "Equipo por asignar",
+        const team = csvListFrom(textFrom(formData.get("team"), "Unassigned team"), [
+          "Unassigned team",
         ]);
         const service: DemoService = {
           ...existingService,
           id: editingId ?? createId("srv"),
           title,
           customer,
-          status: textFrom(formData.get("status"), "Programado"),
-          recurrence: textFrom(formData.get("recurrence"), "Puntual"),
+          status: textFrom(formData.get("status"), "Scheduled"),
+          recurrence: textFrom(formData.get("recurrence"), "One-time"),
           start: new Date(`${date}T${time}:00`).toISOString(),
           team,
           city: textFrom(formData.get("city"), "Madrid"),
@@ -1756,7 +1756,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                           companyName: customer,
                           name: customer,
                           status: linkedLeadStatus,
-                          tags: ["Reserva web", service.city, service.status],
+                          tags: ["Web booking", service.city, service.status],
                           value: service.price,
                         }
                       : lead
@@ -1765,14 +1765,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           };
         });
         addActivity(
-          editingId ? "Servicio actualizado" : "Servicio creado",
-          `${service.title} para ${service.customer}.`
+          editingId ? "Service updated" : "Service created",
+          `${service.title} for ${service.customer}.`
         );
         notify(
-          editingId ? "Servicio actualizado" : "Servicio creado",
+          editingId ? "Service updated" : "Service created",
           editingId
-            ? "Calendario, equipo y estado quedan sincronizados."
-            : "Ya aparece en Servicios, Dashboard y Portal."
+            ? "Calendar, team, and status remain synchronized."
+            : "It now appears in Services, Dashboard, and Portal."
         );
       }
 
@@ -1782,14 +1782,14 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         const employee: DemoEmployee = {
           ...existingEmployee,
           id: editingId ?? createId("emp"),
-          name: textFrom(formData.get("name"), "Nuevo empleado"),
+          name: textFrom(formData.get("name"), "New employee"),
           role: textFrom(formData.get("role"), "Operario/a"),
-          status: textFrom(formData.get("status"), "Disponible"),
-          availability: textFrom(formData.get("availability"), "L-V 08:00-16:00"),
+          status: textFrom(formData.get("status"), "Available"),
+          availability: textFrom(formData.get("availability"), "Mon-Fri 08:00-16:00"),
           jobs: existingEmployee?.jobs ?? 0,
           score: existingEmployee?.score ?? 90,
           revenue: existingEmployee?.revenue ?? 0,
-          notes: textFrom(formData.get("notes"), "Alta creada desde demo local."),
+          notes: textFrom(formData.get("notes"), "Employee created from the local demo."),
         };
         const renameTeamMember = (member: string) =>
           previousName && member === previousName ? employee.name : member;
@@ -1814,12 +1814,12 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             : current.portalRequests,
         }));
         addActivity(
-          editingId ? "Empleado actualizado" : "Empleado creado",
-          `${employee.name} ${editingId ? "actualizado" : "añadido al equipo"}.`
+          editingId ? "Employee updated" : "Employee created",
+          `${employee.name} ${editingId ? "updated" : "added to the team"}.`
         );
         notify(
-          editingId ? "Empleado actualizado" : "Empleado creado",
-          editingId ? "Sus asignaciones se mantienen actualizadas." : "Se añade al listado de campo."
+          editingId ? "Employee updated" : "Employee created",
+          editingId ? "Their assignments remain up to date." : "They were added to the field team list."
         );
       }
 
@@ -1829,13 +1829,13 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           id: createId("quote"),
           number: `P-${new Date().getFullYear()}-${String(state.quotes.length + 49).padStart(4, "0")}`,
           customer: textFrom(formData.get("customer"), dialog.payload?.customer ?? "Atrium Labs"),
-          status: "Borrador",
+          status: "Draft",
           total,
           validUntil: textFrom(formData.get("validUntil"), addDays(14)),
         };
         setState((current) => ({ ...current, quotes: [quote, ...current.quotes] }));
-        addActivity("Presupuesto creado", `${quote.number} para ${quote.customer}.`);
-        notify("Presupuesto creado", "Puedes convertirlo en servicio desde Facturación.");
+        addActivity("Quote created", `${quote.number} for ${quote.customer}.`);
+        notify("Quote created", "You can convert it into a service from Billing.");
       }
 
       if (dialog.type === "invoice") {
@@ -1845,15 +1845,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           id: createId("inv"),
           number: `F-${new Date().getFullYear()}-${String(state.invoices.length + 143).padStart(4, "0")}`,
           customer: textFrom(formData.get("customer"), dialog.payload?.customer ?? "Atrium Labs"),
-          status: textFrom(formData.get("status"), "Pendiente"),
+          status: textFrom(formData.get("status"), "Pending"),
           dueDate: textFrom(formData.get("dueDate"), addDays(7)),
           subtotal,
           vat,
           total: subtotal + vat,
         };
         setState((current) => ({ ...current, invoices: [invoice, ...current.invoices] }));
-        addActivity("Factura creada", `${invoice.number} para ${invoice.customer}.`);
-        notify("Factura creada", "La factura queda disponible para descargar en PDF.");
+        addActivity("Invoice created", `${invoice.number} for ${invoice.customer}.`);
+        notify("Invoice created", "The invoice is available to download as a PDF.");
       }
 
       if (dialog.type === "note") {
@@ -1866,19 +1866,19 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       if (dialog.type === "request") {
         const customer = textFrom(formData.get("customer"), "Atrium Labs");
         const contactName = textFrom(formData.get("contactName"), "Marta Soler");
-        const email = textFrom(formData.get("email"), "marta@atriumlabs.es");
+        const email = textFrom(formData.get("email"), "marta@atriumlabs.com");
         const phone = textFrom(formData.get("phone"), "+34 611 204 338");
-        const title = textFrom(formData.get("title"), "Solicitud de limpieza");
+        const title = textFrom(formData.get("title"), "Cleaning request");
         const city = textFrom(formData.get("city"), "Madrid");
         const address = textFrom(formData.get("address"), "Calle Serrano 42, Madrid");
         const preferredDate = textFrom(formData.get("preferredDate"), addDays(5));
         const preferredTime = textFrom(formData.get("preferredTime"), "10:00");
         const description = textFrom(
           formData.get("description"),
-          "Solicitud creada desde portal cliente."
+          "Request created from the customer portal."
         );
         const estimatedPrice = numberFrom(formData.get("estimatedPrice"), 680);
-        const status = textFrom(formData.get("status"), "Pendiente");
+        const status = textFrom(formData.get("status"), "Pending");
         const scheduledAt = new Date(`${preferredDate}T${preferredTime}:00`).toISOString();
 
         if (editingId) {
@@ -1914,7 +1914,7 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                         requiredSkills: serviceProfile.requiredSkills,
                         start: scheduledAt,
                         status:
-                          status === "Pendiente" || status === "Cancelado"
+                          status === "Pending" || status === "Cancelled"
                             ? status
                             : service.status,
                         title,
@@ -1932,19 +1932,19 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
                         email,
                         name: customer,
                         nextStep:
-                          status === "Pendiente"
-                            ? "Revisar solicitud web y confirmar equipo."
+                          status === "Pending"
+                            ? "Review the web request and confirm the team."
                             : lead.nextStep,
                         phone,
-                        tags: ["Reserva web", city, status],
+                        tags: ["Web booking", city, status],
                         value: estimatedPrice,
                       }
                     : lead
                 )
               : current.leads,
           }));
-          addActivity("Reserva web actualizada", `${customer}: ${title}.`);
-          notify("Reserva actualizada", "Solicitud, lead y calendario quedan sincronizados.");
+          addActivity("Web booking updated", `${customer}: ${title}.`);
+          notify("Booking updated", "Request, lead, and calendar remain synchronized.");
         } else if (dialog.payload?.legacy === "true") {
           const request: DemoPortalRequest = {
             id: createId("request"),
@@ -1952,15 +1952,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             title,
             preferredDate,
             description,
-            status: "Pendiente",
+            status: "Pending",
             createdAt: new Date().toISOString(),
           };
           setState((current) => ({
             ...current,
             portalRequests: [request, ...current.portalRequests],
           }));
-          addActivity("Solicitud recibida", `${customer}: ${title}.`);
-          notify("Solicitud enviada", "Aparece en el portal como petición pendiente.");
+          addActivity("Request received", `${customer}: ${title}.`);
+          notify("Request sent", "It appears in the portal as a pending request.");
         } else {
           createBookingRequest({
             customer,
@@ -1981,10 +1981,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       if (dialog.type === "automation") {
         const automation: DemoAutomation = {
           id: createId("automation"),
-          name: textFrom(formData.get("name"), "Nueva automatización"),
+          name: textFrom(formData.get("name"), "New automation"),
           trigger: textFrom(formData.get("trigger"), "FOLLOW_UP"),
           channel: textFrom(formData.get("channel"), "Email"),
-          status: "Activo",
+          status: "Active",
           sent: 0,
           conversion: "0 %",
         };
@@ -1992,8 +1992,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           ...current,
           automations: [automation, ...current.automations],
         }));
-        addActivity("Automatización creada", `${automation.name} activada.`);
-        notify("Automatización creada", "Puedes pausarla o activarla desde el panel.");
+        addActivity("Automation created", `${automation.name} activated.`);
+        notify("Automation created", "You can pause or activate it from the dashboard.");
       }
 
       setDialog(null);
@@ -2122,9 +2122,9 @@ function DemoDialogHost({
           {dialog ? <DialogFields dialog={dialog} /> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
+              Cancel
             </Button>
-            <Button type="submit">{editing ? "Actualizar" : "Guardar"}</Button>
+            <Button type="submit">{editing ? "Update" : "Save"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -2133,68 +2133,68 @@ function DemoDialogHost({
 }
 
 const dialogTitles: Record<DemoDialogType, string> = {
-  lead: "Nuevo lead",
-  service: "Crear servicio",
-  employee: "Nuevo empleado",
-  quote: "Nuevo presupuesto",
-  invoice: "Nueva factura",
-  note: "Guardar nota",
-  request: "Solicitar servicio",
-  automation: "Nueva automatización",
-  visit: "Nueva visita",
+  lead: "New lead",
+  service: "Create service",
+  employee: "New employee",
+  quote: "New quote",
+  invoice: "New invoice",
+  note: "Save note",
+  request: "Request service",
+  automation: "New automation",
+  visit: "New visit",
 };
 
 const dialogEditTitles: Partial<Record<DemoDialogType, string>> = {
-  employee: "Editar empleado",
-  lead: "Editar lead",
-  request: "Editar reserva web",
-  service: "Editar servicio",
-  visit: "Editar visita",
+  employee: "Edit employee",
+  lead: "Edit lead",
+  request: "Edit web booking",
+  service: "Edit service",
+  visit: "Edit visit",
 };
 
 const dialogDescriptions: Record<DemoDialogType, string> = {
-  lead: "Crea una oportunidad comercial visible en el pipeline.",
-  service: "Programa un servicio de limpieza con equipo, ciudad e importe.",
-  employee: "Añade una persona al equipo de campo.",
-  quote: "Genera un presupuesto con IVA preparado para convertir a servicio.",
-  invoice: "Crea una factura descargable en PDF local.",
-  note: "Registra una nota comercial u operativa en la ficha del cliente.",
-  request: "Simula una petición desde el portal cliente.",
-  automation: "Configura una regla automática de email, SMS o seguimiento.",
-  visit: "Crea una visita operativa desde el calendario.",
+  lead: "Create a sales opportunity visible in the pipeline.",
+  service: "Schedule a cleaning service with a team, city, and amount.",
+  employee: "Add a person to the field team.",
+  quote: "Generate a VAT-inclusive quote ready to convert into a service.",
+  invoice: "Create an invoice that can be downloaded as a local PDF.",
+  note: "Record a sales or operational note in the customer profile.",
+  request: "Simulate a request from the customer portal.",
+  automation: "Configure an automatic email, SMS, or follow-up rule.",
+  visit: "Create an operational visit from the calendar.",
 };
 
 function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "lead") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Empresa">
+        <FormField label="Company">
           <Input name="companyName" defaultValue={payloadText(dialog, "companyName", "Residencial Prado")} required />
         </FormField>
-        <FormField label="Contacto">
+        <FormField label="Contact">
           <Input name="contactName" defaultValue={payloadText(dialog, "contactName", "Ana Martín")} />
         </FormField>
         <FormField label="Email">
-          <Input name="email" type="email" defaultValue={payloadText(dialog, "email", "ana@residencialprado.demo")} />
+          <Input name="email" type="email" defaultValue={payloadText(dialog, "email", "ana@residentialprado.demo")} />
         </FormField>
-        <FormField label="Teléfono">
+        <FormField label="Phone">
           <Input name="phone" defaultValue={payloadText(dialog, "phone", "+34 622 140 900")} />
         </FormField>
-        <FormField label="Estado">
+        <FormField label="Status">
           <DemoNativeSelect
             name="status"
-            defaultValue={payloadText(dialog, "status", "Nuevo")}
-            options={["Nuevo", "Cualificado", "Presupuesto", "Ganado"]}
+            defaultValue={payloadText(dialog, "status", "New")}
+            options={["New", "Qualified", "Quote", "Won"]}
           />
         </FormField>
-        <FormField label="Valor estimado">
+        <FormField label="Estimated value">
           <Input name="value" type="number" defaultValue={payloadText(dialog, "value", "1850")} min="0" />
         </FormField>
         <FormField label="Etiquetas">
-          <Input name="tags" defaultValue={payloadText(dialog, "tags", "Madrid, Comunidad")} />
+          <Input name="tags" defaultValue={payloadText(dialog, "tags", "Madrid, Community")} />
         </FormField>
-        <FormField label="Siguiente paso">
-          <Input name="nextStep" defaultValue={payloadText(dialog, "nextStep", "Enviar propuesta esta semana")} />
+        <FormField label="Next step">
+          <Input name="nextStep" defaultValue={payloadText(dialog, "nextStep", "Send proposal this week")} />
         </FormField>
       </div>
     );
@@ -2203,48 +2203,48 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "service" || dialog.type === "visit") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Servicio">
+        <FormField label="Service">
           <Input
             name="title"
             defaultValue={payloadText(
               dialog,
               "title",
-              dialog.type === "visit" ? "Visita de supervisión" : "Limpieza recurrente"
+              dialog.type === "visit" ? "Supervision visit" : "Recurring cleaning"
             )}
             required
           />
         </FormField>
-        <FormField label="Cliente">
+        <FormField label="Customer">
           <Input name="customer" defaultValue={dialog.payload?.customer ?? "Atrium Labs"} />
         </FormField>
-        <FormField label="Ciudad">
+        <FormField label="City">
           <Input name="city" defaultValue={payloadText(dialog, "city", "Madrid")} />
         </FormField>
-        <FormField label="Estado">
+        <FormField label="Status">
           <DemoNativeSelect
             name="status"
-            defaultValue={payloadText(dialog, "status", "Programado")}
-            options={["Pendiente", "Programado", "En curso", "Completado", "Cancelado"]}
+            defaultValue={payloadText(dialog, "status", "Scheduled")}
+            options={["Pending", "Scheduled", "In progress", "Completed", "Cancelled"]}
           />
         </FormField>
-        <FormField label="Fecha">
+        <FormField label="Date">
           <Input name="date" type="date" defaultValue={payloadText(dialog, "date", addDays(1))} />
         </FormField>
-        <FormField label="Hora">
+        <FormField label="Time">
           <Input name="time" type="time" defaultValue={payloadText(dialog, "time", "09:00")} />
         </FormField>
         <FormField label="Recurrencia">
           <DemoNativeSelect
             name="recurrence"
-            defaultValue={payloadText(dialog, "recurrence", dialog.type === "visit" ? "Puntual" : "Semanal")}
-            options={["Puntual", "Diario", "Semanal", "Mensual"]}
+            defaultValue={payloadText(dialog, "recurrence", dialog.type === "visit" ? "One-time" : "Weekly")}
+            options={["One-time", "Daily", "Weekly", "Monthly"]}
           />
         </FormField>
-        <FormField label="Importe sin IVA">
+        <FormField label="Amount before VAT">
           <Input name="price" type="number" defaultValue={payloadText(dialog, "price", "650")} min="0" />
         </FormField>
         <div className="sm:col-span-2">
-          <FormField label="Equipo">
+          <FormField label="Team">
             <Input name="team" defaultValue={payloadText(dialog, "team", "Laura Méndez, Nadia Ramos")} />
           </FormField>
         </div>
@@ -2255,25 +2255,25 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "employee") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Nombre">
+        <FormField label="Name">
           <Input name="name" defaultValue={payloadText(dialog, "name", "Sara Molina")} required />
         </FormField>
-        <FormField label="Rol">
-          <Input name="role" defaultValue={payloadText(dialog, "role", "Operaria especialista")} />
+        <FormField label="Role">
+          <Input name="role" defaultValue={payloadText(dialog, "role", "Specialist operator")} />
         </FormField>
-        <FormField label="Estado">
+        <FormField label="Status">
           <DemoNativeSelect
             name="status"
-            defaultValue={payloadText(dialog, "status", "Disponible")}
-            options={["Disponible", "Asignado", "Vacaciones", "Baja"]}
+            defaultValue={payloadText(dialog, "status", "Available")}
+            options={["Available", "Assigned", "Holiday", "Sick leave"]}
           />
         </FormField>
-        <FormField label="Disponibilidad">
-          <Input name="availability" defaultValue={payloadText(dialog, "availability", "L-V 08:00-16:00")} />
+        <FormField label="Availability">
+          <Input name="availability" defaultValue={payloadText(dialog, "availability", "Mon-Fri 08:00-16:00")} />
         </FormField>
         <div className="sm:col-span-2">
-          <FormField label="Notas internas">
-            <Input name="notes" defaultValue={payloadText(dialog, "notes", "Alta para refuerzos de oficinas premium.")} />
+          <FormField label="Internal notes">
+            <Input name="notes" defaultValue={payloadText(dialog, "notes", "Added for premium office support.")} />
           </FormField>
         </div>
       </div>
@@ -2283,13 +2283,13 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "quote") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Cliente">
-          <Input name="customer" defaultValue={dialog.payload?.customer ?? "Clínica Alameda"} />
+        <FormField label="Customer">
+          <Input name="customer" defaultValue={dialog.payload?.customer ?? "Alameda Clinic"} />
         </FormField>
-        <FormField label="Total con IVA">
+        <FormField label="Total including VAT">
           <Input name="total" type="number" defaultValue="1452" min="0" />
         </FormField>
-        <FormField label="Válido hasta">
+        <FormField label="Valid until">
           <Input name="validUntil" type="date" defaultValue={addDays(14)} />
         </FormField>
       </div>
@@ -2299,17 +2299,17 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "invoice") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Cliente">
+        <FormField label="Customer">
           <Input name="customer" defaultValue={dialog.payload?.customer ?? "Atrium Labs"} />
         </FormField>
         <FormField label="Base imponible">
           <Input name="subtotal" type="number" defaultValue="1200" min="0" />
         </FormField>
-        <FormField label="Estado">
+        <FormField label="Status">
           <DemoNativeSelect
             name="status"
-            defaultValue="Pendiente"
-            options={["Pendiente", "Pagada", "Vencida"]}
+            defaultValue="Pending"
+            options={["Pending", "Paid", "Overdue"]}
           />
         </FormField>
         <FormField label="Vencimiento">
@@ -2326,8 +2326,8 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
         <Badge variant="outline" className="rounded-md">
           {dialog.payload?.customer ?? "Atrium Labs"}
         </Badge>
-        <FormField label="Nota">
-          <Textarea name="body" className="min-h-32" placeholder="Escribe una nota para el equipo..." />
+        <FormField label="Note">
+          <Textarea name="body" className="min-h-32" placeholder="Write a note for the team..." />
         </FormField>
       </div>
     );
@@ -2336,51 +2336,51 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
   if (dialog.type === "request") {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Cliente">
+        <FormField label="Customer">
           <Input name="customer" defaultValue={payloadText(dialog, "customer", "Atrium Labs")} />
         </FormField>
-        <FormField label="Contacto">
+        <FormField label="Contact">
           <Input name="contactName" defaultValue={payloadText(dialog, "contactName", "Marta Soler")} />
         </FormField>
         <FormField label="Email">
-          <Input name="email" type="email" defaultValue={payloadText(dialog, "email", "marta@atriumlabs.es")} />
+          <Input name="email" type="email" defaultValue={payloadText(dialog, "email", "marta@atriumlabs.com")} />
         </FormField>
-        <FormField label="Teléfono">
+        <FormField label="Phone">
           <Input name="phone" defaultValue={payloadText(dialog, "phone", "+34 611 204 338")} />
         </FormField>
-        <FormField label="Servicio solicitado">
-          <Input name="title" defaultValue={payloadText(dialog, "title", "Limpieza extra de cristales")} />
+        <FormField label="Requested service">
+          <Input name="title" defaultValue={payloadText(dialog, "title", "Extra window cleaning")} />
         </FormField>
-        <FormField label="Ciudad">
+        <FormField label="City">
           <Input name="city" defaultValue={payloadText(dialog, "city", "Madrid")} />
         </FormField>
-        <FormField label="Dirección">
+        <FormField label="Address">
           <Input name="address" defaultValue={payloadText(dialog, "address", "Calle Serrano 42, Madrid")} />
         </FormField>
-        <FormField label="Estado">
+        <FormField label="Status">
           <DemoNativeSelect
             name="status"
-            defaultValue={payloadText(dialog, "status", "Pendiente")}
-            options={["Pendiente", "Programado", "Autoasignado", "Completado", "Cancelado"]}
+            defaultValue={payloadText(dialog, "status", "Pending")}
+            options={["Pending", "Scheduled", "Autoasignado", "Completed", "Cancelled"]}
           />
         </FormField>
-        <FormField label="Fecha preferida">
+        <FormField label="Preferred date">
           <Input name="preferredDate" type="date" defaultValue={payloadText(dialog, "preferredDate", addDays(5))} />
         </FormField>
-        <FormField label="Hora preferida">
+        <FormField label="Preferred time">
           <Input name="preferredTime" type="time" defaultValue={payloadText(dialog, "preferredTime", "10:00")} />
         </FormField>
-        <FormField label="Importe estimado">
+        <FormField label="Estimated amount">
           <Input name="estimatedPrice" type="number" defaultValue={payloadText(dialog, "estimatedPrice", "680")} min="0" />
         </FormField>
         <div className="sm:col-span-2">
-          <FormField label="Descripción">
+          <FormField label="Description">
             <Textarea
               name="description"
               defaultValue={payloadText(
                 dialog,
                 "description",
-                "Necesitamos una visita extra antes de la reunión mensual."
+                "We need an extra visit before the monthly meeting."
               )}
             />
           </FormField>
@@ -2391,8 +2391,8 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <FormField label="Nombre">
-        <Input name="name" defaultValue="Follow-up de oportunidad" required />
+      <FormField label="Name">
+        <Input name="name" defaultValue="Opportunity follow-up" required />
       </FormField>
       <FormField label="Disparador">
         <DemoNativeSelect

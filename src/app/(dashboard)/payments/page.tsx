@@ -26,13 +26,13 @@ export default function PaymentsPage() {
   const { collected, overdue, pending } = React.useMemo(
     () => ({
       collected: invoices
-        .filter((invoice) => invoice.status === "Pagada")
+        .filter((invoice) => invoice.status === "Paid")
         .reduce((total, invoice) => total + invoice.total, 0),
       pending: invoices
-        .filter((invoice) => invoice.status === "Pendiente")
+        .filter((invoice) => invoice.status === "Pending")
         .reduce((total, invoice) => total + invoice.total, 0),
       overdue: invoices
-        .filter((invoice) => invoice.status === "Vencida")
+        .filter((invoice) => invoice.status === "Overdue")
         .reduce((total, invoice) => total + invoice.total, 0),
     }),
     [invoices]
@@ -42,24 +42,24 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Cobros, Stripe y facturación</p>
-          <h1 className="mt-1 text-3xl font-semibold">Pagos</h1>
+          <p className="text-sm text-muted-foreground">Payments, Stripe, and billing</p>
+          <h1 className="mt-1 text-3xl font-semibold">Payments</h1>
         </div>
       </div>
 
       <Tabs defaultValue="customer-payments" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="customer-payments">Cobros de clientes</TabsTrigger>
-          <TabsTrigger value="subscription">Suscripción SaaS</TabsTrigger>
+          <TabsTrigger value="customer-payments">Customer payments</TabsTrigger>
+          <TabsTrigger value="subscription">SaaS subscription</TabsTrigger>
         </TabsList>
 
         <TabsContent value="customer-payments" className="space-y-4">
           <Alert className="border-warning/35 bg-warning/10">
             <AlertTriangle className="size-4 text-warning" />
-            <AlertTitle>Pago fallido detectado</AlertTitle>
+            <AlertTitle>Failed payment detected</AlertTitle>
             <AlertDescription>
-              EcoHogar Madrid tiene una renovación pendiente. La automatización de
-              recuperación está pausada.
+              EcoHogar Madrid has a pending renewal. The payment recovery
+              automation is paused.
             </AlertDescription>
           </Alert>
 
@@ -68,36 +68,36 @@ export default function PaymentsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <WalletCards className="size-4 text-primary" />
-                  Cobrado
+                  Collected
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-semibold">{formatCurrency(collected)}</p>
-                <p className="text-sm text-muted-foreground">facturas pagadas</p>
+                <p className="text-sm text-muted-foreground">paid invoices</p>
               </CardContent>
             </Card>
             <Card className="border-border/70 bg-card/85 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <ReceiptText className="size-4 text-primary" />
-                  Pendiente
+                  Pending
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-semibold">{formatCurrency(pending)}</p>
-                <p className="text-sm text-muted-foreground">pendiente de cobro</p>
+                <p className="text-sm text-muted-foreground">awaiting payment</p>
               </CardContent>
             </Card>
             <Card className="border-border/70 bg-card/85 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <AlertTriangle className="size-4 text-warning" />
-                  Vencido
+                  Overdue
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-semibold">{formatCurrency(overdue)}</p>
-                <p className="text-sm text-muted-foreground">requiere seguimiento</p>
+                <p className="text-sm text-muted-foreground">requires follow-up</p>
               </CardContent>
             </Card>
           </div>
@@ -106,7 +106,7 @@ export default function PaymentsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <CreditCard className="size-4 text-primary" />
-                Historial de cobros
+                Payment history
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -133,9 +133,9 @@ export default function PaymentsPage() {
           <Card className="border-border/70 bg-card/85 shadow-sm">
             <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle className="text-base">Suscripción de LimpiaPro CRM</CardTitle>
+                <CardTitle className="text-base">WIA Control subscription</CardTitle>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Gestión del plan SaaS, cambios de tarifa y portal de facturación.
+                  SaaS plan management, plan changes, and billing portal.
                 </p>
               </div>
               <DemoActionButton action="billing-portal" variant="outline">
@@ -155,11 +155,11 @@ export default function PaymentsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between gap-3">
                     <CardTitle className="text-lg">{plan.name}</CardTitle>
-                    {plan.highlighted ? <Badge>Actual</Badge> : null}
+                    {plan.highlighted ? <Badge>Current</Badge> : null}
                   </div>
                   <div>
                     <span className="text-3xl font-semibold">{plan.price}</span>
-                    <span className="text-sm text-muted-foreground">/mes</span>
+                    <span className="text-sm text-muted-foreground">/month</span>
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col space-y-4">
@@ -175,8 +175,8 @@ export default function PaymentsPage() {
                   </ul>
                   <div className="mt-auto pt-2">
                     <CheckoutButton
-                      priceEnv={plan.priceEnv}
-                      label={plan.highlighted ? "Gestionar plan" : "Cambiar plan"}
+                      plan={plan.code}
+                      label={plan.highlighted ? "Manage plan" : "Change plan"}
                     />
                   </div>
                 </CardContent>

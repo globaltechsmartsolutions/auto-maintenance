@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LimpiaPro CRM",
+  title: "WIA Control",
   description:
-    "Plataforma SaaS CRM para empresas de limpieza en España.",
+    "Operations management, shift coverage, and time tracking for service businesses.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="es"
+      lang="en"
       className={`${geistSans.variable} ${geistMono.variable} dark`}
       suppressHydrationWarning
     >

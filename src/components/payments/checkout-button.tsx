@@ -6,10 +6,10 @@ import { useDemo } from "@/components/demo/demo-provider";
 import { Button } from "@/components/ui/button";
 
 export function CheckoutButton({
-  priceEnv,
+  plan,
   label = "Suscribirse",
 }: {
-  priceEnv: string;
+  plan: "STARTER" | "GROWTH" | "SCALE";
   label?: string;
 }) {
   const [loading, setLoading] = React.useState(false);
@@ -21,17 +21,17 @@ export function CheckoutButton({
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceEnv }),
+        body: JSON.stringify({ plan }),
       });
       const payload = (await response.json()) as { error?: string; url?: string };
 
       if (!response.ok) {
-        notify("No se pudo abrir Stripe", payload.error ?? "Revisa la configuración.");
+        notify("Unable to open Stripe", payload.error ?? "Review the configuration.");
         return;
       }
 
       if (payload.url?.includes("checkout=demo")) {
-        notify("Checkout Stripe simulado", "El cambio de plan queda validado para la demo local.");
+        notify("Stripe Checkout simulated", "The plan change has been validated for the local demo.");
         return;
       }
 

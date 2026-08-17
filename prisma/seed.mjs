@@ -36,6 +36,16 @@ const ids = {
     torres: "seed-customer-torres",
     logistica: "seed-customer-logistica-sur",
   },
+  worksites: {
+    atrium: "seed-worksite-atrium",
+    alameda: "seed-worksite-alameda",
+    torres: "seed-worksite-torres",
+  },
+  shifts: {
+    atrium: "seed-shift-atrium-morning",
+    alameda: "seed-shift-alameda-morning",
+    torres: "seed-shift-torres-morning",
+  },
 };
 
 const date = (value) => new Date(value);
@@ -46,24 +56,26 @@ async function seedCompany() {
     update: {
       plan: "GROWTH",
       subscriptionStatus: "TRIALING",
-      billingEmail: "facturacion@limpiezasdemo.es",
+      billingEmail: "billing@cleaningdemo.com",
+      crmEnabled: false,
     },
     create: {
       id: ids.company,
-      name: "Limpiezas Demo SL",
-      fiscalName: "Limpiezas Demo Sociedad Limitada",
+      name: "CleanWorks Demo Ltd",
+      fiscalName: "CleanWorks Demo Limited",
       cif: "B10999888",
-      email: "hola@limpiezasdemo.es",
+      email: "hello@cleaningdemo.com",
       phone: "+34 910 220 330",
-      website: "https://limpiezasdemo.es",
+      website: "https://cleaningdemo.com",
       address: "Calle Serrano 42",
       city: "Madrid",
       province: "Madrid",
       postalCode: "28001",
-      billingEmail: "facturacion@limpiezasdemo.es",
+      billingEmail: "billing@cleaningdemo.com",
       plan: "GROWTH",
       subscriptionStatus: "TRIALING",
       trialEndsAt: date("2026-06-30T23:59:59.000Z"),
+      crmEnabled: false,
     },
   });
 }
@@ -73,7 +85,7 @@ async function seedUsers() {
     {
       id: ids.users.admin,
       supabaseUserId: "seed-supabase-admin",
-      email: "admin@limpiezasdemo.es",
+      email: "admin@cleaningdemo.com",
       firstName: "Alejandro",
       lastName: "Martín",
       role: "ADMIN",
@@ -82,7 +94,7 @@ async function seedUsers() {
     {
       id: ids.users.manager,
       supabaseUserId: "seed-supabase-manager",
-      email: "manager@limpiezasdemo.es",
+      email: "manager@cleaningdemo.com",
       firstName: "Marta",
       lastName: "Soler",
       role: "MANAGER",
@@ -91,7 +103,7 @@ async function seedUsers() {
     {
       id: ids.users.employee,
       supabaseUserId: "seed-supabase-employee",
-      email: "laura@limpiezasdemo.es",
+      email: "laura@cleaningdemo.com",
       firstName: "Laura",
       lastName: "Méndez",
       role: "EMPLOYEE",
@@ -100,7 +112,7 @@ async function seedUsers() {
     {
       id: ids.users.employee2,
       supabaseUserId: "seed-supabase-employee-2",
-      email: "miguel@limpiezasdemo.es",
+      email: "miguel@cleaningdemo.com",
       firstName: "Miguel",
       lastName: "Prieto",
       role: "EMPLOYEE",
@@ -129,21 +141,21 @@ async function seedEmployees() {
     {
       id: ids.employees.laura,
       userId: ids.users.employee,
-      position: "Jefa de equipo",
+      position: "Team lead",
       hourlyRate: 18.5,
       performanceScore: 98,
       availability: { days: ["L", "M", "X", "J", "V"], from: "07:00", to: "15:00" },
-      internalNotes: "Excelente valoración en oficinas premium.",
+      internalNotes: "Excellent rating for premium offices.",
       hiredAt: date("2024-02-12T00:00:00.000Z"),
     },
     {
       id: ids.employees.miguel,
       userId: ids.users.employee2,
-      position: "Especialista sanitario",
+      position: "Healthcare specialist",
       hourlyRate: 19.25,
       performanceScore: 94,
       availability: { days: ["L", "M", "X", "J", "V", "S"], from: "06:00", to: "14:00" },
-      internalNotes: "Certificación en desinfección avanzada.",
+      internalNotes: "Advanced disinfection certification.",
       hiredAt: date("2023-11-03T00:00:00.000Z"),
     },
     {
@@ -153,17 +165,17 @@ async function seedEmployees() {
       hourlyRate: 21,
       performanceScore: 91,
       availability: { days: ["L", "M", "X", "J", "V"], from: "08:00", to: "16:00" },
-      internalNotes: "Buen encaje en comunidades y garajes.",
+      internalNotes: "Good fit for residential communities and garages.",
       hiredAt: date("2022-06-20T00:00:00.000Z"),
     },
     {
       id: ids.employees.hugo,
       userId: ids.users.admin,
-      position: "Supervisor de cuentas",
+      position: "Account supervisor",
       hourlyRate: 24,
       performanceScore: 88,
-      availability: { status: "vacaciones", returnsAt: "2026-06-05" },
-      internalNotes: "Planificar sustitución esta semana.",
+      availability: { status: "on leave", returnsAt: "2026-06-05" },
+      internalNotes: "Plan a replacement this week.",
       hiredAt: date("2021-09-15T00:00:00.000Z"),
     },
   ];
@@ -193,7 +205,7 @@ async function seedCustomers() {
       name: "Atrium Labs",
       type: "BUSINESS",
       status: "ACTIVE",
-      email: "marta@atriumlabs.es",
+      email: "marta@atriumlabs.com",
       phone: "+34 611 204 338",
       nif: "B88321190",
       address: "Calle Serrano 42",
@@ -201,23 +213,23 @@ async function seedCustomers() {
       province: "Madrid",
       postalCode: "28001",
       tags: ["B2B", "Madrid", "Premium"],
-      notes: "Servicio recurrente de lunes a viernes. Prefiere comunicación por correo.",
+      notes: "Recurring service from Monday to Friday. Prefers email communication.",
       lifetimeValue: 48600,
     },
     {
       id: ids.customers.alameda,
-      name: "Clínica Alameda",
+      name: "Alameda Clinic",
       type: "BUSINESS",
       status: "AT_RISK",
-      email: "administracion@clinicaalameda.es",
+      email: "administration@alamedaclinic.com",
       phone: "+34 934 778 201",
       nif: "B64112003",
       address: "Avinguda Diagonal 318",
       city: "Barcelona",
       province: "Barcelona",
       postalCode: "08013",
-      tags: ["Barcelona", "Alta prioridad", "Sanitario"],
-      notes: "Requiere protocolos reforzados y registro de productos desinfectantes.",
+      tags: ["Barcelona", "High priority", "Healthcare"],
+      notes: "Requires enhanced protocols and a disinfectant product log.",
       lifetimeValue: 31200,
     },
     {
@@ -225,47 +237,47 @@ async function seedCustomers() {
       name: "Hotel Bruma",
       type: "BUSINESS",
       status: "ACTIVE",
-      email: "ops@hotelbruma.es",
+      email: "ops@brumahotel.com",
       phone: "+34 965 222 910",
       nif: "B54388112",
-      address: "Paseo Marítimo 9",
+      address: "9 Seafront Avenue",
       city: "Alicante",
       province: "Alicante",
       postalCode: "03002",
-      tags: ["Alicante", "Temporada alta"],
-      notes: "Contrato de refuerzo en verano. Facturación quincenal con IVA general.",
+      tags: ["Alicante", "High season"],
+      notes: "Summer support contract. Fortnightly billing with standard VAT.",
       lifetimeValue: 58400,
     },
     {
       id: ids.customers.torres,
-      name: "Comunidad Torres Norte",
+      name: "Northern Towers Community",
       type: "COMMUNITY",
       status: "ACTIVE",
-      email: "torresnorte@urbalia.es",
+      email: "northerntowers@urbalia.com",
       phone: "+34 912 667 810",
       nif: "H87990111",
-      address: "Calle de la Estación 14",
+      address: "14 Station Street",
       city: "Getafe",
       province: "Madrid",
       postalCode: "28901",
-      tags: ["Comunidad", "Mensual"],
-      notes: "Incluye garaje, portales y cristales. Revisar incidencias en ascensor B.",
+      tags: ["Community", "Monthly"],
+      notes: "Includes garage, entrances, and windows. Review lift B incidents.",
       lifetimeValue: 22800,
     },
     {
       id: ids.customers.logistica,
-      name: "Logística Sur",
+      name: "Southern Logistics",
       type: "INDUSTRIAL",
       status: "ACTIVE",
-      email: "operaciones@logisticasur.es",
+      email: "operations@southernlogistics.com",
       phone: "+34 955 440 802",
       nif: "B91700123",
-      address: "Polígono La Isla, nave 18",
+      address: "Island Industrial Estate, Unit 18",
       city: "Dos Hermanas",
       province: "Sevilla",
       postalCode: "41703",
-      tags: ["Industrial", "Sevilla", "Presupuesto"],
-      notes: "Necesita limpieza de almacén y oficinas anexas.",
+      tags: ["Industrial", "Sevilla", "Quote"],
+      notes: "Requires warehouse and adjoining office cleaning.",
       lifetimeValue: 17400,
     },
   ];
@@ -284,14 +296,14 @@ async function seedCustomers() {
 
 async function seedLeads() {
   const leads = [
-    ["seed-lead-clinica-alameda", "Clínica Alameda", "Clínica Alameda", "QUALIFIED", 3800, 75, ["Sanitario"]],
-    ["seed-lead-torres-norte", "Administrador Urbalia", "Comunidad Torres Norte", "NEW", 1200, 45, ["Comunidad"]],
+    ["seed-lead-clinica-alameda", "Alameda Clinic", "Alameda Clinic", "QUALIFIED", 3800, 75, ["Healthcare"]],
+    ["seed-lead-torres-norte", "Urbalia Administrator", "Northern Towers Community", "NEW", 1200, 45, ["Community"]],
     ["seed-lead-boreal", "Ana Ferrer", "Boreal Cowork", "NEW", 2400, 35, ["Coworking"]],
     ["seed-lead-hotel-bruma", "Lucía Ríos", "Hotel Bruma", "QUOTED", 8400, 80, ["Hotel"]],
-    ["seed-lead-residencial-alba", "Residencial Alba", "Residencial Alba", "QUALIFIED", 2100, 60, ["Comunidad"]],
-    ["seed-lead-mercado-centro", "Mercado Centro", "Mercado Centro", "QUALIFIED", 1900, 55, ["Retail"]],
-    ["seed-lead-nova-legal", "Nova Legal", "Nova Legal", "WON", 1500, 100, ["Oficinas"]],
-    ["seed-lead-logistica-sur", "Logística Sur", "Logística Sur", "QUOTED", 3200, 70, ["Industrial"]],
+    ["seed-lead-residential-alba", "Residencial Alba", "Residencial Alba", "QUALIFIED", 2100, 60, ["Community"]],
+    ["seed-lead-central-market", "Central Market", "Central Market", "QUALIFIED", 1900, 55, ["Retail"]],
+    ["seed-lead-nova-legal", "Nova Legal", "Nova Legal", "WON", 1500, 100, ["Offices"]],
+    ["seed-lead-logistica-sur", "Southern Logistics", "Southern Logistics", "QUOTED", 3200, 70, ["Industrial"]],
   ];
 
   for (const [id, name, companyName, status, estimatedValue, probability, tags] of leads) {
@@ -304,9 +316,9 @@ async function seedLeads() {
         assignedToId: ids.users.manager,
         name,
         companyName,
-        email: `${companyName.toLowerCase().replaceAll(" ", ".")}@demo.es`,
+        email: `${companyName.toLowerCase().replaceAll(" ", ".")}@demo.com`,
         phone: "+34 600 000 000",
-        source: "Demo preproducción",
+        source: "Pre-production demo",
         status,
         estimatedValue,
         probability,
@@ -319,14 +331,14 @@ async function seedLeads() {
 
 async function seedServices() {
   const services = [
-    ["seed-service-atrium-office", ids.customers.atrium, "Limpieza diaria de oficinas", "Oficinas", "WEEKLY", "SCHEDULED", "2026-06-01T08:30:00.000Z", 1260],
-    ["seed-service-alameda-clinic", ids.customers.alameda, "Desinfección clínica", "Sanitario", "ONE_TIME", "PENDING", "2026-06-02T07:00:00.000Z", 780],
-    ["seed-service-bruma-common", ids.customers.bruma, "Zonas comunes hotel", "Hotel", "DAILY", "IN_PROGRESS", "2026-05-29T10:00:00.000Z", 2150],
-    ["seed-service-torres-garage", ids.customers.torres, "Cristales y garaje", "Comunidad", "MONTHLY", "COMPLETED", "2026-05-28T09:00:00.000Z", 540],
-    ["seed-service-atrium-consumables", ids.customers.atrium, "Reposición de consumibles", "Oficinas", "MONTHLY", "SCHEDULED", "2026-06-03T11:00:00.000Z", 360],
-    ["seed-service-bruma-lobby", ids.customers.bruma, "Tapicería lobby", "Hotel", "ONE_TIME", "PENDING", "2026-06-07T10:00:00.000Z", 980],
-    ["seed-service-logistica-warehouse", ids.customers.logistica, "Limpieza almacén", "Industrial", "ONE_TIME", "SCHEDULED", "2026-06-05T06:30:00.000Z", 3200],
-    ["seed-service-torres-portals", ids.customers.torres, "Portales y ascensores", "Comunidad", "WEEKLY", "SCHEDULED", "2026-06-06T08:00:00.000Z", 620],
+    ["seed-service-atrium-office", ids.customers.atrium, "Daily office cleaning", "Offices", "WEEKLY", "SCHEDULED", "2026-06-01T08:30:00.000Z", 1260],
+    ["seed-service-alameda-clinic", ids.customers.alameda, "Clinic disinfection", "Healthcare", "ONE_TIME", "PENDING", "2026-06-02T07:00:00.000Z", 780],
+    ["seed-service-bruma-common", ids.customers.bruma, "Hotel common areas", "Hotel", "DAILY", "IN_PROGRESS", "2026-05-29T10:00:00.000Z", 2150],
+    ["seed-service-torres-garage", ids.customers.torres, "Windows and garage", "Community", "MONTHLY", "COMPLETED", "2026-05-28T09:00:00.000Z", 540],
+    ["seed-service-atrium-consumables", ids.customers.atrium, "Consumables restocking", "Offices", "MONTHLY", "SCHEDULED", "2026-06-03T11:00:00.000Z", 360],
+    ["seed-service-bruma-lobby", ids.customers.bruma, "Lobby upholstery", "Hotel", "ONE_TIME", "PENDING", "2026-06-07T10:00:00.000Z", 980],
+    ["seed-service-logistica-warehouse", ids.customers.logistica, "Warehouse cleaning", "Industrial", "ONE_TIME", "SCHEDULED", "2026-06-05T06:30:00.000Z", 3200],
+    ["seed-service-torres-portals", ids.customers.torres, "Entrances and lifts", "Community", "WEEKLY", "SCHEDULED", "2026-06-06T08:00:00.000Z", 620],
   ];
 
   for (const [id, customerId, title, serviceType, recurrence, status, start, price] of services) {
@@ -396,7 +408,7 @@ async function seedQuotesAndInvoices() {
     await prisma.quoteLineItem.create({
       data: {
         quoteId: id,
-        description: `Servicio presupuestado ${number}`,
+        description: `Service presupuestado ${number}`,
         quantity: 1,
         unitPrice: subtotal,
         vatRate: 21,
@@ -434,7 +446,7 @@ async function seedQuotesAndInvoices() {
     await prisma.invoiceItem.create({
       data: {
         invoiceId: id,
-        description: `Servicio facturado ${number}`,
+        description: `Invoiced service ${number}`,
         quantity: 1,
         unitPrice: subtotal,
         vatRate: 21,
@@ -460,9 +472,9 @@ async function seedPaymentsAndAutomations() {
   });
 
   const automations = [
-    ["seed-automation-reminder", "Recordatorio 24 h antes", "SERVICE_REMINDER", "email+sms", 24],
-    ["seed-automation-confirmation", "Confirmación al cliente", "SERVICE_CONFIRMATION", "email", 0],
-    ["seed-automation-review", "Solicitud de reseña", "REVIEW_REQUEST", "email", 2],
+    ["seed-automation-reminder", "24-hour reminder", "SERVICE_REMINDER", "email+sms", 24],
+    ["seed-automation-confirmation", "Customer confirmation", "SERVICE_CONFIRMATION", "email", 0],
+    ["seed-automation-review", "Review request", "REVIEW_REQUEST", "email", 2],
   ];
 
   for (const [id, name, trigger, channel, delayHours] of automations) {
@@ -477,7 +489,7 @@ async function seedPaymentsAndAutomations() {
         channel,
         delayHours,
         isActive: true,
-        template: `${name}: plantilla preparada para preproducción.`,
+        template: `${name}: template prepared for pre-production.`,
       },
     });
   }
@@ -494,6 +506,180 @@ async function seedPaymentsAndAutomations() {
   });
 }
 
+async function seedWiaControl() {
+  const worksites = [
+    {
+      id: ids.worksites.atrium,
+      customerId: ids.customers.atrium,
+      name: "Atrium Labs · Serrano",
+      address: "Calle Serrano 42",
+      city: "Madrid",
+      province: "Madrid",
+      postalCode: "28001",
+      latitude: 40.4271,
+      longitude: -3.6854,
+      radiusMeters: 120,
+      verificationMode: "QR_LOCATION",
+    },
+    {
+      id: ids.worksites.alameda,
+      customerId: ids.customers.alameda,
+      name: "Alameda Clinic",
+      address: "Avinguda Diagonal 318",
+      city: "Barcelona",
+      province: "Barcelona",
+      postalCode: "08013",
+      latitude: 41.4036,
+      longitude: 2.1744,
+      radiusMeters: 80,
+      verificationMode: "PIN",
+    },
+    {
+      id: ids.worksites.torres,
+      customerId: ids.customers.torres,
+      name: "Northern Towers · Entrances",
+      address: "14 Station Street",
+      city: "Getafe",
+      province: "Madrid",
+      postalCode: "28901",
+      latitude: 40.3083,
+      longitude: -3.7327,
+      radiusMeters: 90,
+      verificationMode: "QR_LOCATION",
+    },
+  ];
+
+  for (const worksite of worksites) {
+    await prisma.worksite.upsert({
+      where: { id: worksite.id },
+      update: worksite,
+      create: { ...worksite, companyId: ids.company },
+    });
+  }
+
+  const shifts = [
+    {
+      id: ids.shifts.atrium,
+      worksiteId: ids.worksites.atrium,
+      employeeId: ids.employees.laura,
+      serviceId: "seed-service-atrium-office",
+      title: "Opening clean",
+      scheduledStart: date("2026-08-08T04:00:00.000Z"),
+      scheduledEnd: date("2026-08-08T07:00:00.000Z"),
+      status: "ACTIVE",
+      requiredSkills: ["offices", "premium"],
+      gracePeriodMinutes: 5,
+    },
+    {
+      id: ids.shifts.alameda,
+      worksiteId: ids.worksites.alameda,
+      employeeId: ids.employees.miguel,
+      serviceId: "seed-service-alameda-clinic",
+      title: "Clinic disinfection",
+      scheduledStart: date("2026-08-08T05:00:00.000Z"),
+      scheduledEnd: date("2026-08-08T07:30:00.000Z"),
+      status: "ACTIVE",
+      requiredSkills: ["healthcare", "disinfection"],
+      gracePeriodMinutes: 5,
+    },
+    {
+      id: ids.shifts.torres,
+      worksiteId: ids.worksites.torres,
+      employeeId: null,
+      serviceId: "seed-service-torres-garage",
+      title: "Entrances and windows",
+      scheduledStart: date("2026-08-08T05:00:00.000Z"),
+      scheduledEnd: date("2026-08-08T08:00:00.000Z"),
+      status: "UNCOVERED",
+      requiredSkills: ["communities", "windows"],
+      gracePeriodMinutes: 5,
+    },
+  ];
+
+  for (const shift of shifts) {
+    await prisma.plannedShift.upsert({
+      where: { id: shift.id },
+      update: shift,
+      create: { ...shift, companyId: ids.company },
+    });
+  }
+
+  const clockEvents = [
+    {
+      id: "seed-clock-laura-in",
+      shiftId: ids.shifts.atrium,
+      employeeId: ids.employees.laura,
+      worksiteId: ids.worksites.atrium,
+      type: "CLOCK_IN",
+      method: "QR",
+      occurredAt: date("2026-08-08T04:02:00.000Z"),
+      recordedAt: date("2026-08-08T04:02:04.000Z"),
+      locationVerified: true,
+      idempotencyKey: "seed-laura-in-2026-08-08",
+      integrityHash: "seed-integrity-laura-in-2026-08-08",
+    },
+    {
+      id: "seed-clock-miguel-in",
+      shiftId: ids.shifts.alameda,
+      employeeId: ids.employees.miguel,
+      worksiteId: ids.worksites.alameda,
+      type: "CLOCK_IN",
+      method: "PIN",
+      occurredAt: date("2026-08-08T05:11:00.000Z"),
+      recordedAt: date("2026-08-08T05:11:03.000Z"),
+      locationVerified: true,
+      idempotencyKey: "seed-miguel-in-2026-08-08",
+      integrityHash: "seed-integrity-miguel-in-2026-08-08",
+    },
+  ];
+
+  for (const event of clockEvents) {
+    const existing = await prisma.clockEvent.findUnique({ where: { id: event.id } });
+    if (!existing) {
+      await prisma.clockEvent.create({
+        data: { ...event, companyId: ids.company },
+      });
+    }
+  }
+
+  await prisma.attendanceIncident.upsert({
+    where: { id: "seed-incident-torres-uncovered" },
+    update: {
+      status: "OPEN",
+      recommendedEmployeeId: ids.employees.nadia,
+    },
+    create: {
+      id: "seed-incident-torres-uncovered",
+      companyId: ids.company,
+      shiftId: ids.shifts.torres,
+      worksiteId: ids.worksites.torres,
+      recommendedEmployeeId: ids.employees.nadia,
+      type: "MISSING_CLOCK_IN",
+      status: "OPEN",
+      title: "Uncovered service",
+      detail: "The 07:00 shift needs a replacement.",
+      detectedAt: date("2026-08-08T05:05:00.000Z"),
+    },
+  });
+
+  await prisma.attendanceIncident.upsert({
+    where: { id: "seed-incident-alameda-late" },
+    update: { status: "ACKNOWLEDGED" },
+    create: {
+      id: "seed-incident-alameda-late",
+      companyId: ids.company,
+      shiftId: ids.shifts.alameda,
+      employeeId: ids.employees.miguel,
+      worksiteId: ids.worksites.alameda,
+      type: "LATE",
+      status: "ACKNOWLEDGED",
+      title: "Clock-in 6 minutes late",
+      detail: "The clock event is valid and awaiting an explanation.",
+      detectedAt: date("2026-08-08T05:11:03.000Z"),
+    },
+  });
+}
+
 async function main() {
   await seedCompany();
   await seedUsers();
@@ -503,8 +689,9 @@ async function main() {
   await seedServices();
   await seedQuotesAndInvoices();
   await seedPaymentsAndAutomations();
+  await seedWiaControl();
 
-  console.log("Seed de preproducción completado.");
+  console.log("Pre-production seed completed.");
 }
 
 main()

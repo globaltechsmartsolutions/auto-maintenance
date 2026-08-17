@@ -15,9 +15,9 @@ export default function PortalPage() {
                 <Sparkles className="size-4" />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">LimpiaPro</span>
+                <span className="block truncate text-sm font-semibold">WIA Control</span>
                 <span className="block truncate text-xs text-muted-foreground">
-                  Portal cliente
+                  Customer portal
                 </span>
               </span>
             </Link>

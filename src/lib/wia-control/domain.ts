@@ -1,0 +1,167 @@
+import { z } from "zod";
+
+export * from "@/lib/wia-control/domain-core";
+
+export const shiftStatusSchema = z.enum([
+  "PLANNED",
+  "ACTIVE",
+  "PAUSED",
+  "COMPLETED",
+  "UNCOVERED",
+  "COVERED",
+  "CANCELLED",
+]);
+
+export const clockEventTypeSchema = z.enum([
+  "CLOCK_IN",
+  "BREAK_START",
+  "BREAK_END",
+  "CLOCK_OUT",
+]);
+
+export const clockMethodSchema = z.enum(["MOBILE", "QR", "PIN", "NFC", "KIOSK", "MANUAL"]);
+export const incidentStatusSchema = z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"]);
+export const correctionStatusSchema = z.enum(["PENDING", "APPROVED", "DISPUTED", "REJECTED"]);
+
+const identifier = z.string().trim().min(1).max(160);
+const isoDateTime = z.string().datetime({ offset: true });
+const coordinate = z.number().finite();
+
+export const worksiteInputSchema = z.object({
+  customerId: identifier.optional(),
+  name: z.string().trim().min(2).max(140),
+  address: z.string().trim().min(4).max(240),
+  city: z.string().trim().min(2).max(100),
+  province: z.string().trim().max(100).optional(),
+  postalCode: z.string().trim().max(12).optional(),
+  latitude: coordinate.min(-90).max(90).optional(),
+  longitude: coordinate.min(-180).max(180).optional(),
+  radiusMeters: z.number().int().min(20).max(2_000).default(100),
+  timezone: z.string().trim().min(3).max(80).default("Europe/Madrid"),
+  verificationMode: z.enum(["QR_LOCATION", "QR", "PIN", "NFC", "LOCATION"]).default("QR_LOCATION"),
+});
+
+export const worksiteUpdateSchema = worksiteInputSchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() })
+  .refine((value) => Object.keys(value).length > 0, "You must specify at least one change.");
+
+export const plannedShiftInputSchema = z
+  .object({
+    worksiteId: identifier,
+    employeeId: identifier.optional(),
+    serviceId: identifier.optional(),
+    title: z.string().trim().min(2).max(160),
+    scheduledStart: isoDateTime,
+    scheduledEnd: isoDateTime,
+    requiredSkills: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
+    gracePeriodMinutes: z.number().int().min(0).max(120).default(5),
+  })
+  .superRefine((value, context) => {
+    if (new Date(value.scheduledEnd).getTime() <= new Date(value.scheduledStart).getTime()) {
+      context.addIssue({
+        code: "custom",
+        path: ["scheduledEnd"],
+        message: "The end time must be later than the start time.",
+      });
+    }
+  });
+
+export const plannedShiftUpdateSchema = z
+  .object({
+    employeeId: identifier.nullable().optional(),
+    title: z.string().trim().min(2).max(160).optional(),
+    scheduledStart: isoDateTime.optional(),
+    scheduledEnd: isoDateTime.optional(),
+    requiredSkills: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+    gracePeriodMinutes: z.number().int().min(0).max(120).optional(),
+    status: z.literal("CANCELLED").optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "You must specify at least one change.");
+
+export const clockCommandSchema = z.object({
+  shiftId: identifier,
+  type: clockEventTypeSchema,
+  method: clockMethodSchema.default("MOBILE"),
+  occurredAt: isoDateTime,
+  idempotencyKey: identifier,
+  deviceId: z.string().trim().max(200).optional(),
+  latitude: coordinate.min(-90).max(90).optional(),
+  longitude: coordinate.min(-180).max(180).optional(),
+  accuracyMeters: z.number().finite().min(0).max(10_000).optional(),
+  isOffline: z.boolean().default(false),
+});
+
+export const correctionRequestSchema = z.object({
+  clockEventId: identifier,
+  proposedOccurredAt: isoDateTime,
+  reason: z.string().trim().min(10).max(1_000),
+});
+
+export const correctionReviewSchema = z.object({
+  status: z.enum(["APPROVED", "REJECTED"]),
+  note: z.string().trim().min(5).max(1_000).optional(),
+});
+
+export const correctionAcknowledgementSchema = z
+  .object({
+    accepted: z.boolean(),
+    disagreementReason: z.string().trim().min(10).max(1_000).optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.accepted && !value.disagreementReason) {
+      context.addIssue({
+        code: "custom",
+        path: ["disagreementReason"],
+        message: "Explain the reason for the disagreement.",
+      });
+    }
+  });
+
+export const incidentUpdateSchema = z
+  .object({
+    status: z.enum(["ACKNOWLEDGED", "RESOLVED", "DISMISSED"]),
+    resolutionNotes: z.string().trim().min(5).max(1_000).optional(),
+  })
+  .superRefine((value, context) => {
+    if (["RESOLVED", "DISMISSED"].includes(value.status) && !value.resolutionNotes) {
+      context.addIssue({
+        code: "custom",
+        path: ["resolutionNotes"],
+        message: "The resolution requires a note.",
+      });
+    }
+  });
+
+export const coverageDecisionSchema = z.object({
+  shiftId: identifier,
+  incidentId: identifier,
+  selectedEmployeeId: identifier,
+  recommendedEmployeeId: identifier.optional(),
+  score: z.number().int().min(0).max(100).optional(),
+  reasons: z.array(z.string().trim().min(1).max(240)).max(10).default([]),
+  overrideReason: z.string().trim().min(5).max(1_000).optional(),
+});
+
+export const coverageRecommendationSchema = z.object({
+  incidentId: identifier,
+});
+
+export const companySettingsSchema = z.object({
+  timezone: z.string().trim().min(3).max(80),
+  clockRetentionYears: z.number().int().min(4).max(10),
+  crmEnabled: z.boolean(),
+});
+
+export type WorksiteInput = z.infer<typeof worksiteInputSchema>;
+export type WorksiteUpdateInput = z.infer<typeof worksiteUpdateSchema>;
+export type PlannedShiftInput = z.infer<typeof plannedShiftInputSchema>;
+export type PlannedShiftUpdateInput = z.infer<typeof plannedShiftUpdateSchema>;
+export type ClockCommand = z.infer<typeof clockCommandSchema>;
+export type CorrectionRequestInput = z.infer<typeof correctionRequestSchema>;
+export type CorrectionReviewInput = z.infer<typeof correctionReviewSchema>;
+export type CorrectionAcknowledgementInput = z.infer<typeof correctionAcknowledgementSchema>;
+export type IncidentUpdateInput = z.infer<typeof incidentUpdateSchema>;
+export type CoverageDecisionInput = z.infer<typeof coverageDecisionSchema>;
+export type CoverageRecommendationInput = z.infer<typeof coverageRecommendationSchema>;
+export type CompanySettingsInput = z.infer<typeof companySettingsSchema>;

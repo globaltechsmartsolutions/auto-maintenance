@@ -10,8 +10,8 @@ export default function CalendarPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Asignación de equipos</p>
-          <h1 className="mt-1 text-3xl font-semibold">Calendario</h1>
+          <p className="text-sm text-muted-foreground">Team assignment</p>
+          <h1 className="mt-1 text-3xl font-semibold">Calendar</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <DemoActionButton action="google-calendar" variant="outline">
@@ -20,7 +20,7 @@ export default function CalendarPage() {
           </DemoActionButton>
           <DemoActionButton action="new-visit">
             <Plus className="size-4" />
-            Nueva visita
+            New visit
           </DemoActionButton>
         </div>
       </div>
@@ -30,11 +30,11 @@ export default function CalendarPage() {
           <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
             <CardTitle className="flex items-center gap-2 text-base">
               <CalendarDays className="size-4 text-primary" />
-              Calendario operativo
+              Calendar operativo
             </CardTitle>
             <TabsList>
-              <TabsTrigger value="week">Semana</TabsTrigger>
-              <TabsTrigger value="month">Mes</TabsTrigger>
+              <TabsTrigger value="week">Week</TabsTrigger>
+              <TabsTrigger value="month">Month</TabsTrigger>
             </TabsList>
           </CardHeader>
           <CardContent>

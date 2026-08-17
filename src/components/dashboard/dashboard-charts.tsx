@@ -14,20 +14,20 @@ import {
 import { useDemo, type DemoService } from "@/components/demo/demo-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const monthLabels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun"];
+const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 
 function getServiceCategory(service: DemoService) {
   const text = `${service.title} ${service.customer} ${service.recurrence}`.toLowerCase();
-  if (text.includes("oficina") || text.includes("cowork")) return "Oficinas";
-  if (text.includes("comunidad") || text.includes("residencial") || text.includes("garaje")) {
-    return "Comunidades";
+  if (text.includes("office") || text.includes("cowork")) return "Offices";
+  if (text.includes("community") || text.includes("residential") || text.includes("garage")) {
+    return "Residential";
   }
-  if (text.includes("hotel")) return "Hoteles";
-  if (text.includes("obra")) return "Final de obra";
-  if (text.includes("desinfección") || text.includes("desinfeccion") || text.includes("industrial")) {
+  if (text.includes("hotel")) return "Hotels";
+  if (text.includes("construction") || text.includes("construction")) return "Post-construction";
+  if (text.includes("disinfection") || text.includes("industrial")) {
     return "Industrial";
   }
-  return "Otros";
+  return "Other";
 }
 
 function buildRevenueSeries(services: DemoService[]) {
@@ -96,7 +96,7 @@ export function DashboardCharts() {
     <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr]">
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Ingresos y servicios</CardTitle>
+          <CardTitle className="text-base">Revenue and services</CardTitle>
         </CardHeader>
         <CardContent>
           <div ref={revenueRef} className="h-[320px] min-w-0">
@@ -145,7 +145,7 @@ export function DashboardCharts() {
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  name="Ingresos"
+                  name="Revenue"
                   stroke="var(--chart-1)"
                   strokeWidth={2}
                   fill="url(#revenueFill)"
@@ -160,7 +160,7 @@ export function DashboardCharts() {
 
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Mix de servicios</CardTitle>
+          <CardTitle className="text-base">Service mix</CardTitle>
         </CardHeader>
         <CardContent>
           <div ref={mixRef} className="h-[320px] min-w-0">
@@ -193,7 +193,7 @@ export function DashboardCharts() {
                 />
                 <Bar
                   dataKey="value"
-                  name="Peso"
+                  name="Share"
                   fill="var(--chart-2)"
                   radius={5}
                 />

@@ -13,19 +13,19 @@ export default function EmployeesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Personas y rendimiento</p>
-          <h1 className="mt-1 text-3xl font-semibold">Empleados</h1>
+          <p className="text-sm text-muted-foreground">People and performance</p>
+          <h1 className="mt-1 text-3xl font-semibold">Employees</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/empleado">
+            <Link href="/employee">
               <Smartphone className="size-4" />
-              Vista empleado
+              Employee view
             </Link>
           </Button>
           <DemoActionButton action="new-employee">
             <Plus className="size-4" />
-            Nuevo empleado
+            New employee
           </DemoActionButton>
         </div>
       </div>
@@ -35,17 +35,17 @@ export default function EmployeesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <UserRoundCheck className="size-4 text-primary" />
-              Disponibles
+              Available
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">27</p>
-            <p className="text-sm text-muted-foreground">para nuevas visitas</p>
+            <p className="text-sm text-muted-foreground">for new visits</p>
           </CardContent>
         </Card>
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Media de rendimiento</CardTitle>
+            <CardTitle className="text-base">Average performance</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">92/100</p>
@@ -56,12 +56,12 @@ export default function EmployeesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <NotebookPen className="size-4 text-primary" />
-              Notas internas
+              Internal notes
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">14</p>
-            <p className="text-sm text-muted-foreground">actualizadas esta semana</p>
+            <p className="text-sm text-muted-foreground">updated this week</p>
           </CardContent>
         </Card>
       </div>

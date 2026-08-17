@@ -46,9 +46,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDate } from "@/lib/format";
 
-const serviceStatuses = ["Pendiente", "Programado", "En curso", "Completado", "Cancelado"];
-const requestStatuses = ["Pendiente", "Programado", "Autoasignado", "Completado", "Cancelado"];
-const employeeStatuses = ["Disponible", "Asignado", "Vacaciones", "Baja"];
+const serviceStatuses = ["Pending", "Scheduled", "In progress", "Completed", "Cancelled"];
+const requestStatuses = ["Pending", "Scheduled", "Autoasignado", "Completed", "Cancelled"];
+const employeeStatuses = ["Available", "Assigned", "Holiday", "Sick leave"];
 
 function inputDateFromIso(value: string) {
   const date = new Date(value);
@@ -75,7 +75,7 @@ function inputTimeFromIso(value: string) {
 export function DemoConfirmActionButton({
   children,
   className,
-  confirmLabel = "Borrar",
+  confirmLabel = "Delete",
   description,
   label,
   onConfirm,
@@ -109,7 +109,7 @@ export function DemoConfirmActionButton({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm}>
             {confirmLabel}
           </AlertDialogAction>
@@ -154,11 +154,11 @@ export function DemoDashboardServicesTable() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Servicio</TableHead>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Equipo</TableHead>
-            <TableHead className="text-right">Importe</TableHead>
+            <TableHead>Service</TableHead>
+            <TableHead>Customer</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Team</TableHead>
+            <TableHead className="text-right">Amount</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -224,7 +224,7 @@ export function DemoPendingWebRequestsPanel() {
     services,
     updatePortalRequestStatus,
   } = useDemo();
-  const employeeOptions = ["Seleccionar empleado", ...employees.map((employee) => employee.name)];
+  const employeeOptions = ["Select employee", ...employees.map((employee) => employee.name)];
   const pendingRequests = portalRequests
     .map((request) => ({
       lead: leads.find((lead) => lead.id === request.leadId),
@@ -233,7 +233,7 @@ export function DemoPendingWebRequestsPanel() {
     }))
     .filter(({ request, service }) =>
       Boolean(service) &&
-      (request.status === "Pendiente" || service?.team.includes("Equipo por asignar"))
+      (request.status === "Pending" || service?.team.includes("Unassigned team"))
     );
 
   if (pendingRequests.length === 0) {
@@ -242,12 +242,12 @@ export function DemoPendingWebRequestsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CalendarCheck2 className="size-4 text-primary" />
-            Reservas web pendientes
+            Pending web bookings
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Cuando entre una solicitud desde Reserva web, aparecerá aquí para asignarla.
+            A request received from web booking will appear here for assignment.
           </p>
         </CardContent>
       </Card>
@@ -259,7 +259,7 @@ export function DemoPendingWebRequestsPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <CalendarCheck2 className="size-4 text-primary" />
-          Reservas web pendientes de asignar
+          Web bookings awaiting assignment
         </CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -268,7 +268,7 @@ export function DemoPendingWebRequestsPanel() {
           const recommendation =
             getAssignmentRecommendation(service.id) ?? request.assignmentRecommendation;
           const canAssignRecommendation = Boolean(
-            recommendation && recommendation.employeeName !== "Equipo por asignar"
+            recommendation && recommendation.employeeName !== "Unassigned team"
           );
 
           return (
@@ -293,8 +293,8 @@ export function DemoPendingWebRequestsPanel() {
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Editar reserva web ${request.title}`}
-                      title="Editar reserva"
+                      aria-label={`Edit web booking ${request.title}`}
+                      title="Edit booking"
                       onClick={() =>
                         openDialog("request", {
                           address: service.address ?? "",
@@ -316,9 +316,9 @@ export function DemoPendingWebRequestsPanel() {
                       <Pencil className="size-4" />
                     </Button>
                     <DemoConfirmActionButton
-                      label={`Borrar reserva web ${request.title}`}
-                      title="¿Borrar esta reserva web?"
-                      description="Se eliminará la solicitud web y también su lead y servicio de calendario asociados."
+                      label={`Delete web booking ${request.title}`}
+                      title="Delete this web booking?"
+                      description="The web request and its linked lead and calendar service will be deleted."
                       onConfirm={() => deletePortalRequest(request.id)}
                     >
                       <Trash2 className="size-4" />
@@ -350,7 +350,7 @@ export function DemoPendingWebRequestsPanel() {
                       <div className="rounded-md border border-primary/20 bg-primary/10 p-3">
                         <p className="flex items-center gap-2 text-sm font-medium">
                           <Bot className="size-4 text-primary" />
-                          Aprendizaje aplicado
+                          Learning applied
                         </p>
                         <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
                           {recommendation.learningSignals.map((signal) => (
@@ -372,19 +372,19 @@ export function DemoPendingWebRequestsPanel() {
 
               <div className="flex h-full flex-col gap-3 rounded-md border border-border/70 bg-card/75 p-3">
                 <div>
-                  <p className="text-xs font-medium text-primary">Acción recomendada</p>
+                  <p className="text-xs font-medium text-primary">Recommended action</p>
                   <p className="mt-1 text-sm font-semibold">
-                    {recommendation?.employeeName ?? "Revisar disponibilidad"}
+                    {recommendation?.employeeName ?? "Review availability"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Confirmar aquí actualiza calendario, servicio y aprendizaje.
+                    Confirming updates the calendar, service, and learning record.
                   </p>
                 </div>
                 <Button
                   type="button"
                   disabled={!canAssignRecommendation || !recommendation}
                   onClick={() => {
-                    if (!recommendation || recommendation.employeeName === "Equipo por asignar") {
+                    if (!recommendation || recommendation.employeeName === "Unassigned team") {
                       return;
                     }
 
@@ -393,16 +393,16 @@ export function DemoPendingWebRequestsPanel() {
                   className="mt-auto gap-2"
                 >
                   <UserRoundCheck className="size-4" />
-                  {recommendation?.state === "Lista para autoasignar"
-                    ? "Autoasignar ahora"
-                    : "Asignar recomendada"}
+                  {recommendation?.state === "Ready for auto-assignment"
+                    ? "Auto-assign now"
+                    : "Assign recommendation"}
                 </Button>
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Estado de la solicitud
+                    Request status
                   </p>
                   <NativeSelect
-                    label={`Estado de la reserva ${request.title}`}
+                    label={`Status of booking ${request.title}`}
                     value={request.status}
                     options={requestStatuses}
                     onChange={(status) => updatePortalRequestStatus(request.id, status)}
@@ -410,18 +410,18 @@ export function DemoPendingWebRequestsPanel() {
                 </div>
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground">
-                    Elegir otra persona
+                    Choose another person
                   </p>
                   <select
-                    aria-label={`Asignar reserva pendiente ${request.title}`}
+                    aria-label={`Assign pending booking ${request.title}`}
                     value={
-                      service.team[0] === "Equipo por asignar"
-                        ? "Seleccionar empleado"
+                      service.team[0] === "Unassigned team"
+                        ? "Select employee"
                         : service.team[0]
                     }
                     onChange={(event) => {
                       const employeeName = event.target.value;
-                      if (employeeName !== "Seleccionar empleado") {
+                      if (employeeName !== "Select employee") {
                         assignServiceTeam(service.id, employeeName);
                       }
                     }}
@@ -455,31 +455,31 @@ export function DemoPendingWebRequestsPanel() {
 
 export function DemoServiceHealthCards() {
   const { employees, services } = useDemo();
-  const activeServices = services.filter((service) => service.status !== "Cancelado");
-  const availableEmployees = employees.filter((employee) => employee.status === "Disponible");
+  const activeServices = services.filter((service) => service.status !== "Cancelled");
+  const availableEmployees = employees.filter((employee) => employee.status === "Available");
   const pendingAssignments = services.filter(
-    (service) => service.status === "Pendiente" || service.team.includes("Equipo por asignar")
+    (service) => service.status === "Pending" || service.team.includes("Unassigned team")
   );
   const cards = [
     {
-      helper: "servicios no cancelados en calendario",
+      helper: "non-cancelled services in the calendar",
       icon: ClipboardList,
-      label: "Servicios activos",
-      status: "Programado",
+      label: "Active services",
+      status: "Scheduled",
       value: activeServices.length.toString(),
     },
     {
-      helper: "personas disponibles para nuevas visitas",
+      helper: "people available for new visits",
       icon: ShieldCheck,
-      label: "Equipos con margen",
-      status: "Activo",
+      label: "Teams with capacity",
+      status: "Active",
       value: availableEmployees.length.toString(),
     },
     {
-      helper: "requieren asignación, confirmación o seguimiento",
+      helper: "require assignment, confirmation, or follow-up",
       icon: AlertTriangle,
-      label: "Pendientes operativos",
-      status: pendingAssignments.length > 0 ? "En seguimiento" : "Completado",
+      label: "Pendings operativos",
+      status: pendingAssignments.length > 0 ? "Follow-up" : "Completed",
       value: pendingAssignments.length.toString(),
     },
   ];
@@ -520,20 +520,20 @@ export function DemoServicesTable() {
     services,
     updateServiceStatus,
   } = useDemo();
-  const [filter, setFilter] = React.useState("Todos");
+  const [filter, setFilter] = React.useState("All");
   const visibleServices =
-    filter === "Todos" ? services : services.filter((service) => service.status === filter);
-  const teamOptions = ["Equipo por asignar", ...employees.map((employee) => employee.name)];
+    filter === "All" ? services : services.filter((service) => service.status === filter);
+  const teamOptions = ["Unassigned team", ...employees.map((employee) => employee.name)];
 
   return (
     <Card className="border-border/70 bg-card/85 shadow-sm">
       <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="text-base">Listado de servicios</CardTitle>
+        <CardTitle className="text-base">Service list</CardTitle>
         <NativeSelect
-          label="Filtrar servicios por estado"
+          label="Filter services by status"
           value={filter}
           onChange={setFilter}
-          options={["Todos", ...serviceStatuses]}
+          options={["All", ...serviceStatuses]}
         />
       </CardHeader>
       <CardContent>
@@ -541,13 +541,13 @@ export function DemoServicesTable() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Servicio</TableHead>
-                <TableHead>Cliente</TableHead>
+                <TableHead>Service</TableHead>
+                <TableHead>Customer</TableHead>
                 <TableHead>Recurrencia</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Equipo</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Team</TableHead>
                 <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -565,7 +565,7 @@ export function DemoServicesTable() {
                   </TableCell>
                   <TableCell>
                     <NativeSelect
-                      label={`Estado de ${service.title}`}
+                      label={`Status of ${service.title}`}
                       value={service.status}
                       options={serviceStatuses}
                       onChange={(status) => updateServiceStatus(service.id, status)}
@@ -573,13 +573,13 @@ export function DemoServicesTable() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     <NativeSelect
-                      label={`Asignar empleado a ${service.title}`}
-                      value={service.team[0] ?? "Equipo por asignar"}
+                      label={`Assign employee to ${service.title}`}
+                      value={service.team[0] ?? "Unassigned team"}
                       options={teamOptions}
                       onChange={(employeeName) =>
                         assignServiceTeam(
                           service.id,
-                          employeeName === "Equipo por asignar" ? "" : employeeName
+                          employeeName === "Unassigned team" ? "" : employeeName
                         )
                       }
                     />
@@ -593,8 +593,8 @@ export function DemoServicesTable() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Editar servicio ${service.title}`}
-                        title="Editar servicio"
+                        aria-label={`Edit service ${service.title}`}
+                        title="Edit service"
                         onClick={() =>
                           openDialog("service", {
                             city: service.city,
@@ -613,9 +613,9 @@ export function DemoServicesTable() {
                         <Pencil className="size-4" />
                       </Button>
                       <DemoConfirmActionButton
-                        label={`Borrar servicio ${service.title}`}
-                        title="¿Borrar este servicio?"
-                        description="Se eliminará de Servicios y, si nació desde una reserva web, también se retirará esa solicitud y su lead vinculado."
+                        label={`Delete service ${service.title}`}
+                        title="Delete this service?"
+                        description="It will be removed from Services. If created from a web booking, that request and its linked lead will also be removed."
                         onConfirm={() => deleteService(service.id)}
                       >
                         <Trash2 className="size-4" />
@@ -629,7 +629,7 @@ export function DemoServicesTable() {
         </div>
         {visibleServices.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No hay servicios con este estado.
+            There are no services with this status.
           </p>
         ) : null}
       </CardContent>
@@ -643,20 +643,20 @@ export function DemoEmployeesTable() {
   return (
     <Card className="border-border/70 bg-card/85 shadow-sm">
       <CardHeader>
-        <CardTitle className="text-base">Equipo de campo</CardTitle>
+        <CardTitle className="text-base">Field team</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Empleado</TableHead>
-                <TableHead>Disponibilidad</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Servicios</TableHead>
+                <TableHead>Employee</TableHead>
+                <TableHead>Availability</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Services</TableHead>
                 <TableHead>Rendimiento</TableHead>
-                <TableHead className="text-right">Ingresos</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="text-right">Revenue</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -669,7 +669,7 @@ export function DemoEmployeesTable() {
                   <TableCell>{employee.availability}</TableCell>
                   <TableCell>
                     <NativeSelect
-                      label={`Estado de ${employee.name}`}
+                      label={`Status of ${employee.name}`}
                       value={employee.status}
                       options={employeeStatuses}
                       onChange={(status) => updateEmployeeStatus(employee.id, status)}
@@ -691,8 +691,8 @@ export function DemoEmployeesTable() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Editar empleado ${employee.name}`}
-                        title="Editar empleado"
+                        aria-label={`Edit employee ${employee.name}`}
+                        title="Edit employee"
                         onClick={() =>
                           openDialog("employee", {
                             availability: employee.availability,
@@ -707,9 +707,9 @@ export function DemoEmployeesTable() {
                         <Pencil className="size-4" />
                       </Button>
                       <DemoConfirmActionButton
-                        label={`Borrar empleado ${employee.name}`}
-                        title="¿Borrar este empleado?"
-                        description="Se retirará del equipo y cualquier servicio que se quede sin equipo volverá a pendiente."
+                        label={`Delete employee ${employee.name}`}
+                        title="Delete this employee?"
+                        description="They will be removed from the team and any service left without a team will return to pending."
                         onConfirm={() => deleteEmployee(employee.id)}
                       >
                         <Trash2 className="size-4" />
@@ -733,18 +733,18 @@ export function DemoInvoicesWorkspace() {
     <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base">Historial de facturas</CardTitle>
+          <CardTitle className="text-base">Invoice history</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Número</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Vencimiento</TableHead>
-                  <TableHead>IVA</TableHead>
+                  <TableHead>VAT</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
@@ -766,7 +766,7 @@ export function DemoInvoicesWorkspace() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Descargar PDF ${invoice.number}`}
+                        aria-label={`Download PDF ${invoice.number}`}
                         onClick={() =>
                           downloadDocument({
                             id: invoice.id,
@@ -789,7 +789,7 @@ export function DemoInvoicesWorkspace() {
 
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base">Presupuestos</CardTitle>
+          <CardTitle className="text-base">Quotes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {quotes.map((quote) => (
@@ -803,7 +803,7 @@ export function DemoInvoicesWorkspace() {
               </div>
               <div className="mt-3 flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">
-                  válido hasta {formatDate(quote.validUntil)}
+                  valid until {formatDate(quote.validUntil)}
                 </span>
                 <span className="font-medium">{formatCurrency(quote.total)}</span>
               </div>
@@ -851,7 +851,7 @@ export function DemoAutomationsWorkspace() {
       <div className="grid gap-4 lg:grid-cols-4">
         {automations.map((automation) => {
           const Icon = triggerIcons[automation.trigger as keyof typeof triggerIcons] ?? Bot;
-          const active = automation.status === "Activo";
+          const active = automation.status === "Active";
 
           return (
             <Card key={automation.id} className="border-border/70 bg-card/85">
@@ -867,16 +867,16 @@ export function DemoAutomationsWorkspace() {
                   <Switch
                     checked={active}
                     onCheckedChange={(checked) => toggleAutomation(automation.id, checked)}
-                    aria-label={`${active ? "Pausar" : "Activar"} ${automation.name}`}
+                    aria-label={`${active ? "Pause" : "Activate"} ${automation.name}`}
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-md border border-border/70 bg-background/50 p-3">
-                    <p className="text-muted-foreground">Envíos</p>
+                    <p className="text-muted-foreground">Sends</p>
                     <p className="mt-1 font-semibold">{automation.sent}</p>
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/50 p-3">
-                    <p className="text-muted-foreground">Conversión</p>
+                    <p className="text-muted-foreground">Conversion</p>
                     <p className="mt-1 font-semibold">{automation.conversion}</p>
                   </div>
                 </div>
@@ -895,11 +895,11 @@ export function DemoAutomationsWorkspace() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Disparador</TableHead>
                   <TableHead>Canal</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Conversión</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Conversion</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -934,26 +934,26 @@ export function DemoPortalWorkspace() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <FileText className="size-4 text-primary" />
-            Acceso cliente
+            Customer access
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <p className="text-sm text-muted-foreground">Cliente</p>
+            <p className="text-sm text-muted-foreground">Customer</p>
             <p className="text-xl font-semibold">Atrium Labs</p>
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-md border border-border/70 bg-background/50 p-3">
-              <p className="text-muted-foreground">Facturas</p>
+              <p className="text-muted-foreground">Invoices</p>
               <p className="mt-1 text-lg font-semibold">{invoices.length}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/50 p-3">
-              <p className="text-muted-foreground">Servicios</p>
+              <p className="text-muted-foreground">Services</p>
               <p className="mt-1 text-lg font-semibold">{services.length}</p>
             </div>
           </div>
           <div className="rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary">
-            {portalRequests.length} solicitudes registradas desde el portal.
+            {portalRequests.length} requests registered through the portal.
           </div>
         </CardContent>
       </Card>
@@ -961,7 +961,7 @@ export function DemoPortalWorkspace() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Servicios visibles</CardTitle>
+            <CardTitle className="text-base">Visible services</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {services.slice(0, 4).map((service) => (
@@ -978,7 +978,7 @@ export function DemoPortalWorkspace() {
 
         <Card className="border-border/70 bg-card/85 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Documentos</CardTitle>
+            <CardTitle className="text-base">Documents</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {invoices.map((invoice) => (
@@ -998,7 +998,7 @@ export function DemoPortalWorkspace() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`Descargar ${invoice.number}`}
+                  aria-label={`Download ${invoice.number}`}
                   onClick={() =>
                     downloadDocument({
                       id: invoice.id,
@@ -1018,7 +1018,7 @@ export function DemoPortalWorkspace() {
         {portalRequests.length > 0 ? (
           <Card className="border-border/70 bg-card/85 shadow-sm md:col-span-2">
             <CardHeader>
-              <CardTitle className="text-base">Solicitudes recientes</CardTitle>
+              <CardTitle className="text-base">Requests recientes</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
               {portalRequests.map((request) => {
@@ -1035,8 +1035,8 @@ export function DemoPortalWorkspace() {
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Editar solicitud ${request.title}`}
-                        title="Editar solicitud"
+                        aria-label={`Edit request ${request.title}`}
+                        title="Edit request"
                         onClick={() =>
                           openDialog("request", {
                             address: service?.address ?? "",
@@ -1058,9 +1058,9 @@ export function DemoPortalWorkspace() {
                         <Pencil className="size-4" />
                       </Button>
                       <DemoConfirmActionButton
-                        label={`Borrar solicitud ${request.title}`}
-                        title="¿Borrar esta solicitud?"
-                        description="Se eliminará la solicitud web y también su lead y servicio asociados si existen."
+                        label={`Delete request ${request.title}`}
+                        title="Delete this request?"
+                        description="The web request and any linked lead and service will be deleted."
                         onConfirm={() => deletePortalRequest(request.id)}
                       >
                         <Trash2 className="size-4" />
@@ -1078,7 +1078,7 @@ export function DemoPortalWorkspace() {
                       </p>
                       <p className="flex items-center gap-2 text-muted-foreground">
                         <CalendarCheck2 className="size-3.5" />
-                        Servicio en calendario y lead en CRM
+                        Service in calendar and lead in CRM
                       </p>
                     </div>
                   ) : null}
@@ -1103,7 +1103,7 @@ export function DemoCustomerNotes({ customerName }: { customerName: string }) {
     <div className="space-y-3">
       <Textarea
         ref={noteRef}
-        placeholder="Añadir nota comercial u operativa"
+        placeholder="Add a sales or operational note"
         className="min-h-28"
       />
       <Button
@@ -1116,7 +1116,7 @@ export function DemoCustomerNotes({ customerName }: { customerName: string }) {
         }}
       >
         <MessageSquareText className="size-4" />
-        Guardar nota
+        Save note
       </Button>
       {customerNotes.length > 0 ? (
         <div className="space-y-2">

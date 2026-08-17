@@ -33,7 +33,7 @@ function buildSegment(
     (total, customer) => total + customer.lifetimeValue,
     0
   );
-  const active = segmentCustomers.filter((customer) => customer.status === "Activo").length;
+  const active = segmentCustomers.filter((customer) => customer.status === "Active").length;
   const conversion =
     segmentCustomers.length > 0
       ? `${Math.round((active / segmentCustomers.length) * 100)} %`
@@ -60,32 +60,32 @@ export default function CrmPage() {
           customer.tags.includes("Premium") ||
           customer.tags.includes("B2B") ||
           customer.lifetimeValue >= 40000,
-        "Priorizar renovaciones y ampliaciones de contrato.",
-        "Cuentas con alto valor, oficinas y operaciones recurrentes."
+        "Prioritise contract renewals and expansions.",
+        "High-value accounts, offices, and recurring operations."
       ),
       buildSegment(
-        "Alta prioridad",
+        "High priority",
         customers,
-        (customer) => customer.risk !== "Bajo" || customer.status === "En seguimiento",
-        "Revisar seguimiento comercial y cobros pendientes.",
-        "Clientes con riesgo, oportunidades abiertas o trabajo pendiente."
+        (customer) => customer.risk !== "Low" || customer.status === "Follow-up",
+        "Review sales follow-up and outstanding payments.",
+        "Customers with risk, open opportunities, or pending work."
       ),
       buildSegment(
-        "Comunidades",
+        "Communityes",
         customers,
         (customer) =>
-          customer.type === "Comunidad" ||
-          customer.tags.includes("Comunidad") ||
-          customer.name.toLowerCase().includes("residencial"),
-        "Ofrecer cristales, garaje y mantenimiento estacional.",
-        "Administradores de fincas y servicios mensuales."
+          customer.type === "Community" ||
+          customer.tags.includes("Community") ||
+          customer.name.toLowerCase().includes("residential"),
+        "Offer window cleaning, garage cleaning, and seasonal maintenance.",
+        "Property managers and monthly services."
       ),
       buildSegment(
-        "Solicitudes web",
+        "Web requests",
         customers,
-        (customer) => customer.tags.includes("Reserva web"),
-        "Confirmar disponibilidad y convertir en cliente recurrente.",
-        "Clientes creados o actualizados desde el formulario público."
+        (customer) => customer.tags.includes("Web booking"),
+        "Confirm availability and convert into a recurring customer.",
+        "Customers created or updated through the public form."
       ),
     ],
     [customers]
@@ -95,17 +95,17 @@ export default function CrmPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Ventas y relación cliente</p>
-          <h1 className="mt-1 text-3xl font-semibold">CRM comercial</h1>
+          <p className="text-sm text-muted-foreground">Sales and customer relationships</p>
+          <h1 className="mt-1 text-3xl font-semibold">Sales CRM</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <DemoActionButton action="filters" variant="outline">
             <Filter className="size-4" />
-            Filtros
+            Filters
           </DemoActionButton>
           <DemoActionButton action="new-lead">
             <Plus className="size-4" />
-            Nuevo lead
+            New lead
           </DemoActionButton>
         </div>
       </div>
@@ -113,8 +113,8 @@ export default function CrmPage() {
       <Tabs defaultValue="pipeline" className="space-y-4">
         <TabsList>
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-          <TabsTrigger value="customers">Clientes</TabsTrigger>
-          <TabsTrigger value="segments">Segmentos</TabsTrigger>
+          <TabsTrigger value="customers">Customers</TabsTrigger>
+          <TabsTrigger value="segments">Segments</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pipeline" className="space-y-4">
@@ -124,9 +124,9 @@ export default function CrmPage() {
         <TabsContent value="customers">
           <Card className="border-border/70 bg-card/85 shadow-sm">
             <CardHeader className="gap-4 md:flex-row md:items-center md:justify-between">
-              <CardTitle className="text-base">Base de clientes</CardTitle>
+              <CardTitle className="text-base">Customer database</CardTitle>
               <Input
-                placeholder="Buscar por nombre, ciudad, etiqueta..."
+                placeholder="Search by name, city, or tag..."
                 className="max-w-sm"
               />
             </CardHeader>
@@ -135,12 +135,12 @@ export default function CrmPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Estado</TableHead>
-                      <TableHead>Etiquetas</TableHead>
-                      <TableHead>Próximo servicio</TableHead>
-                      <TableHead className="text-right">Valor</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Tags</TableHead>
+                      <TableHead>Next service</TableHead>
+                      <TableHead className="text-right">Value</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -171,7 +171,7 @@ export default function CrmPage() {
                           </div>
                         </TableCell>
                       <TableCell>
-                        {customer.nextService ? formatDate(customer.nextService) : "Pendiente"}
+                        {customer.nextService ? formatDate(customer.nextService) : "Pending"}
                       </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatCurrency(customer.lifetimeValue)}
@@ -202,16 +202,16 @@ export default function CrmPage() {
                   <p className="text-sm text-muted-foreground">{segment.description}</p>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md border border-border/70 bg-background/50 p-3">
-                      <p className="text-muted-foreground">Clientes</p>
+                      <p className="text-muted-foreground">Customers</p>
                       <p className="mt-1 font-semibold">{segment.count}</p>
                     </div>
                     <div className="rounded-md border border-border/70 bg-background/50 p-3">
-                      <p className="text-muted-foreground">Conversión</p>
+                      <p className="text-muted-foreground">Conversion</p>
                       <p className="mt-1 font-semibold">{segment.conversion}</p>
                     </div>
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/50 p-3 text-sm">
-                    <p className="text-muted-foreground">Valor estimado</p>
+                    <p className="text-muted-foreground">Estimated value</p>
                     <p className="mt-1 font-semibold">{formatCurrency(segment.revenue)}</p>
                   </div>
                   <div className="rounded-md border border-primary/20 bg-primary/10 p-3 text-sm text-primary">

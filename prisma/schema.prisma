@@ -133,6 +133,74 @@ enum AutomationTrigger {
   FAILED_PAYMENT
 }
 
+enum PlannedShiftStatus {
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  UNCOVERED
+  COVERED
+  CANCELLED
+}
+
+enum ClockEventType {
+  CLOCK_IN
+  BREAK_START
+  BREAK_END
+  CLOCK_OUT
+}
+
+enum ClockMethod {
+  MOBILE
+  QR
+  PIN
+  NFC
+  KIOSK
+  MANUAL
+}
+
+enum AttendanceIncidentType {
+  MISSING_CLOCK_IN
+  LATE
+  INCOMPLETE_CLOCK
+  OUTSIDE_LOCATION
+}
+
+enum AttendanceIncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+enum TimeCorrectionStatus {
+  PENDING
+  APPROVED
+  DISPUTED
+  REJECTED
+}
+
+enum CoverageDecisionType {
+  RECOMMENDATION_ACCEPTED
+  MANUAL_OVERRIDE
+  AUTO_ASSIGNED
+}
+
+enum CommunicationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum CommunicationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 model Company {
   id                   String             @id @default(uuid())
   name                 String
@@ -153,22 +221,33 @@ model Company {
   stripeCustomerId     String?            @unique
   stripeSubscriptionId String?            @unique
   trialEndsAt          DateTime?
+  timezone             String             @default("Europe/Madrid")
+  clockRetentionYears  Int                @default(4)
+  crmEnabled           Boolean            @default(false)
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
-  users       User[]
-  employees   Employee[]
-  customers   Customer[]
-  leads       Lead[]
-  services    Service[]
-  quotes      Quote[]
-  invoices    Invoice[]
-  payments    Payment[]
-  automations AutomationRule[]
-  bookingRequests BookingRequest[]
-  assignmentDecisions AssignmentDecision[]
-  integrations Integration[]
-  auditLogs   AuditLog[]
+  users                  User[]
+  employees              Employee[]
+  customers              Customer[]
+  leads                  Lead[]
+  services               Service[]
+  quotes                 Quote[]
+  invoices               Invoice[]
+  payments               Payment[]
+  automations            AutomationRule[]
+  bookingRequests        BookingRequest[]
+  assignmentDecisions    AssignmentDecision[]
+  integrations           Integration[]
+  auditLogs              AuditLog[]
+  worksites              Worksite[]
+  plannedShifts          PlannedShift[]
+  clockEvents            ClockEvent[]
+  attendanceIncidents    AttendanceIncident[]
+  timeCorrections        TimeCorrectionRequest[]
+  inspectionAccessGrants InspectionAccessGrant[]
+  coverageDecisions      CoverageDecision[]
+  communicationOutbox    CommunicationOutbox[]
 
   @@index([subscriptionStatus])
   @@index([plan])
@@ -188,71 +267,82 @@ model User {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  company         Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employeeProfile Employee?
-  assignedLeads   Lead[]         @relation("LeadOwner")
-  auditLogs       AuditLog[]
+  company                 Company?                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeProfile         Employee?
+  assignedLeads           Lead[]                  @relation("LeadOwner")
+  auditLogs               AuditLog[]
+  coverageDecisions       CoverageDecision[]      @relation("CoverageDecisionActor")
+  reviewedTimeCorrections TimeCorrectionRequest[] @relation("TimeCorrectionReviewer")
 
   @@index([companyId, role])
 }
 
 model Employee {
-  id               String   @id @default(uuid())
-  companyId        String
-  userId           String   @unique
-  position         String?
-  fieldStatus      EmployeeFieldStatus @default(AVAILABLE)
-  hourlyRate       Decimal? @db.Decimal(10, 2)
-  availability     Json?
-  performanceScore Int      @default(0)
-  internalNotes    String?
-  skills           String[] @default([])
-  zones            String[] @default([])
-  preferredServiceTypes String[] @default([])
-  maxJobsPerDay    Int?
-  maxHoursPerDay   Int?
-  incidentRate     Decimal  @default(0) @db.Decimal(5, 2)
-  hiredAt          DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                    String              @id @default(uuid())
+  companyId             String
+  userId                String              @unique
+  position              String?
+  fieldStatus           EmployeeFieldStatus @default(AVAILABLE)
+  hourlyRate            Decimal?            @db.Decimal(10, 2)
+  availability          Json?
+  performanceScore      Int                 @default(0)
+  internalNotes         String?
+  skills                String[]            @default([])
+  zones                 String[]            @default([])
+  preferredServiceTypes String[]            @default([])
+  maxJobsPerDay         Int?
+  maxHoursPerDay        Int?
+  incidentRate          Decimal             @default(0) @db.Decimal(5, 2)
+  hiredAt               DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jobs      ServiceAssignment[]
-  assignedBookingRequests BookingRequest[] @relation("BookingAssignedEmployee")
-  suggestedBookingRequests BookingRequest[] @relation("BookingSuggestedEmployee")
-  recommendedDecisions AssignmentDecision[] @relation("AssignmentRecommendedEmployee")
-  selectedDecisions AssignmentDecision[] @relation("AssignmentSelectedEmployee")
+  company                      Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs                         ServiceAssignment[]
+  assignedBookingRequests      BookingRequest[]        @relation("BookingAssignedEmployee")
+  suggestedBookingRequests     BookingRequest[]        @relation("BookingSuggestedEmployee")
+  recommendedDecisions         AssignmentDecision[]    @relation("AssignmentRecommendedEmployee")
+  selectedDecisions            AssignmentDecision[]    @relation("AssignmentSelectedEmployee")
+  plannedShifts                PlannedShift[]
+  clockEvents                  ClockEvent[]
+  attendanceIncidents          AttendanceIncident[]    @relation("IncidentEmployee")
+  recommendedIncidents         AttendanceIncident[]    @relation("IncidentRecommendedEmployee")
+  timeCorrections              TimeCorrectionRequest[]
+  recommendedCoverageDecisions CoverageDecision[]      @relation("CoverageRecommendedEmployee")
+  selectedCoverageDecisions    CoverageDecision[]      @relation("CoverageSelectedEmployee")
+  communications               CommunicationOutbox[]
 
   @@index([companyId])
   @@index([companyId, fieldStatus])
 }
 
 model Customer {
-  id           String         @id @default(uuid())
-  companyId    String
-  name         String
-  type         CustomerType   @default(BUSINESS)
-  status       CustomerStatus @default(ACTIVE)
-  email        String?
-  phone        String?
-  nif          String?
-  address      String?
-  city         String?
-  province     String?
-  postalCode   String?
-  tags         String[]       @default([])
-  notes        String?
-  lifetimeValue Decimal       @default(0) @db.Decimal(12, 2)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id            String         @id @default(uuid())
+  companyId     String
+  name          String
+  type          CustomerType   @default(BUSINESS)
+  status        CustomerStatus @default(ACTIVE)
+  email         String?
+  phone         String?
+  nif           String?
+  address       String?
+  city          String?
+  province      String?
+  postalCode    String?
+  tags          String[]       @default([])
+  notes         String?
+  lifetimeValue Decimal        @default(0) @db.Decimal(12, 2)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  services Service[]
-  quotes   Quote[]
-  invoices Invoice[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  services        Service[]
+  quotes          Quote[]
+  invoices        Invoice[]
   bookingRequests BookingRequest[]
-  notesLog CustomerNote[]
+  notesLog        CustomerNote[]
+  worksites       Worksite[]
 
   @@index([companyId, status])
   @@index([companyId, type])
@@ -269,25 +359,25 @@ model CustomerNote {
 }
 
 model Lead {
-  id            String     @id @default(uuid())
-  companyId     String
-  assignedToId  String?
-  name          String
-  companyName   String?
-  email         String?
-  phone         String?
-  source        String?
-  status        LeadStatus @default(NEW)
-  estimatedValue Decimal   @default(0) @db.Decimal(12, 2)
-  probability   Int        @default(10)
-  nextFollowUp  DateTime?
-  tags          String[]   @default([])
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id             String     @id @default(uuid())
+  companyId      String
+  assignedToId   String?
+  name           String
+  companyName    String?
+  email          String?
+  phone          String?
+  source         String?
+  status         LeadStatus @default(NEW)
+  estimatedValue Decimal    @default(0) @db.Decimal(12, 2)
+  probability    Int        @default(10)
+  nextFollowUp   DateTime?
+  tags           String[]   @default([])
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  assignedTo User?      @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
-  notes      LeadNote[]
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedTo      User?            @relation("LeadOwner", fields: [assignedToId], references: [id], onDelete: SetNull)
+  notes           LeadNote[]
   bookingRequests BookingRequest[]
 
   @@index([companyId, status])
@@ -324,13 +414,14 @@ model Service {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  company      Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer     Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  sourceQuote  Quote?              @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
-  assignments  ServiceAssignment[]
-  bookingRequest BookingRequest?
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sourceQuote         Quote?               @relation(fields: [sourceQuoteId], references: [id], onDelete: SetNull)
+  assignments         ServiceAssignment[]
+  bookingRequest      BookingRequest?
   assignmentDecisions AssignmentDecision[]
-  invoiceItems InvoiceItem[]
+  invoiceItems        InvoiceItem[]
+  plannedShifts       PlannedShift[]
 
   @@index([companyId, status])
   @@index([customerId])
@@ -362,12 +453,12 @@ model BookingRequest {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
-  company           Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  lead              Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  service           Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  assignedEmployee  Employee?            @relation("BookingAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
-  suggestedEmployee Employee?            @relation("BookingSuggestedEmployee", fields: [suggestedEmployeeId], references: [id], onDelete: SetNull)
+  company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer            Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead                Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  service             Service?             @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  assignedEmployee    Employee?            @relation("BookingAssignedEmployee", fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  suggestedEmployee   Employee?            @relation("BookingSuggestedEmployee", fields: [suggestedEmployeeId], references: [id], onDelete: SetNull)
   assignmentDecisions AssignmentDecision[]
 
   @@index([companyId, status])
@@ -421,19 +512,238 @@ model ServiceAssignment {
   @@unique([serviceId, employeeId])
 }
 
+model Worksite {
+  id               String   @id @default(uuid())
+  companyId        String
+  customerId       String?
+  name             String
+  address          String
+  city             String
+  province         String?
+  postalCode       String?
+  latitude         Decimal? @db.Decimal(10, 7)
+  longitude        Decimal? @db.Decimal(10, 7)
+  radiusMeters     Int      @default(100)
+  timezone         String   @default("Europe/Madrid")
+  verificationMode String   @default("QR_LOCATION")
+  qrSecretHash     String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer    Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  shifts      PlannedShift[]
+  clockEvents ClockEvent[]
+  incidents   AttendanceIncident[]
+
+  @@index([companyId, isActive])
+  @@index([companyId, city])
+  @@index([customerId])
+}
+
+model PlannedShift {
+  id                 String             @id @default(uuid())
+  companyId          String
+  worksiteId         String
+  employeeId         String?
+  serviceId          String?
+  title              String
+  scheduledStart     DateTime
+  scheduledEnd       DateTime
+  status             PlannedShiftStatus @default(PLANNED)
+  requiredSkills     String[]           @default([])
+  gracePeriodMinutes Int                @default(5)
+  coverageNotes      String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  company           Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  worksite          Worksite              @relation(fields: [worksiteId], references: [id], onDelete: Restrict)
+  employee          Employee?             @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  service           Service?              @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  clockEvents       ClockEvent[]
+  incidents         AttendanceIncident[]
+  coverageDecisions CoverageDecision[]
+  communications    CommunicationOutbox[]
+
+  @@index([companyId, scheduledStart])
+  @@index([companyId, status])
+  @@index([worksiteId, scheduledStart])
+  @@index([employeeId, scheduledStart])
+  @@index([serviceId])
+}
+
+model ClockEvent {
+  id                String         @id @default(uuid())
+  companyId         String
+  shiftId           String
+  employeeId        String
+  worksiteId        String
+  type              ClockEventType
+  method            ClockMethod
+  occurredAt        DateTime
+  recordedAt        DateTime       @default(now())
+  latitude          Decimal?       @db.Decimal(10, 7)
+  longitude         Decimal?       @db.Decimal(10, 7)
+  accuracyMeters    Decimal?       @db.Decimal(8, 2)
+  locationVerified  Boolean        @default(false)
+  isOffline         Boolean        @default(false)
+  deviceId          String?
+  idempotencyKey    String
+  previousEventHash String?
+  integrityHash     String?        @unique
+  createdAt         DateTime       @default(now())
+
+  company     Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift       PlannedShift            @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  employee    Employee                @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  worksite    Worksite                @relation(fields: [worksiteId], references: [id], onDelete: Restrict)
+  corrections TimeCorrectionRequest[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, occurredAt])
+  @@index([shiftId, occurredAt])
+  @@index([employeeId, occurredAt])
+  @@index([worksiteId, occurredAt])
+}
+
+model AttendanceIncident {
+  id                    String                   @id @default(uuid())
+  companyId             String
+  shiftId               String
+  employeeId            String?
+  recommendedEmployeeId String?
+  worksiteId            String
+  type                  AttendanceIncidentType
+  status                AttendanceIncidentStatus @default(OPEN)
+  title                 String
+  detail                String?
+  detectedAt            DateTime                 @default(now())
+  acknowledgedAt        DateTime?
+  resolvedAt            DateTime?
+  resolutionNotes       String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  company             Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift               PlannedShift       @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  employee            Employee?          @relation("IncidentEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  recommendedEmployee Employee?          @relation("IncidentRecommendedEmployee", fields: [recommendedEmployeeId], references: [id], onDelete: SetNull)
+  worksite            Worksite           @relation(fields: [worksiteId], references: [id], onDelete: Restrict)
+  coverageDecisions   CoverageDecision[]
+
+  @@index([companyId, status, detectedAt])
+  @@index([shiftId])
+  @@index([employeeId, detectedAt])
+  @@index([recommendedEmployeeId, detectedAt])
+  @@index([worksiteId, detectedAt])
+}
+
+model TimeCorrectionRequest {
+  id                     String               @id @default(uuid())
+  companyId              String
+  clockEventId           String
+  employeeId             String
+  reviewedByUserId       String?
+  proposedOccurredAt     DateTime
+  reason                 String
+  status                 TimeCorrectionStatus @default(PENDING)
+  employeeAcknowledgedAt DateTime?
+  companyReviewedAt      DateTime?
+  disagreementReason     String?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clockEvent ClockEvent @relation(fields: [clockEventId], references: [id], onDelete: Restrict)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  reviewedBy User?      @relation("TimeCorrectionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, createdAt])
+  @@index([clockEventId])
+  @@index([employeeId, createdAt])
+  @@index([reviewedByUserId, createdAt])
+}
+
+model CoverageDecision {
+  id                    String               @id @default(uuid())
+  companyId             String
+  shiftId               String
+  incidentId            String
+  recommendedEmployeeId String?
+  selectedEmployeeId    String
+  actorUserId           String?
+  type                  CoverageDecisionType
+  score                 Int?
+  reasons               String[]             @default([])
+  overrideReason        String?
+  createdAt             DateTime             @default(now())
+
+  company             Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift               PlannedShift       @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  incident            AttendanceIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  recommendedEmployee Employee?          @relation("CoverageRecommendedEmployee", fields: [recommendedEmployeeId], references: [id], onDelete: SetNull)
+  selectedEmployee    Employee           @relation("CoverageSelectedEmployee", fields: [selectedEmployeeId], references: [id], onDelete: Restrict)
+  actor               User?              @relation("CoverageDecisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([shiftId, createdAt])
+  @@index([incidentId, createdAt])
+  @@index([selectedEmployeeId, createdAt])
+}
+
+model CommunicationOutbox {
+  id                  String               @id @default(uuid())
+  companyId           String
+  shiftId             String?
+  recipientEmployeeId String?
+  channel             CommunicationChannel @default(IN_APP)
+  template            String
+  payload             Json
+  status              CommunicationStatus  @default(PENDING)
+  attempts            Int                  @default(0)
+  nextAttemptAt       DateTime             @default(now())
+  sentAt              DateTime?
+  lastError           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift             PlannedShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  recipientEmployee Employee?     @relation(fields: [recipientEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, nextAttemptAt])
+  @@index([shiftId, createdAt])
+  @@index([recipientEmployeeId, createdAt])
+}
+
+model InspectionAccessGrant {
+  id         String    @id @default(uuid())
+  companyId  String
+  tokenHash  String    @unique
+  validUntil DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, validUntil])
+}
+
 model Quote {
-  id          String      @id @default(uuid())
-  companyId   String
-  customerId  String
-  number      String
-  status      QuoteStatus @default(DRAFT)
-  validUntil  DateTime?
-  subtotal    Decimal     @default(0) @db.Decimal(12, 2)
-  vatAmount   Decimal     @default(0) @db.Decimal(12, 2)
-  total       Decimal     @default(0) @db.Decimal(12, 2)
-  notes       String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id         String      @id @default(uuid())
+  companyId  String
+  customerId String
+  number     String
+  status     QuoteStatus @default(DRAFT)
+  validUntil DateTime?
+  subtotal   Decimal     @default(0) @db.Decimal(12, 2)
+  vatAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  total      Decimal     @default(0) @db.Decimal(12, 2)
+  notes      String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
   company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customer         Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -489,7 +799,7 @@ model InvoiceItem {
   unitPrice   Decimal @db.Decimal(12, 2)
   vatRate     Decimal @default(21) @db.Decimal(5, 2)
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 }
 
@@ -513,16 +823,16 @@ model Payment {
 }
 
 model AutomationRule {
-  id          String            @id @default(uuid())
-  companyId   String
-  name        String
-  trigger     AutomationTrigger
-  channel     String            @default("email")
-  delayHours  Int               @default(0)
-  isActive    Boolean           @default(true)
-  template    String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id         String            @id @default(uuid())
+  companyId  String
+  name       String
+  trigger    AutomationTrigger
+  channel    String            @default("email")
+  delayHours Int               @default(0)
+  isActive   Boolean           @default(true)
+  template   String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -530,10 +840,10 @@ model AutomationRule {
 }
 
 model Integration {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   companyId   String
   provider    String
-  status      String   @default("ready")
+  status      String    @default("ready")
   config      Json?
   connectedAt DateTime?
 

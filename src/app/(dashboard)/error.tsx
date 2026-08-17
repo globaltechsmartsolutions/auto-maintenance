@@ -15,12 +15,12 @@ export default function DashboardError({
         <div className="mx-auto flex size-11 items-center justify-center rounded-lg border border-destructive/30 bg-destructive/10 text-destructive">
           <AlertTriangle className="size-5" />
         </div>
-        <h2 className="mt-4 text-2xl font-semibold">Algo ha fallado</h2>
+        <h2 className="mt-4 text-2xl font-semibold">Something went wrong</h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          Reintenta la carga o revisa la configuración del entorno.
+          Retry loading or review the environment configuration.
         </p>
         <Button onClick={reset} className="mt-6">
-          Reintentar
+          Retry
         </Button>
       </div>
     </div>

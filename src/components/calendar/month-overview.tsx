@@ -4,7 +4,7 @@ import { CalendarClock } from "lucide-react";
 import { useDemo, type DemoService } from "@/components/demo/demo-provider";
 import { Badge } from "@/components/ui/badge";
 
-const weekDays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type MonthEvent = {
   id: string;
@@ -15,7 +15,7 @@ type MonthEvent = {
 };
 
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("es-ES", {
+  return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
@@ -54,13 +54,13 @@ export function MonthOverview() {
       <div className="min-w-[760px] space-y-3">
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/45 p-3">
           <div>
-            <p className="text-sm font-medium">Junio 2026</p>
+            <p className="text-sm font-medium">June 2026</p>
             <p className="text-xs text-muted-foreground">
-              Vista mensual de carga operativa y visitas programadas.
+              Monthly view of operational workload and scheduled visits.
             </p>
           </div>
           <Badge variant="secondary" className="rounded-md">
-            {totalVisits} visitas
+            {totalVisits} visits
           </Badge>
         </div>
 

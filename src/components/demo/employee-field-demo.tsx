@@ -38,12 +38,12 @@ export function EmployeeFieldDemo() {
     assignedServices.length > 0 ? assignedServices : services.slice(0, 3);
 
   function reportIncident(customer: string) {
-    notify("Incidencia registrada", `${customer}: queda pendiente de revisión.`);
+    notify("Incident logged", `${customer}: awaiting review.`);
   }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <h1 className="sr-only">Área empleado</h1>
+      <h1 className="sr-only">Employee area</h1>
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <Link href="/employees" className="flex items-center gap-3">
@@ -52,17 +52,17 @@ export function EmployeeFieldDemo() {
             </span>
             <span>
               <span className="block text-sm font-semibold leading-none">
-                Área empleado
+                Employee area
               </span>
               <span className="mt-1 block text-xs text-muted-foreground">
-                Limpiezas Demo SL
+                CleanWorks Demo Ltd
               </span>
             </span>
           </Link>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
               <Link href="/services">
-                Servicios
+                Services
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
@@ -82,7 +82,7 @@ export function EmployeeFieldDemo() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                <StatusBadge status={employee?.status ?? "Disponible"} />
+                <StatusBadge status={employee?.status ?? "Available"} />
                 <Badge variant="secondary" className="rounded-md">
                   {employee?.role ?? "Operario/a"}
                 </Badge>
@@ -90,16 +90,16 @@ export function EmployeeFieldDemo() {
               <div className="grid gap-3 text-sm text-muted-foreground">
                 <p className="flex items-center gap-2">
                   <Clock3 className="size-4" />
-                  {employee?.availability ?? "L-V 08:00-16:00"}
+                  {employee?.availability ?? "Mon-Fri 08:00-16:00"}
                 </p>
                 <p className="flex items-center gap-2">
                   <BriefcaseBusiness className="size-4" />
-                  {employee?.jobs ?? 0} servicios este mes
+                  {employee?.jobs ?? 0} services this month
                 </p>
               </div>
               <div>
                 <div className="mb-2 flex items-center justify-between text-sm">
-                  <span>Rendimiento</span>
+                  <span>Performance</span>
                   <span className="font-medium">{employee?.score ?? 92}/100</span>
                 </div>
                 <Progress value={employee?.score ?? 92} />
@@ -111,22 +111,22 @@ export function EmployeeFieldDemo() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <CalendarClock className="size-4 text-primary" />
-                Jornada de hoy
+                Today&apos;s workday
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
               <div className="rounded-md border border-border/70 bg-background/45 p-3">
-                <p className="text-xs text-muted-foreground">Asignados</p>
+                <p className="text-xs text-muted-foreground">Assigned</p>
                 <p className="mt-1 text-2xl font-semibold">{visibleServices.length}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/45 p-3">
-                <p className="text-xs text-muted-foreground">Completados</p>
+                <p className="text-xs text-muted-foreground">Completed</p>
                 <p className="mt-1 text-2xl font-semibold">
-                  {visibleServices.filter((service) => service.status === "Completado").length}
+                  {visibleServices.filter((service) => service.status === "Completed").length}
                 </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/45 p-3">
-                <p className="text-xs text-muted-foreground">Importe</p>
+                <p className="text-xs text-muted-foreground">Amount</p>
                 <p className="mt-1 text-2xl font-semibold">
                   {formatCurrency(
                     visibleServices.reduce((total, service) => total + service.price, 0)
@@ -169,18 +169,18 @@ export function EmployeeFieldDemo() {
                     type="button"
                     variant="outline"
                     className="gap-2"
-                    onClick={() => updateServiceStatus(service.id, "En curso")}
+                    onClick={() => updateServiceStatus(service.id, "In progress")}
                   >
                     <Play className="size-4" />
-                    Iniciar
+                    Start
                   </Button>
                   <Button
                     type="button"
                     className="gap-2"
-                    onClick={() => updateServiceStatus(service.id, "Completado")}
+                    onClick={() => updateServiceStatus(service.id, "Completed")}
                   >
                     <CheckCircle2 className="size-4" />
-                    Completar
+                    Complete
                   </Button>
                   <Button
                     type="button"
@@ -189,7 +189,7 @@ export function EmployeeFieldDemo() {
                     onClick={() => reportIncident(service.customer)}
                   >
                     <CircleAlert className="size-4" />
-                    Incidencia
+                    Incident
                   </Button>
                 </div>
               </CardContent>

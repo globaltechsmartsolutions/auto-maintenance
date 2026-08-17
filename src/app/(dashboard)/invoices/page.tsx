@@ -9,17 +9,17 @@ export default function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Presupuestos, IVA y PDF</p>
-          <h1 className="mt-1 text-3xl font-semibold">Facturación</h1>
+          <p className="text-sm text-muted-foreground">Quotes, VAT, and PDF files</p>
+          <h1 className="mt-1 text-3xl font-semibold">Billing</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <DemoActionButton action="new-quote" variant="outline">
             <FilePlus2 className="size-4" />
-            Presupuesto
+            Quote
           </DemoActionButton>
           <DemoActionButton action="new-invoice">
             <ReceiptText className="size-4" />
-            Factura
+            Invoice
           </DemoActionButton>
         </div>
       </div>

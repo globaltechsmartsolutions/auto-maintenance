@@ -1,51 +1,60 @@
-# LimpiaPro CRM
+# WIAControl
 
-Plataforma SaaS CRM para empresas de limpieza en España. Está construida con
-Next.js 15, TypeScript, Tailwind CSS, shadcn/ui, Supabase, PostgreSQL, Prisma ORM
-y Stripe Subscriptions.
+WIAControl is a multi-tenant SaaS operations platform for service businesses.
+Its core connects worksites, planned shifts, time tracking, incidents, and
+staffing replacements. The CRM remains an optional secondary sales module.
 
-## Módulos
+The application is built with Next.js 15, TypeScript, Tailwind CSS, shadcn/ui,
+Supabase, PostgreSQL, Prisma ORM, and Stripe Subscriptions.
 
-- Autenticación con Supabase: login, registro, recuperación y roles.
-- Dashboard ejecutivo: ingresos, servicios, clientes, leads, facturas y equipo.
-- CRM: pipeline, clientes, perfiles, historial, notas, etiquetas y seguimiento.
-- Servicios: recurrentes, puntuales, estados y asignación de empleados.
-- Calendario: vistas semana/mes y tablero drag and drop.
-- Empleados: disponibilidad, trabajos asignados, métricas y notas internas.
-- Presupuestos y facturas: IVA español, historial y descarga PDF preparada.
-- Pagos: Stripe Checkout, Billing Portal, historial y alertas de pago fallido.
-- Automatizaciones: recordatorios, confirmaciones, follow-up y reseñas.
-- Portal cliente: servicios, facturas, solicitudes y documentos.
-- Panel SaaS: empresas, suscripciones, MRR, churn, usuarios y analítica.
+## Modules
 
-## Estructura
+- Operations coverage: daily shifts, critical gaps, and live status.
+- Assisted replacements: recommends the best available employee and records
+  the coordinator's final decision.
+- Time tracking: clock-in, clock-out, breaks, method, and worksite.
+- Incidents and corrections: retains the original record and stores every
+  review and resolution separately.
+- Employee area: mobile clocking with point-in-time verification and no
+  continuous tracking.
+- Worksites and shifts: creation, editing, archiving, daily/weekly planning,
+  and overlap checks.
+- Authentication with Supabase: sign-in, registration, password recovery, and roles.
+- Business overview: revenue, services, customers, leads, invoices, and team.
+- Optional CRM: pipeline, profiles, history, notes, and follow-up.
+- Services: recurring and one-time work, statuses, and employee assignment.
+- Calendar: week/month views and drag-and-drop scheduling.
+- Payments: Stripe Checkout, Billing Portal, and failed-payment alerts.
+- Automations: reminders, confirmations, follow-up, and review requests.
+- Customer portal: services, invoices, requests, and documents.
+
+## Project structure
 
 ```text
 src/app
-  (auth)              Flujos de acceso
-  (dashboard)         Plataforma interna
+  (auth)              Authentication flows
+  (dashboard)         Internal platform
   api                 Route handlers
+  booking             Public booking experience
+  employee            Mobile employee experience
 src/components
-  auth                Formularios de autenticación
-  calendar            Agenda drag and drop
-  crm                 Pipeline comercial
-  dashboard           KPIs y gráficos
-  layout              Shell SaaS responsive
-  payments            Acciones Stripe
-  shared              Componentes comunes
+  calendar            Drag-and-drop scheduling
+  control             Coverage, time tracking, and employee experience
+  crm                 Sales pipeline
+  dashboard           KPIs and charts
+  layout              Responsive SaaS shell
+  payments            Stripe actions
 src/lib
-  auth                Roles y permisos
-  supabase            Clientes Supabase
-  prisma.ts           Prisma con adapter pg
-  stripe.ts           Stripe lazy singleton
-prisma/schema.prisma  Modelo PostgreSQL multiempresa
-prisma.config.ts      Configuración Prisma 7
+  auth                Roles and permissions
+  assignment          Explainable assignment engine
+  supabase            Supabase clients
+  wia-control         Domain and transactional services
+prisma/schema.prisma  Multi-tenant PostgreSQL model
 ```
 
-## Arranque local
+## Local development
 
-Para demo local sin servicios externos ya existe `.env.local` con
-`NEXT_PUBLIC_DEMO_MODE=true`.
+The repository supports a local demo through `NEXT_PUBLIC_DEMO_MODE=true`.
 
 ```bash
 npm install
@@ -53,28 +62,47 @@ npm run prisma:generate
 npm run dev
 ```
 
-La app queda disponible en `http://localhost:3000`.
+The application is available at `http://localhost:3000`.
 
-Guía específica de demo: `docs/DEMO_LOCAL.md`.
+Public routes:
 
-## Base de datos
+- `/employee` — employee clocking experience.
+- `/booking` — public service booking form.
+- `/portal` — customer portal.
 
-Configura `DATABASE_URL` con una instancia PostgreSQL de Supabase. Después:
+Internal routes:
+
+- `/control` — live operations coverage.
+- `/worksites` — worksite management.
+- `/shifts` — shift planning.
+- `/time-tracking` — clock events, incidents, and corrections.
+- `/settings` — company policies and optional modules.
+
+The implementation roadmap is available in
+[`docs/WIACONTROL_PRODUCT_ROADMAP.md`](docs/WIACONTROL_PRODUCT_ROADMAP.md).
+
+## Database
+
+Configure `DATABASE_URL` with a PostgreSQL instance, then run:
 
 ```bash
-npm run db:push
-npm run db:studio
+npm run db:migrate:deploy
+npm run db:seed
 ```
 
-El esquema incluye empresas, usuarios, roles, clientes, leads, servicios,
-empleados, presupuestos, facturas, pagos, automatizaciones, integraciones y
-auditoría.
+The schema includes companies, users, roles, worksites, shifts, clock events,
+incidents, corrections, customers, services, CRM, billing, automations,
+communication outbox, and audit history. Clock events are append-only.
 
-## Variables
+## Environment variables
 
 ```text
 DATABASE_URL
 NEXT_PUBLIC_APP_URL
+NEXT_PUBLIC_DEMO_MODE
+DEMO_MODE
+DEMO_ROLE
+NEXT_PUBLIC_CRM_ENABLED
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
@@ -86,19 +114,15 @@ STRIPE_PRICE_GROWTH
 STRIPE_PRICE_SCALE
 ```
 
-## Stripe
+## Quality checks
 
-Endpoints incluidos:
+Run the full verification before publishing:
 
-- `POST /api/stripe/checkout`
-- `POST /api/stripe/portal`
-- `POST /api/webhooks/stripe`
+```bash
+npm run quality
+npm run build
+npm audit --omit=dev
+```
 
-El webhook verifica firma con `STRIPE_WEBHOOK_SECRET` y actualiza el estado de
-suscripción de la empresa.
-
-## Despliegue
-
-El proyecto está preparado para Vercel. Añade las variables de entorno en el
-proyecto, conecta Supabase y Stripe, ejecuta `npm run prisma:generate` durante el
-build y despliega.
+The project is prepared for Vercel deployment with Supabase/PostgreSQL and
+Stripe connected through environment variables.

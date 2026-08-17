@@ -6,6 +6,12 @@ const authRoutes = ["/login", "/register", "/reset-password"];
 const protectedPrefixes = [
   "/",
   "/dashboard",
+  "/control",
+  "/worksites",
+  "/shifts",
+  "/settings",
+  "/profile",
+  "/time-tracking",
   "/crm",
   "/services",
   "/calendar",
@@ -14,6 +20,7 @@ const protectedPrefixes = [
   "/payments",
   "/automations",
   "/portal",
+  "/employee",
   "/admin",
 ];
 
@@ -26,7 +33,20 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (isDemoMode() || !supabaseUrl || !supabaseAnonKey) {
+  if (isDemoMode()) {
+    return response;
+  }
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const isProtectedRoute = protectedPrefixes.some((prefix) =>
+      prefix === "/" ? pathname === "/" : pathname.startsWith(prefix)
+    );
+    if (isProtectedRoute) {
+      return new NextResponse("Authentication service is not configured.", {
+        status: 503,
+        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
     return response;
   }
 
@@ -60,7 +80,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (authRoutes.includes(pathname) && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/control", request.url));
   }
 
   const isProtectedRoute = protectedPrefixes.some((prefix) =>

@@ -2,42 +2,63 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const statusStyles: Record<string, string> = {
-  Activo:
+  Active:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Disponible:
+  Available:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Pagada:
+  Paid:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Completado:
+  Completed:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Aceptada:
+  Accepted:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Ganado:
+  Won:
     "border-success/30 bg-success/10 text-success dark:bg-success/15 dark:text-success",
-  Programado: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
-  Nuevo: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
-  Cualificado: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
-  Pendiente:
+  Scheduled: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  New: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  Qualified: "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  Pending:
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
-  Presupuesto:
+  Quote:
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
-  Enviada:
+  Sent:
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
-  Borrador:
+  Draft:
     "border-muted-foreground/25 bg-muted text-muted-foreground",
-  "En curso": "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
-  "En seguimiento":
+  "In progress": "border-info/30 bg-info/10 text-info dark:bg-info/15 dark:text-info",
+  "Follow-up":
     "border-warning/30 bg-warning/15 text-warning dark:bg-warning/15 dark:text-warning",
-  Vencida:
+  Overdue:
     "border-destructive/35 bg-destructive/10 text-destructive dark:bg-destructive/15",
   "Past due":
     "border-destructive/35 bg-destructive/10 text-destructive dark:bg-destructive/15",
-  Pausado:
+  Paused:
     "border-muted-foreground/25 bg-muted text-muted-foreground",
-  Cancelado:
+  Cancelled:
     "border-muted-foreground/25 bg-muted text-muted-foreground",
   Trial:
     "border-accent/40 bg-accent/30 text-accent-foreground dark:text-foreground",
+};
+
+const statusLabels: Record<string, string> = {
+  Active: "Active",
+  Available: "Available",
+  Paid: "Paid",
+  Completed: "Completed",
+  Accepted: "Accepted",
+  Won: "Won",
+  Scheduled: "Scheduled",
+  New: "New",
+  Qualified: "Qualified",
+  Pending: "Pending",
+  Quote: "Quote",
+  Sent: "Sent",
+  Draft: "Draft",
+  "In progress": "In progress",
+  "Follow-up": "Follow-up",
+  Overdue: "Past due",
+  Paused: "Paused",
+  Cancelled: "Cancelled",
 };
 
 export function StatusBadge({
@@ -52,7 +73,7 @@ export function StatusBadge({
       variant="outline"
       className={cn("h-6 rounded-md px-2.5", statusStyles[status], className)}
     >
-      {status}
+      {statusLabels[status] ?? status}
     </Badge>
   );
 }

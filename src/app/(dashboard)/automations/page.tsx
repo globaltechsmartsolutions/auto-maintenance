@@ -9,12 +9,12 @@ export default function AutomationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Emails, SMS y seguimiento</p>
-          <h1 className="mt-1 text-3xl font-semibold">Automatizaciones</h1>
+          <p className="text-sm text-muted-foreground">Emails, SMS, and follow-up</p>
+          <h1 className="mt-1 text-3xl font-semibold">Automations</h1>
         </div>
         <DemoActionButton action="new-automation">
           <Plus className="size-4" />
-          Nueva automatización
+          New automation
         </DemoActionButton>
       </div>
 

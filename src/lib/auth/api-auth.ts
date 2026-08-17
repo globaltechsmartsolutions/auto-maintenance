@@ -5,7 +5,7 @@ import { hasSupabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { getPrisma } from "@/lib/prisma";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-type ApiProfile = {
+export type ApiProfile = {
   id: string;
   companyId: string | null;
   role: Role;
@@ -22,8 +22,17 @@ export type ApiAuthResult =
     };
 
 export async function requireApiRole(allowedRoles: Role[]): Promise<ApiAuthResult> {
-  if (isDemoMode() || !hasSupabaseConfig()) {
+  if (isDemoMode()) {
     return { profile: null };
+  }
+
+  if (!hasSupabaseConfig()) {
+    return {
+      response: NextResponse.json(
+        { error: "Authentication is not configured.", code: "AUTH_UNAVAILABLE" },
+        { status: 503 }
+      ),
+    };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -59,6 +68,15 @@ export async function requireApiRole(allowedRoles: Role[]): Promise<ApiAuthResul
     };
   }
 
+  if (profile.role !== "SUPER_ADMIN" && !profile.companyId) {
+    return {
+      response: NextResponse.json(
+        { error: "The user does not belong to any company." },
+        { status: 403 }
+      ),
+    };
+  }
+
   return { profile };
 }
 
@@ -78,5 +96,5 @@ export function resolveCompanyId(
     return requestedCompanyId;
   }
 
-  return profile.companyId ?? requestedCompanyId;
+  return profile.companyId ?? "__missing_company__";
 }
