@@ -48,6 +48,18 @@ real customer workflow has been validated in staging.
 remains” column for the core operations workflow has been completed and tested
 with pilot users.
 
+### Developer-branch verification status
+
+The `imtiaz-dev-WIA-Control` implementation now contains the Stage 1 and Stage
+2 code corrections, including the complete recovery-password screen,
+authorization-before-schema validation, real retry scheduling, flush
+concurrency protection, and expanded cross-tenant tests. Local linting,
+TypeScript, unit tests, Prisma validation, and the production dependency audit
+must pass before opening the pull request. The Playwright suite still requires
+the private staging accounts described by `e2e/README.md`; its final pass must
+be recorded in CI or by a reviewer with staging access before these stages are
+called externally verified.
+
 ## 3. Repository map
 
 | Location | Use it for | Do not put here |

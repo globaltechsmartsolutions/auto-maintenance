@@ -4,7 +4,7 @@ import {
   correctionAcknowledgementSchema,
   correctionReviewSchema,
 } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import {
   acknowledgeTimeCorrection,
   reviewTimeCorrection,
@@ -26,12 +26,13 @@ export const PATCH = apiRoute(async (
   context: { params: Promise<{ correctionId: string }> }
 ) => {
   const { correctionId } = await context.params;
-  const payload = requestSchema.parse(await request.json());
-  const roles = payload.action === "REVIEW"
-    ? (["SUPER_ADMIN", "ADMIN", "MANAGER"] as const)
-    : (["EMPLOYEE"] as const);
-  const apiContext = await requireWiaApiContext([...roles], payload.companyId);
+  const rawPayload = await request.json();
+  const apiContext = await requireWiaApiContext(
+    ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"],
+    requestedCompanyIdFromBody(rawPayload)
+  );
   if (apiContext.response) return apiContext.response;
+  const payload = requestSchema.parse(rawPayload);
   if (apiContext.demo) return Response.json({ correction: { id: correctionId, ...payload } });
 
   const correction = payload.action === "REVIEW"

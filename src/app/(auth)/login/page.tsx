@@ -17,7 +17,13 @@ export default async function LoginPage({
       action={signInAction}
       submitLabel="Sign in"
       error={params.error}
-      message={params.message === "reset-sent" ? "Check your email." : undefined}
+      message={
+        params.message === "reset-sent"
+          ? "Check your email."
+          : params.message === "password-updated"
+            ? "Your password has been updated."
+            : undefined
+      }
       fields={[
         {
           name: "email",

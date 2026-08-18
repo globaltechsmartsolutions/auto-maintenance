@@ -46,10 +46,11 @@ describe("offline clock queue", () => {
             isOffline: true,
         });
 
-        for (let attempt = 1; attempt < MAX_RETRY_ATTEMPTS; attempt += 1) {
-            command = markRetryableFailure(command, "Network error");
-            expect(command.status).toBe("pending");
-        }
+    for (let attempt = 1; attempt < MAX_RETRY_ATTEMPTS; attempt += 1) {
+      command = markRetryableFailure(command, "Network error");
+      expect(command.status).toBe("pending");
+      expect(new Date(command.nextAttemptAt).getTime()).toBeGreaterThan(Date.now() - 1);
+    }
 
         command = markRetryableFailure(command, "Network error");
         expect(command.retryCount).toBe(MAX_RETRY_ATTEMPTS);

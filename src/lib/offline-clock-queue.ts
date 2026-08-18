@@ -43,8 +43,10 @@ export type QueuedClockCommand = {
     isOffline: boolean;
     /** ISO timestamp of when the command was queued locally. */
     createdAt: string;
-    retryCount: number;
-    status: QueuedClockCommandStatus;
+  retryCount: number;
+  /** Earliest time at which an automatic retry may be attempted. */
+  nextAttemptAt: string;
+  status: QueuedClockCommandStatus;
     lastError?: string;
 };
 
@@ -84,7 +86,8 @@ export function createQueuedCommand(input: {
         accuracyMeters: input.accuracyMeters,
         isOffline: input.isOffline,
         createdAt: input.now ?? new Date().toISOString(),
-        retryCount: 0,
+    retryCount: 0,
+    nextAttemptAt: input.now ?? new Date().toISOString(),
         status: "pending",
     };
 }
@@ -128,7 +131,8 @@ export function markRetryableFailure(
     const retryCount = command.retryCount + 1;
     return {
         ...command,
-        retryCount,
+    retryCount,
+    nextAttemptAt: new Date(Date.now() + nextBackoffDelayMs(retryCount)).toISOString(),
         status: hasExceededRetryLimit(retryCount) ? "needs_attention" : "pending",
         lastError: error,
     };
@@ -147,7 +151,12 @@ export function markNeedsAttention(
 
 /** Resets a `needs_attention` command back to `pending` for a manual retry. */
 export function resetForManualRetry(command: QueuedClockCommand): QueuedClockCommand {
-    return { ...command, status: "pending", lastError: undefined };
+  return {
+    ...command,
+    status: "pending",
+    lastError: undefined,
+    nextAttemptAt: new Date().toISOString(),
+  };
 }
 
 export function toRequestPayload(command: QueuedClockCommand) {

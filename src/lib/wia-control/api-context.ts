@@ -11,6 +11,12 @@ export type WiaApiContext =
   | { actor: WiaActor; demo: boolean; response?: never }
   | { actor?: never; demo?: never; response: NextResponse };
 
+export function requestedCompanyIdFromBody(value: unknown) {
+  if (typeof value !== "object" || value === null || !("companyId" in value)) return undefined;
+  const companyId = (value as { companyId?: unknown }).companyId;
+  return typeof companyId === "string" && companyId.trim() ? companyId : undefined;
+}
+
 export async function requireWiaApiContext(
   allowedRoles: Role[],
   requestedCompanyId?: string

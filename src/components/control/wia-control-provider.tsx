@@ -430,6 +430,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   const [clockQueueStatus, setClockQueueStatus] = React.useState<
     Record<string, { status: QueuedClockCommandStatus; lastError?: string } | undefined>
   >({});
+  const queueFlushInProgress = React.useRef(false);
 
   const setQueueStatus = React.useCallback(
     (shiftId: string, value: { status: QueuedClockCommandStatus; lastError?: string } | undefined) => {
@@ -1181,28 +1182,36 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
    */
   const flushQueue = React.useCallback(async () => {
     if (isBrowserDemo) return;
+    if (queueFlushInProgress.current) return;
+    queueFlushInProgress.current = true;
     let commands: QueuedClockCommand[];
     try {
       commands = await listQueuedCommands();
     } catch {
+      queueFlushInProgress.current = false;
       return;
     }
 
-    const now = new Date();
-    for (const command of sortQueueForSend(commands)) {
-      if (command.status === "needs_attention") {
-        setQueueStatus(command.shiftId, { status: "needs_attention", lastError: command.lastError });
-        continue;
+    try {
+      const now = new Date();
+      for (const command of sortQueueForSend(commands)) {
+        if (command.status === "needs_attention") {
+          setQueueStatus(command.shiftId, { status: "needs_attention", lastError: command.lastError });
+          continue;
+        }
+        if (isExpired(command, now)) {
+          await removeQueuedCommand(command.id).catch(() => undefined);
+          setQueueStatus(command.shiftId, {
+            status: "needs_attention",
+            lastError: "This clock event expired before it could be sent. Use a time correction instead.",
+          });
+          continue;
+        }
+        if (new Date(command.nextAttemptAt).getTime() > now.getTime()) continue;
+        await sendQueuedCommand(command);
       }
-      if (isExpired(command, now)) {
-        await removeQueuedCommand(command.id).catch(() => undefined);
-        setQueueStatus(command.shiftId, {
-          status: "needs_attention",
-          lastError: "This clock event expired before it could be sent. Use a time correction instead.",
-        });
-        continue;
-      }
-      await sendQueuedCommand(command);
+    } finally {
+      queueFlushInProgress.current = false;
     }
   }, [sendQueuedCommand, setQueueStatus]);
 
