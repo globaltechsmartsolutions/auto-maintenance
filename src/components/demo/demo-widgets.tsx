@@ -543,7 +543,7 @@ export function DemoServicesTable() {
               <TableRow>
                 <TableHead>Service</TableHead>
                 <TableHead>Customer</TableHead>
-                <TableHead>Recurrencia</TableHead>
+                <TableHead>Recurrence</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Team</TableHead>
                 <TableHead className="text-right">Total</TableHead>
@@ -654,7 +654,7 @@ export function DemoEmployeesTable() {
                 <TableHead>Availability</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Services</TableHead>
-                <TableHead>Rendimiento</TableHead>
+                <TableHead>Performance</TableHead>
                 <TableHead className="text-right">Revenue</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -888,7 +888,7 @@ export function DemoAutomationsWorkspace() {
 
       <Card className="border-border/70 bg-card/85 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base">Reglas activas</CardTitle>
+          <CardTitle className="text-base">Active Rules</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -896,8 +896,8 @@ export function DemoAutomationsWorkspace() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Disparador</TableHead>
-                  <TableHead>Canal</TableHead>
+                  <TableHead>Trigger</TableHead>
+                  <TableHead>Channel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Conversion</TableHead>
                 </TableRow>
@@ -1026,64 +1026,64 @@ export function DemoPortalWorkspace() {
                 const lead = leads.find((item) => item.id === request.leadId);
 
                 return (
-                <div key={request.id} className="rounded-md border border-border/70 bg-background/50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium">{request.title}</p>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <StatusBadge status={request.status} />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Edit request ${request.title}`}
-                        title="Edit request"
-                        onClick={() =>
-                          openDialog("request", {
-                            address: service?.address ?? "",
-                            city: service?.city ?? "Madrid",
-                            contactName: lead?.contactName ?? "",
-                            customer: request.customer,
-                            description: service?.description ?? request.description,
-                            email: lead?.email ?? "",
-                            estimatedPrice: String(service?.price ?? lead?.value ?? 680),
-                            id: request.id,
-                            phone: lead?.phone ?? "",
-                            preferredDate: request.preferredDate,
-                            preferredTime: inputTimeFromIso(request.scheduledAt ?? service?.start ?? ""),
-                            status: request.status,
-                            title: request.title,
-                          })
-                        }
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
-                      <DemoConfirmActionButton
-                        label={`Delete request ${request.title}`}
-                        title="Delete this request?"
-                        description="The web request and any linked lead and service will be deleted."
-                        onConfirm={() => deletePortalRequest(request.id)}
-                      >
-                        <Trash2 className="size-4" />
-                      </DemoConfirmActionButton>
+                  <div key={request.id} className="rounded-md border border-border/70 bg-background/50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">{request.title}</p>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <StatusBadge status={request.status} />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Edit request ${request.title}`}
+                          title="Edit request"
+                          onClick={() =>
+                            openDialog("request", {
+                              address: service?.address ?? "",
+                              city: service?.city ?? "Madrid",
+                              contactName: lead?.contactName ?? "",
+                              customer: request.customer,
+                              description: service?.description ?? request.description,
+                              email: lead?.email ?? "",
+                              estimatedPrice: String(service?.price ?? lead?.value ?? 680),
+                              id: request.id,
+                              phone: lead?.phone ?? "",
+                              preferredDate: request.preferredDate,
+                              preferredTime: inputTimeFromIso(request.scheduledAt ?? service?.start ?? ""),
+                              status: request.status,
+                              title: request.title,
+                            })
+                          }
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <DemoConfirmActionButton
+                          label={`Delete request ${request.title}`}
+                          title="Delete this request?"
+                          description="The web request and any linked lead and service will be deleted."
+                          onConfirm={() => deletePortalRequest(request.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </DemoConfirmActionButton>
+                      </div>
                     </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {request.customer} · {formatDate(request.preferredDate)}
+                    </p>
+                    {request.assignedTeam?.length ? (
+                      <div className="mt-3 grid gap-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-xs">
+                        <p className="flex items-center gap-2 text-primary">
+                          <UserRoundCheck className="size-3.5" />
+                          {request.assignedTeam.join(", ")}
+                        </p>
+                        <p className="flex items-center gap-2 text-muted-foreground">
+                          <CalendarCheck2 className="size-3.5" />
+                          Service in calendar and lead in CRM
+                        </p>
+                      </div>
+                    ) : null}
+                    <p className="mt-2 text-sm text-muted-foreground">{request.description}</p>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {request.customer} · {formatDate(request.preferredDate)}
-                  </p>
-                  {request.assignedTeam?.length ? (
-                    <div className="mt-3 grid gap-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-xs">
-                      <p className="flex items-center gap-2 text-primary">
-                        <UserRoundCheck className="size-3.5" />
-                        {request.assignedTeam.join(", ")}
-                      </p>
-                      <p className="flex items-center gap-2 text-muted-foreground">
-                        <CalendarCheck2 className="size-3.5" />
-                        Service in calendar and lead in CRM
-                      </p>
-                    </div>
-                  ) : null}
-                  <p className="mt-2 text-sm text-muted-foreground">{request.description}</p>
-                </div>
                 );
               })}
             </CardContent>

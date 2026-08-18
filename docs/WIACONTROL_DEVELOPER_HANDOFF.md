@@ -290,6 +290,42 @@ merged and the detection test (see section 6, item 1) passes.
 | --- | --- | --- | --- |
 | `components/controler/worksites-dashboard.tsx` | 160 | "Radio permitido (metros)" | "Allowed radius (meters)" |
 
+| `components/controler/shift-planner.tsx` | 194 | "Competencias requeridas" | "Required skills" |
+
+| `components/controler/time-tracking-dashboard.tsx` | 138 | "Eventos recibidos" | "Received Events" |
+
+| `components/controler/time-tracking-dashboard.tsx` | 151 | "Verificados" | "Verified" |
+
+| `components/controler/time-tracking-dashboard.tsx` | 207 | "Eventos" | "Events" |
+
+| `components/controler/time-tracking-dashboard.tsx` | 238 | "Evento" | "Event" |
+
+| `components/demo/demo-widgets.tsx` | 546 | "Recurrencia" | "Recurrence" |
+
+| `components/demo/demo-widgets.tsx` | 657 | "Rendimiento" | "Performance" |
+
+| `components/demo/demo-widgets.tsx` | 900 | "Canal" | "Channel" |
+
+| `components/demo/demo-widgets.tsx` | 891 | "Reglas activas" | "Active Rules" |
+
+| `components/demo/demo-widgets.tsx` | 899 | "Disparador" | "Trigger" |
+
+| `components/demo/demo-widgets.tsx` | 2404 | "Canal" | "Channel" |
+
+| `components/demo/demo-provider.tsx` | 2236 | "Recurrencia" | "Recurrence" |
+
+| `components/demo/demo-provider.tsx` | 2397 | "Disparador" | "Trigger" |
+
+| `components/controler/employee-clock.tsx` | 230 | "Dispositivo autorizado" | "Authorized Device" |
+
+| `components/controler/employee-clock.tsx` | 223 | "Identificada" | "Identified" |
+
+| `components/controler/employee-clock.tsx` | 349 | "Corregir" | "Correct" |
+
+| `components/controler/employee-clock.tsx` | 109 | "Date and time correctas" | "Correct date and time" |
+
+
+
 
 ## 5a. Work log
 
@@ -300,7 +336,7 @@ the project was left in.
 ### 2026-08-17
 
 1. Pulled the project from GitHub.
-2. Ran the project on the local system.
+2. Run the project on the local system.
 3. Reviewed and understood the project structure and codebase.
 4. Connected the project to the database.
 5. Checked Coverage and Worksites page, and fix the translation issues.

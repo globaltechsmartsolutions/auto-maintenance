@@ -106,7 +106,7 @@ function CorrectionDialog({
         </DialogHeader>
         <form id="correction-form" className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="corrected-time">Date and time correctas</Label>
+            <Label htmlFor="corrected-time">Correct date and time</Label>
             <Input
               id="corrected-time"
               name="correctedTime"
@@ -220,14 +220,14 @@ export function EmployeeClock() {
                 </div>
                 <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
                   <span className="size-1.5 rounded-full bg-success" />
-                  Identificada
+                  Identified
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p className="flex items-center gap-2">
                 <Smartphone className="size-4" />
-                Dispositivo autorizado
+                Authorized Device
               </p>
               <p className="flex items-center gap-2">
                 <BriefcaseBusiness className="size-4" />
@@ -334,10 +334,10 @@ export function EmployeeClock() {
                       </div>
                       <div className="flex flex-1 items-start justify-between gap-3 pb-4">
                         <div>
-                        <p className="text-sm font-medium">{eventLabels[event.type]}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {formatTime(event.occurredAt)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
-                        </p>
+                          <p className="text-sm font-medium">{eventLabels[event.type]}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatTime(event.occurredAt)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
+                          </p>
                         </div>
                         <Button
                           type="button"
@@ -346,7 +346,7 @@ export function EmployeeClock() {
                           onClick={() => setCorrectionEvent(event)}
                         >
                           <RotateCcw className="size-3.5" />
-                          Corregir
+                          Correct
                         </Button>
                       </div>
                     </div>
