@@ -17,23 +17,28 @@ export default async function LoginPage({
       action={signInAction}
       submitLabel="Sign in"
       error={params.error}
-      message={params.message === "reset-sent" ? "Check your email." : undefined}
+      message={
+        params.message === "reset-sent"
+          ? "Check your email."
+          : params.message === "password-updated"
+            ? "Your password has been updated."
+            : undefined
+      }
       fields={[
         {
           name: "email",
           label: "Email address",
           type: "email",
           placeholder: "admin@company.com",
-          defaultValue: "demo@cleaningdemo.com",
         },
         {
           name: "password",
           label: "Password",
           type: "password",
           placeholder: "********",
-          defaultValue: "demo-local",
         },
       ]}
+      secondaryLink={{ label: "Forgot password?", href: "/reset-password" }}
       footerText="Don't have an account?"
       footerLabel="Create account"
       footerHref="/register"

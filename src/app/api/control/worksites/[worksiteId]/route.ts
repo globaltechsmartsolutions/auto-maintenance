@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { worksiteUpdateSchema } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { updateWorksite } from "@/lib/wia-control/service";
 
 const requestSchema = worksiteUpdateSchema.and(
@@ -13,12 +13,13 @@ export const PATCH = apiRoute(async (
   context: { params: Promise<{ worksiteId: string }> }
 ) => {
   const { worksiteId } = await context.params;
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const apiContext = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (apiContext.response) return apiContext.response;
+  const payload = requestSchema.parse(rawPayload);
   if (apiContext.demo) return Response.json({ worksite: { id: worksiteId, ...payload } });
 
   return Response.json({

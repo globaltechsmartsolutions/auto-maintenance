@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { detectIncompleteAttendance } from "@/lib/wia-control/service";
 
 const requestSchema = z.object({
@@ -9,12 +9,13 @@ const requestSchema = z.object({
 });
 
 export const POST = apiRoute(async (request: Request) => {
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const context = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (context.response) return context.response;
+  const payload = requestSchema.parse(rawPayload);
   if (context.demo) return Response.json({ inspected: 0, created: 0, incidentIds: [] });
 
   return Response.json(

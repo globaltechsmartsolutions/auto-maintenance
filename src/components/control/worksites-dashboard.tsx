@@ -157,7 +157,7 @@ function WorksiteDialog({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="worksite-radius">Radio permitido (metros)</Label>
+            <Label htmlFor="worksite-radius">Allowed Radius (meters)</Label>
             <Input
               id="worksite-radius"
               name="radiusMeters"

@@ -3,11 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowLeft,
   BriefcaseBusiness,
   CheckCircle2,
   Clock3,
   Coffee,
+  Loader2,
   LogIn,
   LogOut,
   MapPin,
@@ -106,7 +108,7 @@ function CorrectionDialog({
         </DialogHeader>
         <form id="correction-form" className="space-y-4" onSubmit={handleSubmit}>
           <div className="space-y-2">
-            <Label htmlFor="corrected-time">Date and time correctas</Label>
+            <Label htmlFor="corrected-time">Correct date and time</Label>
             <Input
               id="corrected-time"
               name="correctedTime"
@@ -141,12 +143,14 @@ function CorrectionDialog({
 export function EmployeeClock() {
   const {
     acknowledgeTimeCorrection,
+    clockQueueStatus,
     employees,
     shifts,
     worksites,
     clockEvents,
     corrections,
     recordClockEvent,
+    retryQueuedClockEvent,
   } = useWiaControl();
   const employeeName = employees[0]?.name ?? "Laura Méndez";
   const [correctionEvent, setCorrectionEvent] = React.useState<ClockEvent>();
@@ -155,8 +159,11 @@ export function EmployeeClock() {
   const employeeShifts = shifts.filter((shift) => shift.employeeName === employeeName);
   const activeShift =
     employeeShifts.find((shift) => ["ACTIVE", "PAUSED"].includes(shift.status)) ??
+    employeeShifts.find((shift) => !["COMPLETED", "CANCELLED"].includes(shift.status)) ??
     employeeShifts[0];
   const activeSite = worksites.find((site) => site.id === activeShift?.worksiteId);
+  const queueEntry = activeShift ? clockQueueStatus[activeShift.id] : undefined;
+  const isSyncingClock = queueEntry?.status === "pending" || queueEntry?.status === "sending";
   const shiftEvents = React.useMemo(
     () =>
       clockEvents
@@ -173,7 +180,7 @@ export function EmployeeClock() {
   );
 
   function runPrimaryAction() {
-    if (!activeShift) return;
+    if (!activeShift || isSyncingClock) return;
     const type: ClockEventType = !hasClockedIn
       ? "CLOCK_IN"
       : isPaused
@@ -220,14 +227,14 @@ export function EmployeeClock() {
                 </div>
                 <Badge variant="outline" className="border-success/30 bg-success/10 text-success">
                   <span className="size-1.5 rounded-full bg-success" />
-                  Identificada
+                  Identified
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
               <p className="flex items-center gap-2">
                 <Smartphone className="size-4" />
-                Dispositivo autorizado
+                Authorized Device
               </p>
               <p className="flex items-center gap-2">
                 <BriefcaseBusiness className="size-4" />
@@ -276,9 +283,55 @@ export function EmployeeClock() {
                 </p>
               </div>
 
+              {queueEntry ? (
+                <div
+                  className={cn(
+                    "flex items-start gap-3 rounded-lg border p-3 text-sm",
+                    queueEntry.status === "needs_attention"
+                      ? "border-destructive/30 bg-destructive/[0.06] text-destructive"
+                      : "border-warning/30 bg-warning/[0.06] text-warning"
+                  )}
+                >
+                  {queueEntry.status === "needs_attention" ? (
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                  ) : (
+                    <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />
+                  )}
+                  <div className="flex-1 space-y-2">
+                    <p className="font-medium">
+                      {queueEntry.status === "needs_attention"
+                        ? "This clock event needs attention"
+                        : queueEntry.status === "sending"
+                          ? "Sending your clock event…"
+                          : "Saved on this device — will sync when back online"}
+                    </p>
+                    {queueEntry.lastError ? (
+                      <p className="text-muted-foreground">{queueEntry.lastError}</p>
+                    ) : null}
+                    {queueEntry.status === "needs_attention" && activeShift ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => retryQueuedClockEvent(activeShift.id)}
+                      >
+                        <RotateCcw className="size-4" />
+                        Retry now
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
               {!hasClockedOut ? (
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <Button type="button" size="lg" className="h-12" onClick={runPrimaryAction}>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="h-12"
+                    onClick={runPrimaryAction}
+                    disabled={isSyncingClock}
+                  >
                     <PrimaryIcon className="size-5" />
                     {primaryLabel}
                   </Button>
@@ -288,6 +341,7 @@ export function EmployeeClock() {
                       size="lg"
                       variant="outline"
                       className="h-12"
+                      disabled={isSyncingClock}
                       onClick={() => activeShift && recordClockEvent(activeShift.id, "CLOCK_OUT")}
                     >
                       <LogOut className="size-5" />
@@ -334,10 +388,10 @@ export function EmployeeClock() {
                       </div>
                       <div className="flex flex-1 items-start justify-between gap-3 pb-4">
                         <div>
-                        <p className="text-sm font-medium">{eventLabels[event.type]}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {formatTime(event.occurredAt)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
-                        </p>
+                          <p className="text-sm font-medium">{eventLabels[event.type]}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatTime(event.occurredAt)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
+                          </p>
                         </div>
                         <Button
                           type="button"
@@ -346,7 +400,7 @@ export function EmployeeClock() {
                           onClick={() => setCorrectionEvent(event)}
                         >
                           <RotateCcw className="size-3.5" />
-                          Corregir
+                          Correct
                         </Button>
                       </div>
                     </div>

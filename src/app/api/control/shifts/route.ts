@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { plannedShiftInputSchema } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { createPlannedShift } from "@/lib/wia-control/service";
 
 const requestSchema = plannedShiftInputSchema.and(
@@ -9,12 +9,13 @@ const requestSchema = plannedShiftInputSchema.and(
 );
 
 export const POST = apiRoute(async (request: Request) => {
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const context = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (context.response) return context.response;
+  const payload = requestSchema.parse(rawPayload);
   if (context.demo) {
     return Response.json({ shift: { ...payload, id: `demo-shift-${Date.now()}` } }, { status: 201 });
   }

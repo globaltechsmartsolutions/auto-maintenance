@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { companySettingsSchema } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { getCompanySettings, updateCompanySettings } from "@/lib/wia-control/service";
 
 const requestSchema = companySettingsSchema.extend({
@@ -26,12 +26,13 @@ export const GET = apiRoute(async (request: Request) => {
 });
 
 export const PATCH = apiRoute(async (request: Request) => {
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const context = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (context.response) return context.response;
+  const payload = requestSchema.parse(rawPayload);
   if (context.demo) return Response.json({ settings: payload });
 
   return Response.json({ settings: await updateCompanySettings(context.actor, payload) });

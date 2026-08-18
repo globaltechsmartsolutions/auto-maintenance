@@ -135,7 +135,7 @@ export function TimeTrackingDashboard() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Eventos recibidos
+                  Received Events
                 </p>
                 <p className="mt-2 text-3xl font-semibold tabular-nums">{clockEvents.length}</p>
               </div>
@@ -148,7 +148,7 @@ export function TimeTrackingDashboard() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  Verificados
+                  Verified
                 </p>
                 <p className="mt-2 text-3xl font-semibold tabular-nums">{verifiedEvents}</p>
                 <p className="mt-1 text-xs text-muted-foreground">by worksite or location</p>
@@ -203,7 +203,7 @@ export function TimeTrackingDashboard() {
 
       <Tabs defaultValue="events" className="gap-4">
         <TabsList className="h-9 w-full justify-start overflow-x-auto sm:w-fit">
-          <TabsTrigger value="events">Eventos</TabsTrigger>
+          <TabsTrigger value="events">Events</TabsTrigger>
           <TabsTrigger value="incidents">
             Incidents
             {openIncidents > 0 ? (
@@ -235,7 +235,7 @@ export function TimeTrackingDashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee</TableHead>
-                    <TableHead>Evento</TableHead>
+                    <TableHead>Event</TableHead>
                     <TableHead>Date and time</TableHead>
                     <TableHead>Worksite</TableHead>
                     <TableHead>Method</TableHead>

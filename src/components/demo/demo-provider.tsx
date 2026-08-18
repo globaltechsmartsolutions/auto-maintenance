@@ -955,20 +955,20 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       };
       const autoDecision: DemoAssignmentDecision | null = canAutoAssign
         ? {
-            id: createId("decision"),
-            serviceId,
-            serviceTitle: title,
-            serviceFamily: recommendation.serviceFamily,
-            customer,
-            city,
-            recommendedEmployee: recommendation.employeeName,
-            selectedEmployee: recommendation.employeeName,
-            wasAcceptedByManager: true,
-            decisionType: "auto-assigned",
-            resultLabel: "Auto-assignment awaiting outcome.",
-            createdAt,
-            reasons: recommendation.reasons,
-          }
+          id: createId("decision"),
+          serviceId,
+          serviceTitle: title,
+          serviceFamily: recommendation.serviceFamily,
+          customer,
+          city,
+          recommendedEmployee: recommendation.employeeName,
+          selectedEmployee: recommendation.employeeName,
+          wasAcceptedByManager: true,
+          decisionType: "auto-assigned",
+          resultLabel: "Auto-assignment awaiting outcome.",
+          createdAt,
+          reasons: recommendation.reasons,
+        }
         : null;
 
       setState((current) => {
@@ -1094,17 +1094,17 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           leads:
             linkedRequest?.leadId && linkedLeadStatus
               ? current.leads.map((lead) =>
-                  lead.id === linkedRequest.leadId
-                    ? {
-                        ...lead,
-                        status: linkedLeadStatus,
-                        nextStep:
-                          status === "Completed"
-                            ? "Service completed. Request a review and propose recurrence."
-                            : lead.nextStep,
-                      }
-                    : lead
-                )
+                lead.id === linkedRequest.leadId
+                  ? {
+                    ...lead,
+                    status: linkedLeadStatus,
+                    nextStep:
+                      status === "Completed"
+                        ? "Service completed. Request a review and propose recurrence."
+                        : lead.nextStep,
+                  }
+                  : lead
+              )
               : current.leads,
         };
       });
@@ -1150,23 +1150,23 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           ),
           services: request?.serviceId
             ? current.services.map((service) =>
-                service.id === request.serviceId ? { ...service, status } : service
-              )
+              service.id === request.serviceId ? { ...service, status } : service
+            )
             : current.services,
           leads:
             request?.leadId && linkedLeadStatus
               ? current.leads.map((lead) =>
-                  lead.id === request.leadId
-                    ? {
-                        ...lead,
-                        status: linkedLeadStatus,
-                        nextStep:
-                          status === "Completed"
-                            ? "Service completed. Request a review and offer maintenance."
-                            : lead.nextStep,
-                      }
-                    : lead
-                )
+                lead.id === request.leadId
+                  ? {
+                    ...lead,
+                    status: linkedLeadStatus,
+                    nextStep:
+                      status === "Completed"
+                        ? "Service completed. Request a review and offer maintenance."
+                        : lead.nextStep,
+                  }
+                  : lead
+              )
               : current.leads,
         };
       });
@@ -1245,8 +1245,8 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           : current.leads,
         assignmentDecisions: linkedServiceId
           ? current.assignmentDecisions.filter(
-              (decision) => decision.serviceId !== linkedServiceId
-            )
+            (decision) => decision.serviceId !== linkedServiceId
+          )
           : current.assignmentDecisions,
       }));
       addActivity("Web booking deleted", `${request?.customer ?? "Request"} removed from the demo.`);
@@ -1386,15 +1386,15 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
       const serviceBefore = state.services.find((service) => service.id === serviceId);
       const recommendationBefore = serviceBefore
         ? recommendAssignee({
-            decisions: state.assignmentDecisions,
-            employees: state.employees,
-            service: serviceBefore,
-            services: state.services,
-          })
+          decisions: state.assignmentDecisions,
+          employees: state.employees,
+          service: serviceBefore,
+          services: state.services,
+        })
         : null;
       const recommendedEmployee =
         recommendationBefore?.employeeName &&
-        recommendationBefore.employeeName !== "Unassigned team"
+          recommendationBefore.employeeName !== "Unassigned team"
           ? recommendationBefore.employeeName
           : undefined;
       const acceptedRecommendation = Boolean(
@@ -1406,11 +1406,11 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         const nextStatus = employeeName ? "Scheduled" : "Pending";
         const recommendation = previousService
           ? recommendAssignee({
-              decisions: current.assignmentDecisions,
-              employees: current.employees,
-              service: previousService,
-              services: current.services,
-            })
+            decisions: current.assignmentDecisions,
+            employees: current.employees,
+            service: previousService,
+            services: current.services,
+          })
           : null;
         const selectedEmployee = employeeName.trim();
         const currentRecommendedEmployee =
@@ -1424,29 +1424,29 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           : "Pending";
         const shouldRecordDecision = Boolean(
           previousService &&
-            selectedEmployee &&
-            !previousService.team.includes(selectedEmployee)
+          selectedEmployee &&
+          !previousService.team.includes(selectedEmployee)
         );
         const decision: DemoAssignmentDecision | null =
           previousService && recommendation && shouldRecordDecision
             ? {
-                id: createId("decision"),
-                serviceId,
-                serviceTitle: previousService.title,
-                serviceFamily: recommendation.serviceFamily,
-                customer: previousService.customer,
-                city: previousService.city,
-                recommendedEmployee: currentRecommendedEmployee,
-                selectedEmployee,
-                wasAcceptedByManager: selectedEmployee === currentRecommendedEmployee,
-                decisionType:
-                  selectedEmployee === currentRecommendedEmployee
-                    ? "manager-confirmed"
-                    : "manager-override",
-                resultLabel: "Awaiting operational outcome.",
-                createdAt: new Date().toISOString(),
-                reasons: recommendation.reasons,
-              }
+              id: createId("decision"),
+              serviceId,
+              serviceTitle: previousService.title,
+              serviceFamily: recommendation.serviceFamily,
+              customer: previousService.customer,
+              city: previousService.city,
+              recommendedEmployee: currentRecommendedEmployee,
+              selectedEmployee,
+              wasAcceptedByManager: selectedEmployee === currentRecommendedEmployee,
+              decisionType:
+                selectedEmployee === currentRecommendedEmployee
+                  ? "manager-confirmed"
+                  : "manager-override",
+              resultLabel: "Awaiting operational outcome.",
+              createdAt: new Date().toISOString(),
+              reasons: recommendation.reasons,
+            }
             : null;
 
         return {
@@ -1454,24 +1454,24 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
           services: current.services.map((service) =>
             service.id === serviceId
               ? {
-                  ...service,
-                  assignmentMode,
-                  assignmentRecommendation: recommendation ?? service.assignmentRecommendation,
-                  status: service.status === "Completed" ? service.status : nextStatus,
-                  team: nextTeam,
-                }
+                ...service,
+                assignmentMode,
+                assignmentRecommendation: recommendation ?? service.assignmentRecommendation,
+                status: service.status === "Completed" ? service.status : nextStatus,
+                team: nextTeam,
+              }
               : service
           ),
           portalRequests: current.portalRequests.map((request) =>
             request.serviceId === serviceId
               ? {
-                  ...request,
-                  assignedTeam: nextTeam,
-                  assignmentMode,
-                  assignmentRecommendation:
-                    recommendation ?? request.assignmentRecommendation,
-                  status: employeeName ? "Scheduled" : "Pending",
-                }
+                ...request,
+                assignedTeam: nextTeam,
+                assignmentMode,
+                assignmentRecommendation:
+                  recommendation ?? request.assignmentRecommendation,
+                status: employeeName ? "Scheduled" : "Pending",
+              }
               : request
           ),
           assignmentDecisions: decision
@@ -1547,10 +1547,10 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
         portalRequests: current.portalRequests.map((request) =>
           request.serviceId === serviceId
             ? {
-                ...request,
-                preferredDate: nextDate,
-                scheduledAt: nextStart,
-              }
+              ...request,
+              preferredDate: nextDate,
+              scheduledAt: nextStart,
+            }
             : request
         ),
       }));
@@ -1734,33 +1734,33 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
               : [service, ...current.services],
             portalRequests: editingId
               ? current.portalRequests.map((request) =>
-                  request.serviceId === editingId
-                    ? {
-                        ...request,
-                        assignedTeam: team,
-                        customer,
-                        preferredDate: date,
-                        scheduledAt: service.start,
-                        status: service.status,
-                        title,
-                      }
-                    : request
-                )
+                request.serviceId === editingId
+                  ? {
+                    ...request,
+                    assignedTeam: team,
+                    customer,
+                    preferredDate: date,
+                    scheduledAt: service.start,
+                    status: service.status,
+                    title,
+                  }
+                  : request
+              )
               : current.portalRequests,
             leads:
               linkedRequest?.leadId && linkedLeadStatus
                 ? current.leads.map((lead) =>
-                    lead.id === linkedRequest.leadId
-                      ? {
-                          ...lead,
-                          companyName: customer,
-                          name: customer,
-                          status: linkedLeadStatus,
-                          tags: ["Web booking", service.city, service.status],
-                          value: service.price,
-                        }
-                      : lead
-                  )
+                  lead.id === linkedRequest.leadId
+                    ? {
+                      ...lead,
+                      companyName: customer,
+                      name: customer,
+                      status: linkedLeadStatus,
+                      tags: ["Web booking", service.city, service.status],
+                      value: service.price,
+                    }
+                    : lead
+                )
                 : current.leads,
           };
         });
@@ -1801,16 +1801,16 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             : [employee, ...current.employees],
           services: previousName
             ? current.services.map((service) => ({
-                ...service,
-                team: service.team.map(renameTeamMember),
-              }))
+              ...service,
+              team: service.team.map(renameTeamMember),
+            }))
             : current.services,
           portalRequests: previousName
             ? current.portalRequests.map((request) => ({
-                ...request,
-                assignedTeam: request.assignedTeam?.map(renameTeamMember),
-                suggestedTeam: request.suggestedTeam?.map(renameTeamMember),
-              }))
+              ...request,
+              assignedTeam: request.assignedTeam?.map(renameTeamMember),
+              suggestedTeam: request.suggestedTeam?.map(renameTeamMember),
+            }))
             : current.portalRequests,
         }));
         addActivity(
@@ -1890,57 +1890,57 @@ export function DemoProvider({ children }: { children: React.ReactNode }) {
             portalRequests: current.portalRequests.map((item) =>
               item.id === editingId
                 ? {
-                    ...item,
-                    customer,
-                    description: `${address}. ${description}`,
-                    preferredDate,
-                    scheduledAt,
-                    status,
-                    title,
-                  }
+                  ...item,
+                  customer,
+                  description: `${address}. ${description}`,
+                  preferredDate,
+                  scheduledAt,
+                  status,
+                  title,
+                }
                 : item
             ),
             services: request?.serviceId
               ? current.services.map((service) =>
-                  service.id === request.serviceId
-                    ? {
-                        ...service,
-                        address,
-                        city,
-                        customer,
-                        description,
-                        estimatedDurationMinutes: serviceProfile.estimatedDurationMinutes,
-                        price: estimatedPrice,
-                        requiredSkills: serviceProfile.requiredSkills,
-                        start: scheduledAt,
-                        status:
-                          status === "Pending" || status === "Cancelled"
-                            ? status
-                            : service.status,
-                        title,
-                      }
-                    : service
-                )
+                service.id === request.serviceId
+                  ? {
+                    ...service,
+                    address,
+                    city,
+                    customer,
+                    description,
+                    estimatedDurationMinutes: serviceProfile.estimatedDurationMinutes,
+                    price: estimatedPrice,
+                    requiredSkills: serviceProfile.requiredSkills,
+                    start: scheduledAt,
+                    status:
+                      status === "Pending" || status === "Cancelled"
+                        ? status
+                        : service.status,
+                    title,
+                  }
+                  : service
+              )
               : current.services,
             leads: request?.leadId
               ? current.leads.map((lead) =>
-                  lead.id === request.leadId
-                    ? {
-                        ...lead,
-                        companyName: customer,
-                        contactName,
-                        email,
-                        name: customer,
-                        nextStep:
-                          status === "Pending"
-                            ? "Review the web request and confirm the team."
-                            : lead.nextStep,
-                        phone,
-                        tags: ["Web booking", city, status],
-                        value: estimatedPrice,
-                      }
-                    : lead
-                )
+                lead.id === request.leadId
+                  ? {
+                    ...lead,
+                    companyName: customer,
+                    contactName,
+                    email,
+                    name: customer,
+                    nextStep:
+                      status === "Pending"
+                        ? "Review the web request and confirm the team."
+                        : lead.nextStep,
+                    phone,
+                    tags: ["Web booking", city, status],
+                    value: estimatedPrice,
+                  }
+                  : lead
+              )
               : current.leads,
           }));
           addActivity("Web booking updated", `${customer}: ${title}.`);
@@ -2233,7 +2233,7 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
         <FormField label="Time">
           <Input name="time" type="time" defaultValue={payloadText(dialog, "time", "09:00")} />
         </FormField>
-        <FormField label="Recurrencia">
+        <FormField label="Recurrence">
           <DemoNativeSelect
             name="recurrence"
             defaultValue={payloadText(dialog, "recurrence", dialog.type === "visit" ? "One-time" : "Weekly")}
@@ -2394,14 +2394,14 @@ function DialogFields({ dialog }: { dialog: DemoDialogState }) {
       <FormField label="Name">
         <Input name="name" defaultValue="Opportunity follow-up" required />
       </FormField>
-      <FormField label="Disparador">
+      <FormField label="Trigger">
         <DemoNativeSelect
           name="trigger"
           defaultValue="FOLLOW_UP"
           options={["SERVICE_REMINDER", "SERVICE_CONFIRMATION", "FOLLOW_UP", "REVIEW_REQUEST", "FAILED_PAYMENT"]}
         />
       </FormField>
-      <FormField label="Canal">
+      <FormField label="Channel">
         <DemoNativeSelect name="channel" defaultValue="Email" options={["Email", "Email + SMS", "SMS"]} />
       </FormField>
     </div>

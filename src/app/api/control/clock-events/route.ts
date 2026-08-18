@@ -1,18 +1,19 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { clockCommandSchema } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { recordClockEvent } from "@/lib/wia-control/service";
 
 const requestSchema = clockCommandSchema.extend({ companyId: z.string().min(1).optional() });
 
 export const POST = apiRoute(async (request: Request) => {
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const context = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (context.response) return context.response;
+  const payload = requestSchema.parse(rawPayload);
   if (context.demo) {
     return Response.json(
       { event: { ...payload, id: `demo-clock-${Date.now()}` }, created: true },

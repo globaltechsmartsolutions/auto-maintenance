@@ -191,7 +191,7 @@ function ShiftDialog({
             </div>
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="shift-skills">Competencias requeridas</Label>
+            <Label htmlFor="shift-skills">Required Skills</Label>
             <Input
               id="shift-skills"
               name="requiredSkills"

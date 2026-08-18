@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { incidentUpdateSchema } from "@/lib/wia-control/domain";
-import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { updateAttendanceIncident } from "@/lib/wia-control/service";
 
 const requestSchema = incidentUpdateSchema.and(
@@ -13,12 +13,13 @@ export const PATCH = apiRoute(async (
   context: { params: Promise<{ incidentId: string }> }
 ) => {
   const { incidentId } = await context.params;
-  const payload = requestSchema.parse(await request.json());
+  const rawPayload = await request.json();
   const apiContext = await requireWiaApiContext(
     ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-    payload.companyId
+    requestedCompanyIdFromBody(rawPayload)
   );
   if (apiContext.response) return apiContext.response;
+  const payload = requestSchema.parse(rawPayload);
   if (apiContext.demo) return Response.json({ incident: { id: incidentId, ...payload } });
 
   return Response.json({
