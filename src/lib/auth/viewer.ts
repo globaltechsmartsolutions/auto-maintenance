@@ -37,7 +37,15 @@ export const getDashboardViewer = cache(async (): Promise<DashboardViewer> => {
     where: { supabaseUserId: user.id },
     include: { company: { select: { id: true, name: true, crmEnabled: true } } },
   });
-  if (!profile || !isRole(profile.role)) redirect("/login?error=Profile%20unavailable");
+  if (!profile || !isRole(profile.role)) {
+    // The Supabase session is valid but there is no matching application
+    // profile (e.g. an orphaned auth user, or provisioning failed).
+    // Without signing out, middleware would see a live session on /login
+    // and immediately bounce back to /control, creating an infinite
+    // redirect loop between the two pages.
+    await supabase.auth.signOut();
+    redirect("/login?error=Profile%20unavailable");
+  }
 
   return {
     id: profile.id,

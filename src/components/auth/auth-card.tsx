@@ -33,6 +33,7 @@ export function AuthCard({
   error,
   message,
   icon: Icon,
+  secondaryLink,
 }: {
   title: string;
   description: string;
@@ -45,6 +46,8 @@ export function AuthCard({
   error?: string;
   message?: string;
   icon: LucideIcon;
+  secondaryLink?: { label: string; href: Route };
+
 }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
@@ -94,6 +97,16 @@ export function AuthCard({
               {submitLabel}
               <ArrowRight className="size-4" />
             </Button>
+            {secondaryLink ? (
+              <div className="text-right">
+                <Link
+                  href={secondaryLink.href}
+                  className="text-sm font-medium text-muted-foreground hover:text-primary"
+                >
+                  {secondaryLink.label}
+                </Link>
+              </div>
+            ) : null}
           </form>
 
           <div className="mt-5 flex items-center justify-between gap-3 text-sm text-muted-foreground">

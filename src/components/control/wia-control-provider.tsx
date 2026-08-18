@@ -16,6 +16,23 @@ import {
   type TimeCorrectionDto,
   type WorksiteDto,
 } from "@/lib/wia-control/domain-core";
+import {
+  createQueuedCommand,
+  isExpired,
+  markNeedsAttention,
+  markRetryableFailure,
+  markSending,
+  resetForManualRetry,
+  sortQueueForSend,
+  toRequestPayload,
+  type QueuedClockCommand,
+  type QueuedClockCommandStatus,
+} from "@/lib/offline-clock-queue";
+import {
+  listQueuedCommands,
+  putQueuedCommand,
+  removeQueuedCommand,
+} from "@/lib/offline-clock-queue-db";
 
 const STORAGE_KEY = "wiacontrol-demo-state-v1";
 const DEMO_DATE = "2026-08-08";
@@ -79,6 +96,10 @@ type WiaControlContextValue = WiaControlState & {
   ) => void;
   updateWorksite: (worksiteId: string, input: Omit<Worksite, "id">) => void;
   refreshControl: () => Promise<void>;
+  /** Per-shift status of the offline clock queue, keyed by shiftId. */
+  clockQueueStatus: Record<string, { status: QueuedClockCommandStatus; lastError?: string } | undefined>;
+  /** Manually retry a shift's clock command that needs attention. */
+  retryQueuedClockEvent: (shiftId: string) => void;
 };
 
 const worksites: Worksite[] = [
@@ -335,10 +356,18 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-function readCurrentLocation() {
-  return new Promise<{ latitude?: number; longitude?: number; accuracyMeters?: number }>((resolve) => {
+type LocationResult = {
+  latitude?: number;
+  longitude?: number;
+  accuracyMeters?: number;
+  /** Present only when location could not be captured; explains why. */
+  unavailableReason?: "unsupported" | "permission_denied" | "position_unavailable" | "timeout";
+};
+
+function readCurrentLocation(): Promise<LocationResult> {
+  return new Promise((resolve) => {
     if (!("geolocation" in navigator)) {
-      resolve({});
+      resolve({ unavailableReason: "unsupported" });
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -348,11 +377,34 @@ function readCurrentLocation() {
           longitude: position.coords.longitude,
           accuracyMeters: position.coords.accuracy,
         }),
-      () => resolve({}),
+      (error) => {
+        // GeolocationPositionError codes: 1 = PERMISSION_DENIED,
+        // 2 = POSITION_UNAVAILABLE, 3 = TIMEOUT.
+        const reason =
+          error.code === 1
+            ? "permission_denied"
+            : error.code === 3
+              ? "timeout"
+              : "position_unavailable";
+        resolve({ unavailableReason: reason });
+      },
       { enableHighAccuracy: true, maximumAge: 30_000, timeout: 8_000 }
     );
   });
 }
+
+const locationUnavailableMessages: Record<
+  NonNullable<LocationResult["unavailableReason"]>,
+  string
+> = {
+  unsupported: "This device does not support location. Use the worksite's QR, PIN, or NFC method instead.",
+  permission_denied:
+    "Location permission was denied. Enable it in your browser settings, or use the worksite's QR, PIN, or NFC method.",
+  position_unavailable:
+    "Your location could not be determined. Try again outdoors, or use the worksite's QR, PIN, or NFC method.",
+  timeout:
+    "Finding your location took too long. Try again, or use the worksite's QR, PIN, or NFC method.",
+};
 
 const WiaControlContext = React.createContext<WiaControlContextValue | null>(null);
 
@@ -362,31 +414,41 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
     isBrowserDemo
       ? createInitialState()
       : {
-          worksites: [],
-          shifts: [],
-          clockEvents: [],
-          incidents: [],
-          corrections: [],
-          coverageDecisions: [],
-          communications: [],
-          employees: [],
-        }
+        worksites: [],
+        shifts: [],
+        clockEvents: [],
+        incidents: [],
+        corrections: [],
+        coverageDecisions: [],
+        communications: [],
+        employees: [],
+      }
   );
   const [hydrated, setHydrated] = React.useState(false);
   const [loading, setLoading] = React.useState(!isBrowserDemo);
   const [loadError, setLoadError] = React.useState<string>();
+  const [clockQueueStatus, setClockQueueStatus] = React.useState<
+    Record<string, { status: QueuedClockCommandStatus; lastError?: string } | undefined>
+  >({});
+
+  const setQueueStatus = React.useCallback(
+    (shiftId: string, value: { status: QueuedClockCommandStatus; lastError?: string } | undefined) => {
+      setClockQueueStatus((current) => ({ ...current, [shiftId]: value }));
+    },
+    []
+  );
   const employeeOptions = React.useMemo<EmployeeOption[]>(
     () =>
       isBrowserDemo
         ? demoEmployees.map((employee) => ({
-            id: employee.id,
-            name: employee.name,
-            status: mapDemoEmployeeStatus(employee.status),
-            availability: employee.availability,
-            skills: employee.skills ?? [],
-            zones: employee.zones ?? [],
-            performanceScore: employee.score,
-          }))
+          id: employee.id,
+          name: employee.name,
+          status: mapDemoEmployeeStatus(employee.status),
+          availability: employee.availability,
+          skills: employee.skills ?? [],
+          zones: employee.zones ?? [],
+          performanceScore: employee.score,
+        }))
         : state.employees,
     [demoEmployees, state.employees]
   );
@@ -521,10 +583,10 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
             employeeName: shift.employee?.name,
             recommendationReasons: incident.recommendedEmployee
               ? [
-                  "Available with no overlaps",
-                  "Best fit by area and skills",
-                  "Recommendation recorded by WIA",
-                ]
+                "Available with no overlaps",
+                "Best fit by area and skills",
+                "Recommendation recorded by WIA",
+              ]
               : undefined,
           }))
         ),
@@ -655,10 +717,10 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
             ? accepted
               ? { ...correction, employeeAcknowledgedAt: new Date().toISOString() }
               : {
-                  ...correction,
-                  status: "DISPUTED" as const,
-                  disagreementReason,
-                }
+                ...correction,
+                status: "DISPUTED" as const,
+                disagreementReason,
+              }
             : correction
         ),
       }));
@@ -745,17 +807,17 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         incidents: input.employeeName
           ? current.incidents
           : [
-              {
-                id: createId("incident"),
-                shiftId,
-                type: "MISSING_CLOCK_IN" as const,
-                title: "Uncovered shift",
-                detail: "The shift was created without an assigned employee.",
-                status: "OPEN" as const,
-                detectedAt: new Date().toISOString(),
-              },
-              ...current.incidents,
-            ],
+            {
+              id: createId("incident"),
+              shiftId,
+              type: "MISSING_CLOCK_IN" as const,
+              title: "Uncovered shift",
+              detail: "The shift was created without an assigned employee.",
+              status: "OPEN" as const,
+              detectedAt: new Date().toISOString(),
+            },
+            ...current.incidents,
+          ],
       }));
       notify(
         input.employeeName ? "Shift planned" : "Shift created as uncovered",
@@ -877,19 +939,19 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         shifts: current.shifts.map((item) =>
           item.id === shiftId
             ? {
-                ...item,
-                employeeName,
-                status: employeeName ? (item.status === "UNCOVERED" ? "COVERED" : "PLANNED") : "UNCOVERED",
-              }
+              ...item,
+              employeeName,
+              status: employeeName ? (item.status === "UNCOVERED" ? "COVERED" : "PLANNED") : "UNCOVERED",
+            }
             : item
         ),
         incidents: current.incidents.map((incident) =>
           incident.shiftId === shiftId
             ? {
-                ...incident,
-                status: employeeName ? ("RESOLVED" as const) : ("OPEN" as const),
-                resolvedAt: employeeName ? resolvedAt : undefined,
-              }
+              ...incident,
+              status: employeeName ? ("RESOLVED" as const) : ("OPEN" as const),
+              resolvedAt: employeeName ? resolvedAt : undefined,
+            }
             : incident
         ),
       }));
@@ -1058,27 +1120,150 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
     ]
   );
 
+  /**
+   * Attempts to send one queued command to the server. Network failures are
+   * kept queued for retry with the same idempotency key; a server-side
+   * validation rejection (4xx from the domain layer) is surfaced as
+   * "needs attention" instead of retried, since retrying would not change
+   * the outcome.
+   */
+  const sendQueuedCommand = React.useCallback(
+    async (command: QueuedClockCommand) => {
+      setQueueStatus(command.shiftId, { status: "sending" });
+      try {
+        const response = await fetch("/api/control/clock-events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toRequestPayload(markSending(command))),
+        });
+
+        if (response.ok) {
+          await removeQueuedCommand(command.id).catch(() => undefined);
+          setQueueStatus(command.shiftId, undefined);
+          await refreshControl();
+          return;
+        }
+
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        const message =
+          response.status === 401
+            ? "Your session has expired. Sign in again, then use Retry to save this clock event — it has not been lost."
+            : body.error ?? `Request failed (${response.status}).`;
+        const rejected = markNeedsAttention(command, message);
+        await putQueuedCommand(rejected).catch(() => undefined);
+        setQueueStatus(command.shiftId, { status: "needs_attention", lastError: rejected.lastError });
+        notify(
+          "A clock event needs attention",
+          rejected.lastError ?? "The server could not accept this event."
+        );
+      } catch (error) {
+        const retried = markRetryableFailure(
+          command,
+          error instanceof Error ? error.message : "Network error"
+        );
+        await putQueuedCommand(retried).catch(() => undefined);
+        setQueueStatus(command.shiftId, { status: retried.status, lastError: retried.lastError });
+        if (retried.status === "needs_attention") {
+          notify(
+            "A clock event needs attention",
+            "This event could not be sent after several attempts. Check your connection and retry."
+          );
+        }
+      }
+    },
+    [notify, refreshControl, setQueueStatus]
+  );
+
+  /**
+   * Sends every queued command still waiting, in FIFO order. Expired
+   * commands are dropped and surfaced as needing a manual correction
+   * instead of being fabricated as sent.
+   */
+  const flushQueue = React.useCallback(async () => {
+    if (isBrowserDemo) return;
+    let commands: QueuedClockCommand[];
+    try {
+      commands = await listQueuedCommands();
+    } catch {
+      return;
+    }
+
+    const now = new Date();
+    for (const command of sortQueueForSend(commands)) {
+      if (command.status === "needs_attention") {
+        setQueueStatus(command.shiftId, { status: "needs_attention", lastError: command.lastError });
+        continue;
+      }
+      if (isExpired(command, now)) {
+        await removeQueuedCommand(command.id).catch(() => undefined);
+        setQueueStatus(command.shiftId, {
+          status: "needs_attention",
+          lastError: "This clock event expired before it could be sent. Use a time correction instead.",
+        });
+        continue;
+      }
+      await sendQueuedCommand(command);
+    }
+  }, [sendQueuedCommand, setQueueStatus]);
+
+  React.useEffect(() => {
+    if (isBrowserDemo) return;
+    void flushQueue();
+    const handleOnline = () => void flushQueue();
+    window.addEventListener("online", handleOnline);
+    const interval = window.setInterval(() => void flushQueue(), 20_000);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.clearInterval(interval);
+    };
+  }, [flushQueue]);
+
+  const retryQueuedClockEvent = React.useCallback(
+    (shiftId: string) => {
+      void (async () => {
+        const commands = await listQueuedCommands().catch(() => [] as QueuedClockCommand[]);
+        const command = commands.find((item) => item.shiftId === shiftId);
+        if (!command) return;
+        const reset = resetForManualRetry(command);
+        await putQueuedCommand(reset).catch(() => undefined);
+        setQueueStatus(shiftId, { status: "pending" });
+        await sendQueuedCommand(reset);
+      })();
+    },
+    [sendQueuedCommand, setQueueStatus]
+  );
+
   const recordClockEvent = React.useCallback(
     (shiftId: string, type: ClockEventType) => {
       const shift = state.shifts.find((item) => item.id === shiftId);
       if (!shift?.employeeName) return;
 
       if (!isBrowserDemo) {
+        // The idempotency key is generated once, right here, and persisted
+        // to IndexedDB before any network attempt. It is reused for every
+        // retry of this exact action so the server's uniqueness constraint
+        // can guarantee "exactly one event" even if the device goes
+        // offline mid-tap or the person retries manually.
+        const id = crypto.randomUUID();
+        const occurredAt = new Date().toISOString();
         void (async () => {
           const location = await readCurrentLocation();
-          await runRemoteMutation("/api/control/clock-events", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              shiftId,
-              type,
-              method: "MOBILE",
-              occurredAt: new Date().toISOString(),
-              idempotencyKey: crypto.randomUUID(),
-              ...location,
-              isOffline: false,
-            }),
+          if (location.unavailableReason) {
+            notify("Location not captured", locationUnavailableMessages[location.unavailableReason]);
+          }
+          const command = createQueuedCommand({
+            id,
+            shiftId,
+            type,
+            occurredAt,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracyMeters: location.accuracyMeters,
+            isOffline: typeof navigator !== "undefined" ? !navigator.onLine : false,
           });
+          await putQueuedCommand(command).catch(() => undefined);
+          setQueueStatus(shiftId, { status: "pending" });
+          await sendQueuedCommand(command);
         })();
         return;
       }
@@ -1119,7 +1304,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       };
       notify(labels[type], "Worksite and time verified. The record cannot be overwritten.");
     },
-    [notify, runRemoteMutation, state.shifts]
+    [notify, sendQueuedCommand, setQueueStatus, state.shifts]
   );
 
   const recommendCoverage = React.useCallback(
@@ -1385,12 +1570,14 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       assignShift,
       assignReplacement,
       cancelShift,
+      clockQueueStatus,
       exportClockReport,
       recordClockEvent,
       recommendCoverage,
       refreshControl,
       requestTimeCorrection,
       resetControl,
+      retryQueuedClockEvent,
       reviewTimeCorrection,
       runIncidentDetection,
       updateIncident,
@@ -1404,6 +1591,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       assignShift,
       assignReplacement,
       cancelShift,
+      clockQueueStatus,
       exportClockReport,
       employeeOptions,
       recordClockEvent,
@@ -1411,6 +1599,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       refreshControl,
       requestTimeCorrection,
       resetControl,
+      retryQueuedClockEvent,
       reviewTimeCorrection,
       runIncidentDetection,
       state,

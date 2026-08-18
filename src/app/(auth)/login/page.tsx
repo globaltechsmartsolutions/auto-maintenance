@@ -24,16 +24,15 @@ export default async function LoginPage({
           label: "Email address",
           type: "email",
           placeholder: "admin@company.com",
-          defaultValue: "demo@cleaningdemo.com",
         },
         {
           name: "password",
           label: "Password",
           type: "password",
           placeholder: "********",
-          defaultValue: "demo-local",
         },
       ]}
+      secondaryLink={{ label: "Forgot password?", href: "/reset-password" }}
       footerText="Don't have an account?"
       footerLabel="Create account"
       footerHref="/register"
