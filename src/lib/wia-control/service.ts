@@ -7,11 +7,15 @@ import {
   assertClockTransition,
   clockCommandSchema,
   companySettingsSchema,
+  computeIncidentDueAt,
+  computeIncidentSeverity,
   correctionAcknowledgementSchema,
   correctionRequestSchema,
   correctionReviewSchema,
   coverageDecisionSchema,
   coverageRecommendationSchema,
+  DEFAULT_INCIDENT_POLICY,
+  escalateSeverity,
   getShiftStatusAfterClock,
   isLocationWithinWorksite,
   incidentUpdateSchema,
@@ -24,6 +28,7 @@ import {
   worksiteInputSchema,
   worksiteUpdateSchema,
   type ClockEventType,
+  type IncidentPolicy,
 } from "@/lib/wia-control/domain";
 
 export type WiaActor = {
@@ -41,6 +46,19 @@ function assertCompany(actor: WiaActor) {
 
 function employeeDisplayName(employee: { user: { firstName: string; lastName: string } } | null) {
   return employee ? `${employee.user.firstName} ${employee.user.lastName}`.trim() : undefined;
+}
+
+/**
+ * Reads a company's configured timezone for display purposes. Falls back
+ * to UTC if, for any reason, it can't be read — never throws, since a
+ * missing timezone should degrade display, not break the page.
+ */
+export async function getCompanyTimezone(companyId: string): Promise<string> {
+  const company = await getPrisma().company.findUnique({
+    where: { id: companyId },
+    select: { timezone: true },
+  });
+  return company?.timezone ?? "UTC";
 }
 
 export async function listControlDay(actor: WiaActor, date: Date) {
@@ -67,6 +85,7 @@ export async function listControlDay(actor: WiaActor, date: Date) {
           recommendedEmployee: {
             include: { user: { select: { firstName: true, lastName: true } } },
           },
+          owner: { select: { id: true, firstName: true, lastName: true } },
         },
       },
       coverageDecisions: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -103,6 +122,12 @@ export async function listControlDay(actor: WiaActor, date: Date) {
       id: incident.id,
       type: incident.type,
       status: incident.status,
+      severity: incident.severity,
+      dueAt: incident.dueAt?.toISOString(),
+      ownerId: incident.ownerId ?? undefined,
+      ownerName: incident.owner
+        ? `${incident.owner.firstName} ${incident.owner.lastName}`.trim()
+        : undefined,
       title: incident.title,
       detail: incident.detail,
       detectedAt: incident.detectedAt.toISOString(),
@@ -110,10 +135,10 @@ export async function listControlDay(actor: WiaActor, date: Date) {
     })),
     latestCoverageDecision: shift.coverageDecisions[0]
       ? {
-          type: shift.coverageDecisions[0].type,
-          selectedEmployeeId: shift.coverageDecisions[0].selectedEmployeeId,
-          createdAt: shift.coverageDecisions[0].createdAt.toISOString(),
-        }
+        type: shift.coverageDecisions[0].type,
+        selectedEmployeeId: shift.coverageDecisions[0].selectedEmployeeId,
+        createdAt: shift.coverageDecisions[0].createdAt.toISOString(),
+      }
       : null,
   }));
 }
@@ -126,6 +151,63 @@ export async function listWorksites(actor: WiaActor) {
     include: {
       customer: { select: { id: true, name: true } },
       _count: { select: { shifts: true, incidents: true } },
+    },
+  });
+}
+
+export type IncidentListFilters = {
+  dateFrom?: Date;
+  dateTo?: Date;
+  worksiteId?: string;
+  employeeId?: string;
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** A specific user id, "UNASSIGNED" for no owner, or omitted for any. */
+  ownerId?: string;
+  status?: "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED";
+};
+
+/**
+ * The Stage 3 incident inbox query: every field a coordinator needs to
+ * filter by (date, worksite, employee, severity, owner, status), scoped to
+ * the caller's company. Deliberately not bound to "today" like the
+ * day-view — an incident from three days ago that is still open should
+ * remain visible until someone resolves it.
+ */
+export async function listIncidents(actor: WiaActor, filters: IncidentListFilters = {}) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view the incident inbox.");
+  }
+
+  return getPrisma().attendanceIncident.findMany({
+    where: {
+      companyId: actor.companyId,
+      ...(filters.dateFrom || filters.dateTo
+        ? {
+          detectedAt: {
+            ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+            ...(filters.dateTo ? { lt: filters.dateTo } : {}),
+          },
+        }
+        : {}),
+      ...(filters.worksiteId ? { worksiteId: filters.worksiteId } : {}),
+      ...(filters.employeeId ? { employeeId: filters.employeeId } : {}),
+      ...(filters.severity ? { severity: filters.severity } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.ownerId === "UNASSIGNED"
+        ? { ownerId: null }
+        : filters.ownerId
+          ? { ownerId: filters.ownerId }
+          : {}),
+    },
+    // Enum declaration order is LOW < MEDIUM < HIGH < CRITICAL, so a
+    // descending sort surfaces the most severe incidents first.
+    orderBy: [{ severity: "desc" }, { detectedAt: "desc" }],
+    include: {
+      shift: { select: { id: true, title: true } },
+      employee: { include: { user: { select: { firstName: true, lastName: true } } } },
+      worksite: { select: { id: true, name: true } },
+      owner: { select: { id: true, firstName: true, lastName: true } },
     },
   });
 }
@@ -466,6 +548,28 @@ function clockIntegrityHash(input: {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
+/**
+ * Loads a company's incident-policy thresholds (Stage 3). Falls back to
+ * the documented defaults if, for any reason, the row can't be read —
+ * detection must never fail just because a policy lookup failed.
+ */
+async function getIncidentPolicy(
+  transaction: Prisma.TransactionClient,
+  companyId: string
+): Promise<IncidentPolicy> {
+  const company = await transaction.company.findUnique({
+    where: { id: companyId },
+    select: {
+      lateSeverityThresholdMinutes: true,
+      incidentDueMinutesCritical: true,
+      incidentDueMinutesHigh: true,
+      incidentDueMinutesMedium: true,
+      incidentDueMinutesLow: true,
+    },
+  });
+  return company ?? DEFAULT_INCIDENT_POLICY;
+}
+
 export async function recordClockEvent(actor: WiaActor, input: unknown) {
   assertCompany(actor);
   const payload = clockCommandSchema.parse(input);
@@ -507,17 +611,17 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
     const hasWorksiteCoordinates = shift.worksite.latitude !== null && shift.worksite.longitude !== null;
     const locationVerified = hasWorksiteCoordinates
       ? isLocationWithinWorksite(
-          {
-            latitude: payload.latitude,
-            longitude: payload.longitude,
-            accuracyMeters: payload.accuracyMeters,
-          },
-          {
-            latitude: Number(shift.worksite.latitude),
-            longitude: Number(shift.worksite.longitude),
-            radiusMeters: shift.worksite.radiusMeters,
-          }
-        )
+        {
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          accuracyMeters: payload.accuracyMeters,
+        },
+        {
+          latitude: Number(shift.worksite.latitude),
+          longitude: Number(shift.worksite.longitude),
+          radiusMeters: shift.worksite.radiusMeters,
+        }
+      )
       : ["QR", "PIN", "NFC", "KIOSK"].includes(payload.method);
     const integrityHash = clockIntegrityHash({
       companyId: actor.companyId,
@@ -562,6 +666,9 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
         shift.gracePeriodMinutes
       );
       if (minutes > 0) {
+        const policy = await getIncidentPolicy(transaction, actor.companyId);
+        const severity = computeIncidentSeverity("LATE", { lateMinutes: minutes, policy });
+        const detectedAt = new Date(payload.occurredAt);
         await transaction.attendanceIncident.create({
           data: {
             companyId: actor.companyId,
@@ -570,15 +677,20 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
             worksiteId: shift.worksiteId,
             type: "LATE",
             status: "OPEN",
+            severity,
+            dueAt: computeIncidentDueAt(severity, detectedAt, policy),
             title: `Clock-in ${minutes} minutes late`,
             detail: "The clock event is valid and remains pending review.",
-            detectedAt: new Date(payload.occurredAt),
+            detectedAt,
           },
         });
       }
     }
 
     if (hasWorksiteCoordinates && !locationVerified) {
+      const policy = await getIncidentPolicy(transaction, actor.companyId);
+      const severity = computeIncidentSeverity("OUTSIDE_LOCATION", { policy });
+      const detectedAt = new Date(payload.occurredAt);
       await transaction.attendanceIncident.create({
         data: {
           companyId: actor.companyId,
@@ -587,9 +699,11 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
           worksiteId: shift.worksiteId,
           type: "OUTSIDE_LOCATION",
           status: "OPEN",
+          severity,
+          dueAt: computeIncidentDueAt(severity, detectedAt, policy),
           title: "Clock event outside the worksite",
           detail: "The reported position is outside the configured radius.",
-          detectedAt: new Date(payload.occurredAt),
+          detectedAt,
         },
       });
     }
@@ -782,6 +896,67 @@ export async function updateAttendanceIncident(
       throw new WiaDomainError("INCIDENT_CLOSED", "The incident is already closed.");
     }
 
+    if ("action" in payload && payload.action === "ASSIGN") {
+      const targetOwnerId = payload.ownerId ?? actor.userId;
+      if (!targetOwnerId) {
+        throw new WiaDomainError(
+          "OWNER_NOT_FOUND",
+          "No owner could be determined for this assignment."
+        );
+      }
+      const owner = await transaction.user.findFirst({
+        where: {
+          id: targetOwnerId,
+          companyId: actor.companyId,
+          role: { in: ["SUPER_ADMIN", "ADMIN", "MANAGER"] },
+        },
+      });
+      if (!owner) {
+        throw new WiaDomainError(
+          "OWNER_NOT_FOUND",
+          "The selected owner is not a coordinator in this company."
+        );
+      }
+      const updated = await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { ownerId: owner.id },
+      });
+      await transaction.auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: "attendance_incident.assigned",
+          entity: "AttendanceIncident",
+          entityId: incident.id,
+          metadata: { ownerId: owner.id },
+        },
+      });
+      return updated;
+    }
+
+    if ("action" in payload && payload.action === "ESCALATE") {
+      const nextSeverity = escalateSeverity(incident.severity);
+      const updated = await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { severity: nextSeverity },
+      });
+      await transaction.auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: "attendance_incident.escalated",
+          entity: "AttendanceIncident",
+          entityId: incident.id,
+          metadata: {
+            note: payload.note,
+            fromSeverity: incident.severity,
+            toSeverity: nextSeverity,
+          },
+        },
+      });
+      return updated;
+    }
+
     const closed = ["RESOLVED", "DISMISSED"].includes(payload.status);
     const updated = await transaction.attendanceIncident.update({
       where: { id: incident.id },
@@ -825,6 +1000,7 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
       },
     });
     const created: string[] = [];
+    const policy = await getIncidentPolicy(transaction, actor.companyId);
 
     for (const shift of candidates) {
       const eventTypes = new Set(shift.clockEvents.map((event) => event.type));
@@ -835,6 +1011,7 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
         : "MISSING_CLOCK_IN";
       if (!incidentType || shift.incidents.some((incident) => incident.type === incidentType)) continue;
 
+      const severity = computeIncidentSeverity(incidentType, { policy });
       const incident = await transaction.attendanceIncident.create({
         data: {
           companyId: actor.companyId,
@@ -843,6 +1020,8 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
           worksiteId: shift.worksiteId,
           type: incidentType,
           status: "OPEN",
+          severity,
+          dueAt: computeIncidentDueAt(severity, now, policy),
           title: incidentType === "INCOMPLETE_CLOCK" ? "Shift missing clock-out" : "Shift missing clock-in",
           detail: "The shift has passed its end time and requires review.",
           detectedAt: now,
@@ -863,6 +1042,35 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
     });
     return { inspected: candidates.length, created: created.length, incidentIds: created };
   });
+}
+
+/**
+ * Stage 3, Task 5: runs detection for every company, one at a time. This
+ * is what the scheduled cron job calls — a human coordinator never needs
+ * to remember to click "detect" manually. Each company's run is
+ * independent and duplicate-safe (see `detectIncompleteAttendance`), so a
+ * failure in one company does not stop the others.
+ */
+export async function detectIncompleteAttendanceForAllCompanies(now = new Date()) {
+  const companies = await getPrisma().company.findMany({ select: { id: true } });
+  const results: Array<{ companyId: string; inspected: number; created: number; error?: string }> = [];
+
+  for (const company of companies) {
+    const systemActor: WiaActor = { companyId: company.id, role: "SUPER_ADMIN" };
+    try {
+      const result = await detectIncompleteAttendance(systemActor, now);
+      results.push({ companyId: company.id, inspected: result.inspected, created: result.created });
+    } catch (error) {
+      results.push({
+        companyId: company.id,
+        inspected: 0,
+        created: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  return results;
 }
 
 export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
@@ -1174,6 +1382,11 @@ export async function updateCompanySettings(actor: WiaActor, input: unknown) {
         timezone: true,
         clockRetentionYears: true,
         crmEnabled: true,
+        lateSeverityThresholdMinutes: true,
+        incidentDueMinutesCritical: true,
+        incidentDueMinutesHigh: true,
+        incidentDueMinutesMedium: true,
+        incidentDueMinutesLow: true,
       },
     });
     await transaction.auditLog.create({

@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => {
     attendanceIncident: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      create: vi.fn(),
     },
+    company: { findUnique: vi.fn() },
     employee: { findFirst: vi.fn() },
     plannedShift: {
       findMany: vi.fn(),
@@ -25,7 +27,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/prisma", () => ({ getPrisma: () => mocks.prisma }));
 
-import { confirmCoverage, type WiaActor } from "@/lib/wia-control/service";
+import { confirmCoverage, detectIncompleteAttendance, type WiaActor } from "@/lib/wia-control/service";
 
 const manager: WiaActor = {
   companyId: "company-1",
@@ -99,6 +101,84 @@ describe("coverage transaction", () => {
       confirmCoverage(
         { companyId: "company-1", employeeId: "employee-1", role: "EMPLOYEE" },
         baseInput
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("detectIncompleteAttendance (Stage 3 acceptance test)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.company.findUnique.mockResolvedValue({
+      lateSeverityThresholdMinutes: 30,
+      incidentDueMinutesCritical: 60,
+      incidentDueMinutesHigh: 240,
+      incidentDueMinutesMedium: 1_440,
+      incidentDueMinutesLow: 4_320,
+    });
+    mocks.transaction.attendanceIncident.create.mockResolvedValue({ id: "incident-new" });
+    mocks.transaction.auditLog.create.mockResolvedValue({ id: "audit-1" });
+  });
+
+  it("creates exactly one incident the first time a shift is missing a clock-in", async () => {
+    mocks.transaction.plannedShift.findMany.mockResolvedValue([
+      {
+        id: "shift-1",
+        employeeId: "employee-1",
+        worksiteId: "worksite-1",
+        clockEvents: [],
+        incidents: [],
+      },
+    ]);
+
+    const result = await detectIncompleteAttendance(manager, new Date("2026-08-08T12:00:00Z"));
+
+    expect(result.created).toBe(1);
+    expect(mocks.transaction.attendanceIncident.create).toHaveBeenCalledOnce();
+  });
+
+  it(
+    "running detection twice for the same late arrival results in one open incident " +
+    "— no duplicate is created the second time",
+    async () => {
+      // First run: no incident exists yet for this shift.
+      mocks.transaction.plannedShift.findMany.mockResolvedValueOnce([
+        {
+          id: "shift-1",
+          employeeId: "employee-1",
+          worksiteId: "worksite-1",
+          clockEvents: [],
+          incidents: [],
+        },
+      ]);
+      const first = await detectIncompleteAttendance(manager, new Date("2026-08-08T12:00:00Z"));
+      expect(first.created).toBe(1);
+
+      // Second run: the shift now already has the incident from the first
+      // run (as it would in the real database) — detection must not add
+      // another one for the same condition.
+      mocks.transaction.plannedShift.findMany.mockResolvedValueOnce([
+        {
+          id: "shift-1",
+          employeeId: "employee-1",
+          worksiteId: "worksite-1",
+          clockEvents: [],
+          incidents: [{ type: "MISSING_CLOCK_IN" }],
+        },
+      ]);
+      const second = await detectIncompleteAttendance(manager, new Date("2026-08-08T12:05:00Z"));
+
+      expect(second.created).toBe(0);
+      // Exactly one create call across both runs combined.
+      expect(mocks.transaction.attendanceIncident.create).toHaveBeenCalledOnce();
+    }
+  );
+
+  it("prevents an employee from running detection", async () => {
+    await expect(
+      detectIncompleteAttendance(
+        { companyId: "company-1", employeeId: "employee-1", role: "EMPLOYEE" },
+        new Date()
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });

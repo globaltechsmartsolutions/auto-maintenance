@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assertClockTransition,
+  computeIncidentDueAt,
+  computeIncidentSeverity,
+  DEFAULT_INCIDENT_POLICY,
   distanceInMeters,
   getShiftStatusAfterClock,
   isLocationWithinWorksite,
@@ -149,5 +152,53 @@ describe("incidents and coverage", () => {
 
     expect(strong.score).toBeGreaterThan(weak.score);
     expect(strong.reasons).toContain("Meets all required skills.");
+  });
+});
+
+describe("incident severity and due-date policy (Stage 3)", () => {
+  it("treats a missing clock-in as high severity, since the shift is uncovered right now", () => {
+    expect(computeIncidentSeverity("MISSING_CLOCK_IN")).toBe("HIGH");
+  });
+
+  it("treats an incomplete clock and an outside-location event as medium severity", () => {
+    expect(computeIncidentSeverity("INCOMPLETE_CLOCK")).toBe("MEDIUM");
+    expect(computeIncidentSeverity("OUTSIDE_LOCATION")).toBe("MEDIUM");
+  });
+
+  it("escalates a LATE incident to high severity once it crosses the company's threshold", () => {
+    expect(
+      computeIncidentSeverity("LATE", {
+        lateMinutes: DEFAULT_INCIDENT_POLICY.lateSeverityThresholdMinutes - 1,
+      })
+    ).toBe("LOW");
+    expect(
+      computeIncidentSeverity("LATE", {
+        lateMinutes: DEFAULT_INCIDENT_POLICY.lateSeverityThresholdMinutes,
+      })
+    ).toBe("HIGH");
+  });
+
+  it("respects a company's own policy thresholds instead of only the defaults", () => {
+    const strictPolicy = { ...DEFAULT_INCIDENT_POLICY, lateSeverityThresholdMinutes: 5 };
+    expect(computeIncidentSeverity("LATE", { lateMinutes: 6, policy: strictPolicy })).toBe("HIGH");
+  });
+
+  it("computes a due time that grows longer as severity decreases", () => {
+    const detectedAt = new Date("2026-08-19T08:00:00.000Z");
+    const critical = computeIncidentDueAt("CRITICAL", detectedAt);
+    const high = computeIncidentDueAt("HIGH", detectedAt);
+    const medium = computeIncidentDueAt("MEDIUM", detectedAt);
+    const low = computeIncidentDueAt("LOW", detectedAt);
+
+    expect(critical.getTime()).toBeLessThan(high.getTime());
+    expect(high.getTime()).toBeLessThan(medium.getTime());
+    expect(medium.getTime()).toBeLessThan(low.getTime());
+  });
+
+  it("uses the company's own due-time windows when provided", () => {
+    const detectedAt = new Date("2026-08-19T08:00:00.000Z");
+    const fastPolicy = { ...DEFAULT_INCIDENT_POLICY, incidentDueMinutesHigh: 15 };
+    const due = computeIncidentDueAt("HIGH", detectedAt, fastPolicy);
+    expect(due.getTime() - detectedAt.getTime()).toBe(15 * 60_000);
   });
 });

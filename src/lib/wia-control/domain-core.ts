@@ -57,6 +57,10 @@ export type AttendanceIncidentDto = {
   title: string;
   detail: string;
   status: IncidentStatus;
+  severity: IncidentSeverityLevel;
+  dueAt?: string;
+  ownerId?: string;
+  ownerName?: string;
   detectedAt: string;
   recommendedEmployee?: string;
   recommendationReasons?: string[];
@@ -207,6 +211,86 @@ export function rangesOverlap(
 export function lateMinutes(scheduledStart: Date, occurredAt: Date, gracePeriodMinutes: number) {
   const difference = Math.floor((occurredAt.getTime() - scheduledStart.getTime()) / 60_000);
   return Math.max(0, difference - gracePeriodMinutes);
+}
+
+/**
+ * Company-configurable incident policy (Stage 3, playbook Section 7):
+ * how many minutes late counts as severe, and how long each severity is
+ * allowed to stay open before it is due. Defaults are a starting point —
+ * the product owner should confirm them before pilot, same as the
+ * offline-queue expiry window in Stage 2.
+ */
+export type IncidentPolicy = {
+  lateSeverityThresholdMinutes: number;
+  incidentDueMinutesCritical: number;
+  incidentDueMinutesHigh: number;
+  incidentDueMinutesMedium: number;
+  incidentDueMinutesLow: number;
+};
+
+export const DEFAULT_INCIDENT_POLICY: IncidentPolicy = {
+  lateSeverityThresholdMinutes: 30,
+  incidentDueMinutesCritical: 60,
+  incidentDueMinutesHigh: 240,
+  incidentDueMinutesMedium: 1_440,
+  incidentDueMinutesLow: 4_320,
+};
+
+export type IncidentSeverityLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type IncidentTypeForSeverity =
+  | "MISSING_CLOCK_IN"
+  | "LATE"
+  | "INCOMPLETE_CLOCK"
+  | "OUTSIDE_LOCATION";
+
+/**
+ * Deterministic severity rule per incident type. Kept as a pure function
+ * (no database access) so it is unit-testable and identical whether an
+ * incident is created from a live clock event or from batch detection.
+ */
+export function computeIncidentSeverity(
+  type: IncidentTypeForSeverity,
+  context: { lateMinutes?: number; policy?: IncidentPolicy } = {}
+): IncidentSeverityLevel {
+  const policy = context.policy ?? DEFAULT_INCIDENT_POLICY;
+  switch (type) {
+    case "MISSING_CLOCK_IN":
+      // Nobody has shown up for a shift that should already be running.
+      return "HIGH";
+    case "LATE":
+      return (context.lateMinutes ?? 0) >= policy.lateSeverityThresholdMinutes ? "HIGH" : "LOW";
+    case "INCOMPLETE_CLOCK":
+      // The shift happened; only the clock-out is missing.
+      return "MEDIUM";
+    case "OUTSIDE_LOCATION":
+      // Needs verification, but the employee did attempt to work.
+      return "MEDIUM";
+    default:
+      return "MEDIUM";
+  }
+}
+
+/** How long a severity level is allowed to stay open before it is "due". */
+export function computeIncidentDueAt(
+  severity: IncidentSeverityLevel,
+  detectedAt: Date,
+  policy: IncidentPolicy = DEFAULT_INCIDENT_POLICY
+): Date {
+  const minutesBySeverity: Record<IncidentSeverityLevel, number> = {
+    CRITICAL: policy.incidentDueMinutesCritical,
+    HIGH: policy.incidentDueMinutesHigh,
+    MEDIUM: policy.incidentDueMinutesMedium,
+    LOW: policy.incidentDueMinutesLow,
+  };
+  return new Date(detectedAt.getTime() + minutesBySeverity[severity] * 60_000);
+}
+
+/** Moves severity up one level. CRITICAL is already the top and stays put. */
+export function escalateSeverity(current: IncidentSeverityLevel): IncidentSeverityLevel {
+  const order: IncidentSeverityLevel[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+  const index = order.indexOf(current);
+  return order[Math.min(index + 1, order.length - 1)];
 }
 
 function degreesToRadians(value: number) {

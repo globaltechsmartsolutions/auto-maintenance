@@ -75,11 +75,11 @@ const statusConfig: Record<
   },
 };
 
-function formatTime(value: string) {
+function formatTime(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Madrid",
+    timeZone: timezone,
   }).format(new Date(value));
 }
 
@@ -132,6 +132,7 @@ function Metric({
 
 function ShiftCard({ shift }: { shift: PlannedShift }) {
   const {
+    companyTimezone,
     incidents,
     worksites,
     assignReplacement,
@@ -169,7 +170,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
         <div className="grid gap-4 p-4 lg:grid-cols-[130px_1.2fr_1fr_auto] lg:items-center">
           <div>
             <p className="text-lg font-semibold tabular-nums">
-              {formatTime(shift.startsAt)}–{formatTime(shift.endsAt)}
+              {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
             </p>
             <ShiftStatusBadge status={shift.status} />
           </div>

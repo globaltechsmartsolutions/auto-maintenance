@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useDemo } from "@/components/demo/demo-provider";
 import {
+  computeIncidentSeverity,
+  escalateSeverity,
   getShiftStatusAfterClock,
   rangesOverlap,
   type AttendanceIncidentDto,
@@ -57,6 +59,8 @@ type WiaControlState = {
   coverageDecisions: CoverageDecision[];
   communications: Communication[];
   employees: EmployeeOption[];
+  /** The company's configured display timezone (e.g. "Asia/Dubai"). */
+  companyTimezone: string;
 };
 
 type WiaControlContextValue = WiaControlState & {
@@ -94,6 +98,10 @@ type WiaControlContextValue = WiaControlState & {
     status: "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED",
     resolutionNotes?: string
   ) => void;
+  /** Assigns an incident to the current coordinator ("assign to me"). */
+  assignIncidentOwner: (incidentId: string) => void;
+  /** Escalates an incident's severity one level, with a required note. */
+  escalateIncident: (incidentId: string, note: string) => void;
   updateWorksite: (worksiteId: string, input: Omit<Worksite, "id">) => void;
   refreshControl: () => Promise<void>;
   /** Per-shift status of the offline clock queue, keyed by shiftId. */
@@ -257,6 +265,7 @@ function createInitialState(): WiaControlState {
         title: "Uncovered service",
         detail: "Hugo is absent and there is no clock-in event for the 07:00 shift.",
         status: "OPEN",
+        severity: "HIGH",
         detectedAt: `${DEMO_DATE}T07:05:00+02:00`,
         recommendedEmployee: "Nadia Ramos",
         recommendationReasons: [
@@ -273,6 +282,7 @@ function createInitialState(): WiaControlState {
         title: "Clock-in 11 minutes late",
         detail: "The clock event is valid and verified; the delay still needs an explanation.",
         status: "ACKNOWLEDGED",
+        severity: "LOW",
         detectedAt: `${DEMO_DATE}T07:11:03+02:00`,
       },
     ],
@@ -301,6 +311,7 @@ function createInitialState(): WiaControlState {
     coverageDecisions: [],
     communications: [],
     employees: [],
+    companyTimezone: "Europe/Madrid",
   };
 }
 
@@ -319,6 +330,8 @@ function mergeSavedState(saved: Partial<WiaControlState>): WiaControlState {
       ? saved.communications
       : initial.communications,
     employees: initial.employees,
+    companyTimezone:
+      typeof saved.companyTimezone === "string" ? saved.companyTimezone : initial.companyTimezone,
   };
 }
 
@@ -422,6 +435,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         coverageDecisions: [],
         communications: [],
         employees: [],
+        companyTimezone: "UTC",
       }
   );
   const [hydrated, setHydrated] = React.useState(false);
@@ -489,12 +503,17 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
             id: string;
             type: AttendanceIncident["type"];
             status: AttendanceIncident["status"];
+            severity: AttendanceIncident["severity"];
+            dueAt?: string;
+            ownerId?: string;
+            ownerName?: string;
             title: string;
             detail?: string;
             detectedAt: string;
             recommendedEmployee?: string;
           }>;
         }>;
+        companyTimezone: string;
       }>(dayResponse);
       const worksitesData = await readJson<{
         worksites: Array<{
@@ -603,6 +622,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           employeeAcknowledgedAt: correction.employeeAcknowledgedAt,
         })),
         coverageDecisions: [],
+        companyTimezone: day.companyTimezone,
         communications: communicationsData.communications.map((communication) => ({
           id: communication.id,
           shiftId: communication.shiftId,
@@ -814,6 +834,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
               title: "Uncovered shift",
               detail: "The shift was created without an assigned employee.",
               status: "OPEN" as const,
+              severity: computeIncidentSeverity("MISSING_CLOCK_IN"),
               detectedAt: new Date().toISOString(),
             },
             ...current.incidents,
@@ -1424,6 +1445,56 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
     [notify, runRemoteMutation]
   );
 
+  const assignIncidentOwner = React.useCallback(
+    (incidentId: string) => {
+      if (!isBrowserDemo) {
+        void runRemoteMutation(`/api/control/incidents/${incidentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "ASSIGN" }),
+        });
+        return;
+      }
+      setState((current) => ({
+        ...current,
+        incidents: current.incidents.map((incident) =>
+          incident.id === incidentId
+            ? { ...incident, ownerId: "demo-user", ownerName: "You" }
+            : incident
+        ),
+      }));
+      notify("Incident assigned", "You are now the owner of this incident.");
+    },
+    [notify, runRemoteMutation]
+  );
+
+  const escalateIncident = React.useCallback(
+    (incidentId: string, note: string) => {
+      if (note.trim().length < 5) {
+        notify("Reason required", "Explain why this incident needs escalation (at least 5 characters).");
+        return;
+      }
+      if (!isBrowserDemo) {
+        void runRemoteMutation(`/api/control/incidents/${incidentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "ESCALATE", note: note.trim() }),
+        });
+        return;
+      }
+      setState((current) => ({
+        ...current,
+        incidents: current.incidents.map((incident) =>
+          incident.id === incidentId
+            ? { ...incident, severity: escalateSeverity(incident.severity) }
+            : incident
+        ),
+      }));
+      notify("Incident escalated", "Its severity has been raised for visibility.");
+    },
+    [notify, runRemoteMutation]
+  );
+
   const runIncidentDetection = React.useCallback(() => {
     if (!isBrowserDemo) {
       void runRemoteMutation("/api/control/incidents/detect", {
@@ -1462,6 +1533,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         title: type === "INCOMPLETE_CLOCK" ? "Shift missing clock-out" : "Shift missing clock-in",
         detail: "The shift has passed its end time and requires review.",
         status: "OPEN",
+        severity: computeIncidentSeverity(type),
         detectedAt: now.toISOString(),
       });
     }
@@ -1567,10 +1639,12 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       addShift,
       addWorksite,
       archiveWorksite,
+      assignIncidentOwner,
       assignShift,
       assignReplacement,
       cancelShift,
       clockQueueStatus,
+      escalateIncident,
       exportClockReport,
       recordClockEvent,
       recommendCoverage,
@@ -1588,10 +1662,12 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       addShift,
       addWorksite,
       archiveWorksite,
+      assignIncidentOwner,
       assignShift,
       assignReplacement,
       cancelShift,
       clockQueueStatus,
+      escalateIncident,
       exportClockReport,
       employeeOptions,
       recordClockEvent,
@@ -1608,7 +1684,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
     ]
   );
 
-  if (loading) {
+  if (loading && !hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6" role="status">
         <div className="w-full max-w-md space-y-3 rounded-xl border border-border bg-card p-6 text-center shadow-sm">
