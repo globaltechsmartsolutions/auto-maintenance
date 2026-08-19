@@ -162,6 +162,170 @@ export function scoreCoverageCandidate(input: CoverageCandidateInput) {
   return { score: Math.max(0, Math.min(100, score)), reasons };
 }
 
+function normalizeText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en").trim();
+}
+
+/**
+ * An employee's declared working availability (Stage 4 hard constraint).
+ * Stored as JSON on `Employee.availability`. Missing/malformed data is
+ * treated as "no restriction" — an employee is never silently excluded
+ * because of a data-entry gap, only because of an explicit restriction
+ * that conflicts with the shift.
+ */
+export type EmployeeAvailability = {
+  /** 0=Sunday..6=Saturday. Omitted or empty means every day. */
+  daysOfWeek?: number[];
+  /** Minutes since midnight (shift's own clock). Both omitted means any time of day. */
+  startMinute?: number;
+  endMinute?: number;
+};
+
+export function parseEmployeeAvailability(value: unknown): EmployeeAvailability | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const result: EmployeeAvailability = {};
+  if (Array.isArray(record.daysOfWeek)) {
+    const days = record.daysOfWeek.filter(
+      (day): day is number => typeof day === "number" && day >= 0 && day <= 6
+    );
+    if (days.length > 0) result.daysOfWeek = days;
+  }
+  if (typeof record.startMinute === "number") result.startMinute = record.startMinute;
+  if (typeof record.endMinute === "number") result.endMinute = record.endMinute;
+  return result;
+}
+
+export function isEmployeeAvailableForShift(
+  availability: EmployeeAvailability | null | undefined,
+  shiftStart: Date,
+  shiftEnd: Date
+): boolean {
+  if (!availability) return true;
+  if (availability.daysOfWeek && availability.daysOfWeek.length > 0) {
+    if (!availability.daysOfWeek.includes(shiftStart.getUTCDay())) return false;
+  }
+  if (availability.startMinute !== undefined && availability.endMinute !== undefined) {
+    const shiftStartMinute = shiftStart.getUTCHours() * 60 + shiftStart.getUTCMinutes();
+    const shiftEndMinute = shiftEnd.getUTCHours() * 60 + shiftEnd.getUTCMinutes();
+    if (shiftStartMinute < availability.startMinute || shiftEndMinute > availability.endMinute) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Hard constraint: the shift's required skills must all be present. */
+export function employeeMeetsRequiredSkills(requiredSkills: string[], employeeSkills: string[]) {
+  if (requiredSkills.length === 0) return true;
+  const skillSet = new Set(employeeSkills.map(normalizeText));
+  return requiredSkills.map(normalizeText).every((skill) => skillSet.has(skill));
+}
+
+/**
+ * Hard constraint: the employee's declared work zones must include the
+ * worksite's city. An employee with no declared zones is treated as
+ * having no zone restriction (works anywhere), not as ineligible.
+ */
+export function employeeMeetsWorkZone(worksiteCity: string, employeeZones: string[]) {
+  if (employeeZones.length === 0) return true;
+  const city = normalizeText(worksiteCity);
+  return employeeZones.map(normalizeText).some((zone) => zone.includes(city) || city.includes(zone));
+}
+
+/** Hard constraint: adding this shift must not exceed the employee's daily limits. */
+export function employeeMeetsWorkingTimeLimits(input: {
+  shiftMinutes: number;
+  existingDailyMinutes: number;
+  existingDailyJobs: number;
+  maxHoursPerDay?: number | null;
+  maxJobsPerDay?: number | null;
+}) {
+  if (input.maxHoursPerDay != null) {
+    const totalHours = (input.existingDailyMinutes + input.shiftMinutes) / 60;
+    if (totalHours > input.maxHoursPerDay) return false;
+  }
+  if (input.maxJobsPerDay != null) {
+    if (input.existingDailyJobs + 1 > input.maxJobsPerDay) return false;
+  }
+  return true;
+}
+
+function fieldStatusExclusionReason(status: string): string {
+  switch (status) {
+    case "VACATION":
+      return "Currently on vacation.";
+    case "SICK_LEAVE":
+      return "Currently on sick leave.";
+    case "INACTIVE":
+      return "No longer an active employee.";
+    default:
+      return "Not currently available for work.";
+  }
+}
+
+export type CoverageEligibilityInput = {
+  fieldStatus: "AVAILABLE" | "ASSIGNED" | "VACATION" | "SICK_LEAVE" | "INACTIVE";
+  hasOverlap: boolean;
+  requiredSkills: string[];
+  employeeSkills: string[];
+  worksiteCity: string;
+  employeeZones: string[];
+  availability?: EmployeeAvailability | null;
+  shiftStart: Date;
+  shiftEnd: Date;
+  existingDailyMinutes: number;
+  existingDailyJobs: number;
+  maxHoursPerDay?: number | null;
+  maxJobsPerDay?: number | null;
+};
+
+export type CoverageEligibilityResult =
+  | { eligible: true }
+  | { eligible: false; reason: string };
+
+/**
+ * The single, deterministic Stage 4 eligibility check. Both the candidate
+ * recommendation list and the final confirmation call this same function,
+ * so the rules can never drift apart between "who gets shown" and "who is
+ * actually allowed to be confirmed" — every hard constraint the playbook
+ * lists (company scope is enforced by the caller's query, active status,
+ * availability, absence, overlapping shifts, required skills, work zone,
+ * working-time limits) is evaluated here in one place.
+ */
+export function evaluateCoverageEligibility(
+  input: CoverageEligibilityInput
+): CoverageEligibilityResult {
+  if (!["AVAILABLE", "ASSIGNED"].includes(input.fieldStatus)) {
+    return { eligible: false, reason: fieldStatusExclusionReason(input.fieldStatus) };
+  }
+  if (input.hasOverlap) {
+    return { eligible: false, reason: "Already assigned to an overlapping shift." };
+  }
+  if (!employeeMeetsRequiredSkills(input.requiredSkills, input.employeeSkills)) {
+    return { eligible: false, reason: "Does not have all the required skills." };
+  }
+  if (!employeeMeetsWorkZone(input.worksiteCity, input.employeeZones)) {
+    return { eligible: false, reason: "Does not usually work in this zone." };
+  }
+  if (!isEmployeeAvailableForShift(input.availability, input.shiftStart, input.shiftEnd)) {
+    return { eligible: false, reason: "Not available at this day or time." };
+  }
+  const shiftMinutes = (input.shiftEnd.getTime() - input.shiftStart.getTime()) / 60_000;
+  if (
+    !employeeMeetsWorkingTimeLimits({
+      shiftMinutes,
+      existingDailyMinutes: input.existingDailyMinutes,
+      existingDailyJobs: input.existingDailyJobs,
+      maxHoursPerDay: input.maxHoursPerDay,
+      maxJobsPerDay: input.maxJobsPerDay,
+    })
+  ) {
+    return { eligible: false, reason: "Would exceed the daily working-time limit." };
+  }
+  return { eligible: true };
+}
+
 export class WiaDomainError extends Error {
   constructor(
     public readonly code: string,

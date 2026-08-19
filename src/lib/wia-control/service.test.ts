@@ -54,9 +54,19 @@ describe("coverage transaction", () => {
       shift: {
         scheduledStart: new Date("2026-08-08T07:00:00Z"),
         scheduledEnd: new Date("2026-08-08T10:00:00Z"),
+        requiredSkills: [],
+        worksite: { city: "Getafe" },
       },
     });
-    mocks.transaction.employee.findFirst.mockResolvedValue({ id: "employee-recommended" });
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-recommended",
+      fieldStatus: "AVAILABLE",
+      skills: [],
+      zones: [],
+      availability: null,
+      maxHoursPerDay: null,
+      maxJobsPerDay: null,
+    });
     mocks.transaction.plannedShift.findMany.mockResolvedValue([]);
     mocks.transaction.coverageDecision.create.mockResolvedValue({ id: "decision-1" });
     mocks.transaction.plannedShift.update.mockResolvedValue({ id: "shift-1" });
@@ -93,6 +103,62 @@ describe("coverage transaction", () => {
         selectedEmployeeId: "employee-alternative",
       })
     ).rejects.toMatchObject({ code: "OVERRIDE_REASON_REQUIRED" });
+    expect(mocks.transaction.coverageDecision.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a selected employee who is on vacation (Stage 4 hard constraint)", async () => {
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-recommended",
+      fieldStatus: "VACATION",
+      skills: [],
+      zones: [],
+      availability: null,
+      maxHoursPerDay: null,
+      maxJobsPerDay: null,
+    });
+    await expect(confirmCoverage(manager, baseInput)).rejects.toMatchObject({
+      code: "EMPLOYEE_UNAVAILABLE",
+    });
+    expect(mocks.transaction.coverageDecision.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a selected employee missing a required skill (Stage 4 hard constraint)", async () => {
+    mocks.transaction.attendanceIncident.findFirst.mockResolvedValue({
+      id: "incident-1",
+      shiftId: "shift-1",
+      recommendedEmployeeId: "employee-recommended",
+      shift: {
+        scheduledStart: new Date("2026-08-08T07:00:00Z"),
+        scheduledEnd: new Date("2026-08-08T10:00:00Z"),
+        requiredSkills: ["windows"],
+        worksite: { city: "Getafe" },
+      },
+    });
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-recommended",
+      fieldStatus: "AVAILABLE",
+      skills: [],
+      zones: [],
+      availability: null,
+      maxHoursPerDay: null,
+      maxJobsPerDay: null,
+    });
+    await expect(confirmCoverage(manager, baseInput)).rejects.toMatchObject({
+      code: "EMPLOYEE_UNAVAILABLE",
+    });
+    expect(mocks.transaction.coverageDecision.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a selected employee with an overlapping shift, even without going through the recommendation list", async () => {
+    mocks.transaction.plannedShift.findMany.mockResolvedValue([
+      {
+        scheduledStart: new Date("2026-08-08T08:00:00Z"),
+        scheduledEnd: new Date("2026-08-08T11:00:00Z"),
+      },
+    ]);
+    await expect(confirmCoverage(manager, baseInput)).rejects.toMatchObject({
+      code: "SHIFT_OVERLAP",
+    });
     expect(mocks.transaction.coverageDecision.create).not.toHaveBeenCalled();
   });
 

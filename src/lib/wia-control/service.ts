@@ -16,10 +16,12 @@ import {
   coverageRecommendationSchema,
   DEFAULT_INCIDENT_POLICY,
   escalateSeverity,
+  evaluateCoverageEligibility,
   getShiftStatusAfterClock,
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
+  parseEmployeeAvailability,
   plannedShiftInputSchema,
   plannedShiftUpdateSchema,
   rangesOverlap,
@@ -1118,37 +1120,67 @@ export async function confirmCoverage(actor: WiaActor, input: unknown) {
         companyId: actor.companyId,
         status: { in: ["OPEN", "ACKNOWLEDGED"] },
       },
-      include: { shift: true },
+      include: { shift: { include: { worksite: { select: { city: true } } } } },
     });
     if (!incident) {
       throw new WiaDomainError("INCIDENT_NOT_FOUND", "The incident is no longer open.");
     }
 
     const selectedEmployee = await transaction.employee.findFirst({
-      where: {
-        id: payload.selectedEmployeeId,
-        companyId: actor.companyId,
-        fieldStatus: { in: ["AVAILABLE", "ASSIGNED"] },
-      },
-      select: { id: true },
+      where: { id: payload.selectedEmployeeId, companyId: actor.companyId },
     });
     if (!selectedEmployee) {
       throw new WiaDomainError("EMPLOYEE_UNAVAILABLE", "The selected person is unavailable.");
     }
 
-    const conflicts = await transaction.plannedShift.findMany({
+    const dayStart = new Date(incident.shift.scheduledStart);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const dayShifts = await transaction.plannedShift.findMany({
       where: {
         companyId: actor.companyId,
         employeeId: selectedEmployee.id,
         id: { not: incident.shiftId },
         status: { notIn: ["CANCELLED", "COMPLETED"] },
-        scheduledStart: { lt: incident.shift.scheduledEnd },
-        scheduledEnd: { gt: incident.shift.scheduledStart },
+        scheduledStart: { lt: dayEnd },
+        scheduledEnd: { gt: dayStart },
       },
-      select: { id: true },
+      select: { scheduledStart: true, scheduledEnd: true },
     });
-    if (conflicts.length > 0) {
-      throw new WiaDomainError("SHIFT_OVERLAP", "The selected person has another overlapping shift.");
+    const hasOverlap = dayShifts.some((shift) =>
+      rangesOverlap(
+        incident.shift.scheduledStart,
+        incident.shift.scheduledEnd,
+        shift.scheduledStart,
+        shift.scheduledEnd
+      )
+    );
+    const existingDailyMinutes = dayShifts.reduce(
+      (total, shift) => total + (shift.scheduledEnd.getTime() - shift.scheduledStart.getTime()) / 60_000,
+      0
+    );
+
+    const eligibility = evaluateCoverageEligibility({
+      fieldStatus: selectedEmployee.fieldStatus,
+      hasOverlap,
+      requiredSkills: incident.shift.requiredSkills,
+      employeeSkills: selectedEmployee.skills,
+      worksiteCity: incident.shift.worksite.city,
+      employeeZones: selectedEmployee.zones,
+      availability: parseEmployeeAvailability(selectedEmployee.availability),
+      shiftStart: incident.shift.scheduledStart,
+      shiftEnd: incident.shift.scheduledEnd,
+      existingDailyMinutes,
+      existingDailyJobs: dayShifts.length,
+      maxHoursPerDay: selectedEmployee.maxHoursPerDay,
+      maxJobsPerDay: selectedEmployee.maxJobsPerDay,
+    });
+    if (!eligibility.eligible) {
+      throw new WiaDomainError(
+        hasOverlap ? "SHIFT_OVERLAP" : "EMPLOYEE_UNAVAILABLE",
+        eligibility.reason
+      );
     }
 
     const acceptedRecommendation = payload.recommendedEmployeeId === payload.selectedEmployeeId;
@@ -1246,11 +1278,14 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
     dayStart.setUTCHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    // Every employee in the company is considered here, not just those
+    // already marked AVAILABLE/ASSIGNED — fieldStatus is one of several
+    // hard constraints evaluated below, and an excluded employee still
+    // needs a reason shown, not a silent drop before scoring even starts.
     const employees = await transaction.employee.findMany({
       where: {
         companyId: actor.companyId,
         id: incident.employeeId ? { not: incident.employeeId } : undefined,
-        fieldStatus: { in: ["AVAILABLE", "ASSIGNED"] },
       },
       include: {
         user: { select: { firstName: true, lastName: true } },
@@ -1265,49 +1300,71 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
       },
     });
 
-    const candidates = employees
-      .filter((employee) =>
-        employee.plannedShifts.every(
-          (shift) =>
-            !rangesOverlap(
-              incident.shift.scheduledStart,
-              incident.shift.scheduledEnd,
-              shift.scheduledStart,
-              shift.scheduledEnd
-            )
-        )
-      )
-      .map((employee) => {
-        const result = scoreCoverageCandidate({
-          requiredSkills: incident.shift.requiredSkills,
-          worksiteCity: incident.shift.worksite.city,
-          employeeSkills: employee.skills,
-          employeeZones: employee.zones,
-          performanceScore: employee.performanceScore,
-          incidentRate: Number(employee.incidentRate),
-          dailyJobs: employee.plannedShifts.length,
-        });
-        return {
-          employeeId: employee.id,
-          employeeName: `${employee.user.firstName} ${employee.user.lastName}`.trim(),
-          score: result.score,
-          reasons: result.reasons,
-        };
-      })
-      .sort((first, second) => second.score - first.score)
-      .slice(0, 5);
+    const eligible: Array<{ employeeId: string; employeeName: string; score: number; reasons: string[] }> = [];
+    const excluded: Array<{ employeeId: string; employeeName: string; reason: string }> = [];
 
-    const recommended = candidates[0];
-    if (!recommended) {
-      throw new WiaDomainError(
-        "NO_COVERAGE_CANDIDATE",
-        "No people are available without overlaps for this shift."
+    for (const employee of employees) {
+      const employeeName = `${employee.user.firstName} ${employee.user.lastName}`.trim();
+      const hasOverlap = employee.plannedShifts.some((shift) =>
+        rangesOverlap(
+          incident.shift.scheduledStart,
+          incident.shift.scheduledEnd,
+          shift.scheduledStart,
+          shift.scheduledEnd
+        )
       );
+      const existingDailyMinutes = employee.plannedShifts.reduce(
+        (total, shift) => total + (shift.scheduledEnd.getTime() - shift.scheduledStart.getTime()) / 60_000,
+        0
+      );
+
+      const eligibility = evaluateCoverageEligibility({
+        fieldStatus: employee.fieldStatus,
+        hasOverlap,
+        requiredSkills: incident.shift.requiredSkills,
+        employeeSkills: employee.skills,
+        worksiteCity: incident.shift.worksite.city,
+        employeeZones: employee.zones,
+        availability: parseEmployeeAvailability(employee.availability),
+        shiftStart: incident.shift.scheduledStart,
+        shiftEnd: incident.shift.scheduledEnd,
+        existingDailyMinutes,
+        existingDailyJobs: employee.plannedShifts.length,
+        maxHoursPerDay: employee.maxHoursPerDay,
+        maxJobsPerDay: employee.maxJobsPerDay,
+      });
+
+      if (!eligibility.eligible) {
+        excluded.push({ employeeId: employee.id, employeeName, reason: eligibility.reason });
+        continue;
+      }
+
+      const result = scoreCoverageCandidate({
+        requiredSkills: incident.shift.requiredSkills,
+        worksiteCity: incident.shift.worksite.city,
+        employeeSkills: employee.skills,
+        employeeZones: employee.zones,
+        performanceScore: employee.performanceScore,
+        incidentRate: Number(employee.incidentRate),
+        dailyJobs: employee.plannedShifts.length,
+      });
+      eligible.push({
+        employeeId: employee.id,
+        employeeName,
+        score: result.score,
+        reasons: result.reasons,
+      });
     }
-    await transaction.attendanceIncident.update({
-      where: { id: incident.id },
-      data: { recommendedEmployeeId: recommended.employeeId, status: "ACKNOWLEDGED", acknowledgedAt: new Date() },
-    });
+
+    const candidates = [...eligible].sort((first, second) => second.score - first.score).slice(0, 5);
+
+    const recommended = candidates[0] ?? null;
+    if (recommended) {
+      await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { recommendedEmployeeId: recommended.employeeId, status: "ACKNOWLEDGED", acknowledgedAt: new Date() },
+      });
+    }
     await transaction.auditLog.create({
       data: {
         companyId: actor.companyId,
@@ -1315,15 +1372,18 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
         action: "coverage.recommended",
         entity: "AttendanceIncident",
         entityId: incident.id,
-        metadata: {
-          recommendedEmployeeId: recommended.employeeId,
-          score: recommended.score,
-          reasons: recommended.reasons,
-          candidateCount: candidates.length,
-        },
+        metadata: recommended
+          ? {
+            recommendedEmployeeId: recommended.employeeId,
+            score: recommended.score,
+            reasons: recommended.reasons,
+            candidateCount: candidates.length,
+            excludedCount: excluded.length,
+          }
+          : { recommendedEmployeeId: null, candidateCount: 0, excludedCount: excluded.length },
       },
     });
-    return { incidentId: incident.id, shiftId: incident.shiftId, recommended, candidates };
+    return { incidentId: incident.id, shiftId: incident.shiftId, recommended, candidates, excluded };
   });
 }
 

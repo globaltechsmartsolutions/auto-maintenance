@@ -5,10 +5,16 @@ import {
   computeIncidentSeverity,
   DEFAULT_INCIDENT_POLICY,
   distanceInMeters,
+  employeeMeetsRequiredSkills,
+  employeeMeetsWorkingTimeLimits,
+  employeeMeetsWorkZone,
+  evaluateCoverageEligibility,
   getShiftStatusAfterClock,
+  isEmployeeAvailableForShift,
   isLocationWithinWorksite,
   lateMinutes,
   incidentUpdateSchema,
+  parseEmployeeAvailability,
   plannedShiftInputSchema,
   rangesOverlap,
   scoreCoverageCandidate,
@@ -200,5 +206,158 @@ describe("incident severity and due-date policy (Stage 3)", () => {
     const fastPolicy = { ...DEFAULT_INCIDENT_POLICY, incidentDueMinutesHigh: 15 };
     const due = computeIncidentDueAt("HIGH", detectedAt, fastPolicy);
     expect(due.getTime() - detectedAt.getTime()).toBe(15 * 60_000);
+  });
+});
+
+describe("coverage eligibility hard constraints (Stage 4)", () => {
+  const shiftStart = new Date("2026-08-19T09:00:00.000Z"); // Wednesday
+  const shiftEnd = new Date("2026-08-19T13:00:00.000Z"); // 4-hour shift
+
+  const baseInput = {
+    fieldStatus: "AVAILABLE" as const,
+    hasOverlap: false,
+    requiredSkills: [] as string[],
+    employeeSkills: [] as string[],
+    worksiteCity: "Getafe",
+    employeeZones: [] as string[],
+    availability: null,
+    shiftStart,
+    shiftEnd,
+    existingDailyMinutes: 0,
+    existingDailyJobs: 0,
+    maxHoursPerDay: null,
+    maxJobsPerDay: null,
+  };
+
+  it("accepts a candidate that meets every constraint", () => {
+    expect(evaluateCoverageEligibility(baseInput)).toEqual({ eligible: true });
+  });
+
+  it("excludes an employee on vacation, with a specific reason", () => {
+    const result = evaluateCoverageEligibility({ ...baseInput, fieldStatus: "VACATION" });
+    expect(result).toEqual({ eligible: false, reason: "Currently on vacation." });
+  });
+
+  it("excludes an employee with an overlapping shift", () => {
+    const result = evaluateCoverageEligibility({ ...baseInput, hasOverlap: true });
+    expect(result.eligible).toBe(false);
+  });
+
+  it("excludes an employee missing a required skill", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      requiredSkills: ["windows", "communities"],
+      employeeSkills: ["windows"],
+    });
+    expect(result).toEqual({
+      eligible: false,
+      reason: "Does not have all the required skills.",
+    });
+  });
+
+  it("accepts an employee who has every required skill", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      requiredSkills: ["windows"],
+      employeeSkills: ["windows", "offices"],
+    });
+    expect(result.eligible).toBe(true);
+  });
+
+  it("excludes an employee whose declared zones do not include the worksite's city", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      worksiteCity: "Getafe",
+      employeeZones: ["Alicante"],
+    });
+    expect(result).toEqual({
+      eligible: false,
+      reason: "Does not usually work in this zone.",
+    });
+  });
+
+  it("does not exclude an employee with no declared zone restriction", () => {
+    const result = evaluateCoverageEligibility({ ...baseInput, employeeZones: [] });
+    expect(result.eligible).toBe(true);
+  });
+
+  it("excludes an employee not available on the shift's day of week", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      availability: { daysOfWeek: [1, 2] }, // Monday, Tuesday only
+    });
+    expect(result).toEqual({
+      eligible: false,
+      reason: "Not available at this day or time.",
+    });
+  });
+
+  it("excludes an employee whose declared hours do not cover the shift", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      availability: { startMinute: 8 * 60, endMinute: 11 * 60 }, // shift ends at 13:00
+    });
+    expect(result.eligible).toBe(false);
+  });
+
+  it("excludes an employee who would exceed the daily hours limit", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      existingDailyMinutes: 5 * 60, // already worked 5h; this shift is 4h more
+      maxHoursPerDay: 8,
+    });
+    expect(result).toEqual({
+      eligible: false,
+      reason: "Would exceed the daily working-time limit.",
+    });
+  });
+
+  it("excludes an employee who would exceed the daily jobs limit", () => {
+    const result = evaluateCoverageEligibility({
+      ...baseInput,
+      existingDailyJobs: 2,
+      maxJobsPerDay: 2,
+    });
+    expect(result.eligible).toBe(false);
+  });
+
+  it("parses a well-formed availability JSON value", () => {
+    expect(parseEmployeeAvailability({ daysOfWeek: [1, 2, 3], startMinute: 480, endMinute: 1020 })).toEqual({
+      daysOfWeek: [1, 2, 3],
+      startMinute: 480,
+      endMinute: 1020,
+    });
+  });
+
+  it("treats missing or malformed availability as no restriction", () => {
+    expect(parseEmployeeAvailability(null)).toBeNull();
+    expect(parseEmployeeAvailability(undefined)).toBeNull();
+    expect(parseEmployeeAvailability("not an object")).toBeNull();
+  });
+
+  it("isEmployeeAvailableForShift treats a missing availability as always available", () => {
+    expect(isEmployeeAvailableForShift(null, shiftStart, shiftEnd)).toBe(true);
+  });
+
+  it("employeeMeetsWorkZone treats an empty zone list as no restriction", () => {
+    expect(employeeMeetsWorkZone("Getafe", [])).toBe(true);
+    expect(employeeMeetsWorkZone("Getafe", ["Alicante"])).toBe(false);
+    expect(employeeMeetsWorkZone("Getafe", ["Getafe"])).toBe(true);
+  });
+
+  it("employeeMeetsRequiredSkills treats an empty requirement list as always satisfied", () => {
+    expect(employeeMeetsRequiredSkills([], [])).toBe(true);
+  });
+
+  it("employeeMeetsWorkingTimeLimits allows an employee with no configured limits", () => {
+    expect(
+      employeeMeetsWorkingTimeLimits({
+        shiftMinutes: 600,
+        existingDailyMinutes: 600,
+        existingDailyJobs: 5,
+        maxHoursPerDay: null,
+        maxJobsPerDay: null,
+      })
+    ).toBe(true);
   });
 });
