@@ -3,6 +3,7 @@ import {
   assertClockTransition,
   computeIncidentDueAt,
   computeIncidentSeverity,
+  computeNextCommunicationAttempt,
   DEFAULT_INCIDENT_POLICY,
   distanceInMeters,
   employeeMeetsRequiredSkills,
@@ -10,10 +11,12 @@ import {
   employeeMeetsWorkZone,
   evaluateCoverageEligibility,
   getShiftStatusAfterClock,
+  hasExceededCommunicationAttempts,
   isEmployeeAvailableForShift,
   isLocationWithinWorksite,
   lateMinutes,
   incidentUpdateSchema,
+  MAX_COMMUNICATION_ATTEMPTS,
   parseEmployeeAvailability,
   plannedShiftInputSchema,
   rangesOverlap,
@@ -355,5 +358,38 @@ describe("coverage eligibility hard constraints (Stage 4)", () => {
         maxJobsPerDay: null,
       })
     ).toBe(true);
+  });
+});
+
+describe("communications outbox retry policy (Stage 5)", () => {
+  const now = new Date("2026-08-20T12:00:00.000Z");
+
+  it("grows the delay between attempts (bounded backoff)", () => {
+    const first = computeNextCommunicationAttempt(1, now);
+    const second = computeNextCommunicationAttempt(2, now);
+    const third = computeNextCommunicationAttempt(3, now);
+    expect(first.getTime() - now.getTime()).toBeLessThan(second.getTime() - now.getTime());
+    expect(second.getTime() - now.getTime()).toBeLessThan(third.getTime() - now.getTime());
+  });
+
+  it("does not keep growing the delay past the last configured step", () => {
+    const atCap = computeNextCommunicationAttempt(MAX_COMMUNICATION_ATTEMPTS, now);
+    const beyondCap = computeNextCommunicationAttempt(MAX_COMMUNICATION_ATTEMPTS + 5, now);
+    expect(beyondCap.getTime()).toBe(atCap.getTime());
+  });
+
+  it("treats zero or negative attempts as the first backoff step, never a negative delay", () => {
+    const zero = computeNextCommunicationAttempt(0, now);
+    const negative = computeNextCommunicationAttempt(-3, now);
+    expect(zero.getTime()).toBeGreaterThan(now.getTime());
+    expect(negative.getTime()).toEqual(zero.getTime());
+  });
+
+  it("does not exceed the attempt limit before MAX_COMMUNICATION_ATTEMPTS attempts", () => {
+    expect(hasExceededCommunicationAttempts(MAX_COMMUNICATION_ATTEMPTS - 1)).toBe(false);
+  });
+
+  it("exceeds the attempt limit at exactly MAX_COMMUNICATION_ATTEMPTS attempts", () => {
+    expect(hasExceededCommunicationAttempts(MAX_COMMUNICATION_ATTEMPTS)).toBe(true);
   });
 });

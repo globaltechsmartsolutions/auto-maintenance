@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CommunicationsOutbox } from "@/components/control/communications-outbox";
 import {
   Dialog,
   DialogContent,
@@ -211,7 +212,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
       )}
     >
       <CardContent className="p-0">
-        <div className="grid gap-4 p-4 lg:grid-cols-[130px_1.2fr_1fr_auto] lg:items-center">
+        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(130px,auto)_1.2fr_1fr_auto] lg:items-center">
           <div>
             <p className="text-lg font-semibold tabular-nums">
               {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
@@ -542,6 +543,8 @@ export function CoverageDashboard() {
           </CardContent>
         </Card>
       ) : null}
+
+      <CommunicationsOutbox />
     </div>
   );
 }

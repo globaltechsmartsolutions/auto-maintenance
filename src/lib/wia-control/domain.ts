@@ -156,6 +156,15 @@ export const incidentUpdateSchema = z.union([
   incidentEscalateSchema,
 ]);
 
+/**
+ * Stage 5: a communication can be either resent by a coordinator (after
+ * it has FAILED) or acknowledged by its recipient employee.
+ */
+export const communicationActionSchema = z.union([
+  z.object({ action: z.literal("RESEND") }),
+  z.object({ action: z.literal("ACKNOWLEDGE") }),
+]);
+
 export const coverageDecisionSchema = z.object({
   shiftId: identifier,
   incidentId: identifier,

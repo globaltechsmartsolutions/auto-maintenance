@@ -557,11 +557,16 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         communications: Array<{
           id: string;
           shiftId?: string;
+          recipientEmployeeId?: string;
+          recipientEmployeeName?: string;
           channel: Communication["channel"];
           template: string;
           status: Communication["status"];
+          attempts: number;
+          lastError?: string;
+          sentAt?: string;
+          acknowledgedAt?: string;
           createdAt: string;
-          recipientEmployee?: { user: { firstName: string; lastName: string } } | null;
         }>;
       }>(communicationsResponse);
 
@@ -627,12 +632,15 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         communications: communicationsData.communications.map((communication) => ({
           id: communication.id,
           shiftId: communication.shiftId,
-          recipientEmployee: communication.recipientEmployee
-            ? `${communication.recipientEmployee.user.firstName} ${communication.recipientEmployee.user.lastName}`.trim()
-            : "Recipient pending",
+          recipientEmployeeId: communication.recipientEmployeeId,
+          recipientEmployee: communication.recipientEmployeeName ?? "Recipient pending",
           channel: communication.channel,
           template: communication.template,
           status: communication.status,
+          attempts: communication.attempts,
+          lastError: communication.lastError,
+          sentAt: communication.sentAt,
+          acknowledgedAt: communication.acknowledgedAt,
           createdAt: communication.createdAt,
         })),
         employees: employeesData.employees.map((employee) => ({
@@ -1068,7 +1076,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
             shiftId,
             incidentId: incident.id,
             selectedEmployeeId: selected.id,
-            overrideReason: overrideReason?.trim(),
+            overrideReason: overrideReason?.trim() || undefined,
           }),
         });
         return true;
@@ -1111,6 +1119,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
             channel: "IN_APP" as const,
             template: "coverage_confirmed",
             status: "PENDING" as const,
+            attempts: 0,
             createdAt: resolvedAt,
           },
           ...current.communications,

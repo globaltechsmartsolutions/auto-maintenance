@@ -10,6 +10,7 @@ import {
   companySettingsSchema,
   computeIncidentDueAt,
   computeIncidentSeverity,
+  computeNextCommunicationAttempt,
   correctionAcknowledgementSchema,
   correctionRequestSchema,
   correctionReviewSchema,
@@ -19,6 +20,7 @@ import {
   escalateSeverity,
   evaluateCoverageEligibility,
   getShiftStatusAfterClock,
+  hasExceededCommunicationAttempts,
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
@@ -33,6 +35,7 @@ import {
   type ClockEventType,
   type IncidentPolicy,
 } from "@/lib/wia-control/domain";
+import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
 
 export type WiaActor = {
   companyId: string;
@@ -1416,12 +1419,177 @@ export async function listCommunicationOutbox(actor: WiaActor) {
     },
     include: {
       recipientEmployee: {
-        include: { user: { select: { firstName: true, lastName: true } } },
+        include: { user: { select: { firstName: true, lastName: true, email: true } } },
       },
       shift: { select: { title: true, scheduledStart: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
+  });
+}
+
+/**
+ * Stage 5: the communications outbox worker. Claims due PENDING/RETRYING
+ * records with an optimistic-lock update (so two overlapping worker runs
+ * can never both process the same record), attempts delivery through the
+ * channel-appropriate provider, and moves each record to SENT, RETRYING
+ * (with a bounded backoff), or FAILED. Never wraps the external provider
+ * call in a database transaction -- that would hold a lock for the
+ * duration of a network call, which is unsafe.
+ */
+export async function processCommunicationOutbox(now = new Date(), batchSize = 20) {
+  const prisma = getPrisma();
+  const due = await prisma.communicationOutbox.findMany({
+    where: {
+      status: { in: ["PENDING", "RETRYING"] },
+      nextAttemptAt: { lte: now },
+    },
+    take: batchSize,
+    orderBy: { nextAttemptAt: "asc" },
+    include: {
+      recipientEmployee: {
+        include: { user: { select: { email: true } } },
+      },
+    },
+  });
+
+  const results: Array<{ id: string; status: string }> = [];
+
+  for (const record of due) {
+    const claimed = await prisma.communicationOutbox.updateMany({
+      where: { id: record.id, status: record.status },
+      data: { status: "PROCESSING" },
+    });
+    if (claimed.count === 0) continue; // another worker run already claimed this one
+
+    let result: Awaited<ReturnType<typeof deliverInApp>>;
+    if (record.channel === "IN_APP") {
+      result = await deliverInApp();
+    } else if (record.channel === "EMAIL") {
+      const email = record.recipientEmployee?.user.email;
+      result = email
+        ? await deliverEmail(
+          record.id,
+          record.template,
+          record.payload as Record<string, unknown>,
+          email
+        )
+        : { success: false, error: "Recipient has no email address on file." };
+    } else {
+      // SMS/WhatsApp are explicitly out of scope for this stage (see the
+      // playbook: consent, cost, templates, and failure policy all need
+      // business approval first).
+      result = { success: false, error: `${record.channel} delivery is not yet available.` };
+    }
+
+    if (result.success) {
+      await prisma.communicationOutbox.update({
+        where: { id: record.id },
+        data: {
+          status: "SENT",
+          sentAt: now,
+          attempts: record.attempts + 1,
+          lastError: null,
+        },
+      });
+      results.push({ id: record.id, status: "SENT" });
+    } else {
+      const attempts = record.attempts + 1;
+      const exhausted = hasExceededCommunicationAttempts(attempts);
+      await prisma.communicationOutbox.update({
+        where: { id: record.id },
+        data: {
+          status: exhausted ? "FAILED" : "RETRYING",
+          attempts,
+          lastError: result.error.slice(0, 500),
+          nextAttemptAt: exhausted
+            ? record.nextAttemptAt
+            : computeNextCommunicationAttempt(attempts, now),
+        },
+      });
+      results.push({ id: record.id, status: exhausted ? "FAILED" : "RETRYING" });
+    }
+  }
+
+  return { processed: results.length, results };
+}
+
+/** Stage 5: a coordinator can manually resend a message that has FAILED. */
+export async function resendCommunication(actor: WiaActor, outboxId: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot resend communications.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const record = await transaction.communicationOutbox.findFirst({
+      where: { id: outboxId, companyId: actor.companyId },
+    });
+    if (!record) {
+      throw new WiaDomainError(
+        "COMMUNICATION_NOT_FOUND",
+        "The message does not belong to the company."
+      );
+    }
+    if (record.status !== "FAILED") {
+      throw new WiaDomainError("COMMUNICATION_NOT_FAILED", "Only a failed message can be resent.");
+    }
+
+    const updated = await transaction.communicationOutbox.update({
+      where: { id: record.id },
+      data: { status: "PENDING", attempts: 0, lastError: null, nextAttemptAt: new Date() },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "communication.resent",
+        entity: "CommunicationOutbox",
+        entityId: record.id,
+        metadata: { previousAttempts: record.attempts },
+      },
+    });
+    return updated;
+  });
+}
+
+/**
+ * Stage 5, Task 4: the recipient employee acknowledges a reassignment
+ * message -- distinct from delivery. A message can be SENT without ever
+ * being acknowledged; this records that the employee has actually seen
+ * and understood it.
+ */
+export async function acknowledgeCommunication(actor: WiaActor, outboxId: string) {
+  assertCompany(actor);
+  if (actor.role !== "EMPLOYEE" || !actor.employeeId) {
+    throw new WiaDomainError("FORBIDDEN", "Only the recipient can acknowledge this message.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const record = await transaction.communicationOutbox.findFirst({
+      where: { id: outboxId, companyId: actor.companyId, recipientEmployeeId: actor.employeeId },
+    });
+    if (!record) {
+      throw new WiaDomainError(
+        "COMMUNICATION_NOT_FOUND",
+        "The message does not belong to this employee."
+      );
+    }
+
+    const updated = await transaction.communicationOutbox.update({
+      where: { id: record.id },
+      data: { acknowledgedAt: new Date() },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "communication.acknowledged",
+        entity: "CommunicationOutbox",
+        entityId: record.id,
+      },
+    });
+    return updated;
   });
 }
 

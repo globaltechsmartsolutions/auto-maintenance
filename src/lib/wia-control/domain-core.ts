@@ -105,10 +105,15 @@ export type CoverageDecisionDto = {
 export type CommunicationDto = {
   id: string;
   shiftId?: string;
+  recipientEmployeeId?: string;
   recipientEmployee: string;
   channel: "IN_APP" | "EMAIL" | "SMS" | "WHATSAPP";
   template: string;
-  status: "PENDING" | "PROCESSING" | "SENT" | "FAILED" | "CANCELLED";
+  status: "PENDING" | "PROCESSING" | "RETRYING" | "SENT" | "FAILED" | "CANCELLED";
+  attempts: number;
+  lastError?: string;
+  sentAt?: string;
+  acknowledgedAt?: string;
   createdAt: string;
 };
 
@@ -328,6 +333,25 @@ export function evaluateCoverageEligibility(
     return { eligible: false, reason: "Would exceed the daily working-time limit." };
   }
   return { eligible: true };
+}
+
+/**
+ * Stage 5: bounded retry policy for the communications outbox worker.
+ * Deliberately more spaced out than the offline clock queue's backoff
+ * (Stage 2) -- a delayed notification is much less urgent than a clock
+ * event, and the worker only runs on a schedule (every few minutes), not
+ * continuously in a browser tab.
+ */
+export const MAX_COMMUNICATION_ATTEMPTS = 5;
+const COMMUNICATION_BACKOFF_MINUTES = [1, 5, 15, 60, 240];
+
+export function computeNextCommunicationAttempt(attempts: number, now: Date): Date {
+  const index = Math.min(Math.max(attempts - 1, 0), COMMUNICATION_BACKOFF_MINUTES.length - 1);
+  return new Date(now.getTime() + COMMUNICATION_BACKOFF_MINUTES[index] * 60_000);
+}
+
+export function hasExceededCommunicationAttempts(attempts: number): boolean {
+  return attempts >= MAX_COMMUNICATION_ATTEMPTS;
 }
 
 export class WiaDomainError extends Error {

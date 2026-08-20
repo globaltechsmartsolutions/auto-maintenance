@@ -203,6 +203,7 @@ enum CommunicationChannel {
 enum CommunicationStatus {
   PENDING
   PROCESSING
+  RETRYING
   SENT
   FAILED
   CANCELLED
@@ -721,10 +722,11 @@ model CommunicationOutbox {
   channel             CommunicationChannel @default(IN_APP)
   template            String
   payload             Json
-  status              CommunicationStatus  @default(PENDING)
+    status              CommunicationStatus  @default(PENDING)
   attempts            Int                  @default(0)
   nextAttemptAt       DateTime             @default(now())
   sentAt              DateTime?
+  acknowledgedAt      DateTime?
   lastError           String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
