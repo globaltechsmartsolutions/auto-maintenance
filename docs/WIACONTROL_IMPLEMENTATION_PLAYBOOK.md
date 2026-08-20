@@ -134,6 +134,7 @@ handler and its domain service before changing a payload or response.
 | `/api/control/services/[serviceId]` | Reads the client-service evidence timeline. | Coordinator / administrator. |
 | `/api/control/export/services/[serviceId]` | Exports the service evidence CSV. | Coordinator / administrator. |
 | `/api/control/ai/operations-brief` | Generates an approval-required, read-only operations brief. | Coordinator / administrator. |
+| `/api/control/ai/incident-communication-draft` | Generates a read-only internal or customer incident-message draft; it never sends it. | Coordinator / administrator. |
 | `/api/control/settings` | Reads and updates company policy. | Administrator for changes. |
 
 For every new route: call `requireApiRole`, resolve company scope from the
@@ -166,6 +167,9 @@ authoritative.
    never send coordinates or use its output to assign staff, change evidence, or
    make employment decisions. The AI brief must remain disabled until the
    provider key, privacy review, and processing agreement are in place.
+   Incident message drafts additionally exclude employee names, incident free
+   text, addresses, and internal identifiers; sending remains a separate,
+   explicitly approved workflow.
 
 ## 7. Required implementation sequence
 

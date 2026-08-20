@@ -5,6 +5,7 @@ import {
     AlertTriangle,
     ArrowUpCircle,
     CheckCircle2,
+    Sparkles,
     UserPlus,
     XCircle,
 } from "lucide-react";
@@ -78,6 +79,8 @@ function formatDateTime(value: string, timezone: string) {
 }
 
 type NoteAction = "RESOLVE" | "DISMISS" | "ESCALATE";
+type AiDraftAudience = "INTERNAL_COORDINATION" | "CUSTOMER_UPDATE";
+type AiDraft = { subject: string; message: string };
 
 export function IncidentInbox() {
     const { companyTimezone, employees, worksites } = useWiaControl();
@@ -98,6 +101,8 @@ export function IncidentInbox() {
     );
     const [noteText, setNoteText] = React.useState("");
     const [actionError, setActionError] = React.useState<string>();
+    const [aiDraft, setAiDraft] = React.useState<{ incidentId: string; audience: AiDraftAudience; content?: AiDraft } | null>(null);
+    const [aiDraftStatus, setAiDraftStatus] = React.useState<"idle" | "loading" | "unavailable" | "error">("idle");
 
     const fetchIncidents = React.useCallback(async () => {
         setLoading(true);
@@ -165,6 +170,25 @@ export function IncidentInbox() {
             await runAction(noteDraft.incidentId, { action: "ESCALATE", note: noteText.trim() });
         }
         closeNoteDraft();
+    }
+
+    async function generateAiDraft(incidentId: string, audience: AiDraftAudience) {
+        setAiDraft({ incidentId, audience });
+        setAiDraftStatus("loading");
+        try {
+            const response = await fetch("/api/control/ai/incident-communication-draft", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ incidentId, audience }),
+            });
+            const body = (await response.json().catch(() => ({}))) as { draft?: AiDraft; error?: string };
+            if (response.status === 503) { setAiDraftStatus("unavailable"); return; }
+            if (!response.ok || !body.draft) throw new Error(body.error ?? "The draft could not be generated.");
+            setAiDraft({ incidentId, audience, content: body.draft });
+            setAiDraftStatus("idle");
+        } catch {
+            setAiDraftStatus("error");
+        }
     }
 
     return (
@@ -278,6 +302,7 @@ export function IncidentInbox() {
                     {incidents.map((incident) => {
                         const isClosed = ["RESOLVED", "DISMISSED"].includes(incident.status);
                         const isDraftingThisIncident = noteDraft?.incidentId === incident.id;
+                        const isAiDraftingThisIncident = aiDraft?.incidentId === incident.id;
                         return (
                             <Card key={incident.id} className="border-border/70 bg-card/85 shadow-sm">
                                 <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
@@ -353,6 +378,16 @@ export function IncidentInbox() {
                                                 </div>
                                             </div>
                                         ) : null}
+                                        {isAiDraftingThisIncident ? (
+                                            <div className="mt-3 space-y-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
+                                                <div className="flex items-center justify-between gap-2"><p className="text-sm font-medium">AI communication draft — review before sending</p><Button type="button" size="sm" variant="ghost" onClick={() => setAiDraft(null)}>Close</Button></div>
+                                                <select value={aiDraft.audience} onChange={(event) => void generateAiDraft(incident.id, event.target.value as AiDraftAudience)} className="h-8 rounded-lg border border-input bg-background px-2 text-sm"><option value="INTERNAL_COORDINATION">Internal coordination</option><option value="CUSTOMER_UPDATE">Customer update</option></select>
+                                                {aiDraftStatus === "loading" ? <p className="text-sm text-muted-foreground">Preparing a draft…</p> : null}
+                                                {aiDraftStatus === "unavailable" ? <p className="text-sm text-muted-foreground">AI is disabled for this environment.</p> : null}
+                                                {aiDraftStatus === "error" ? <p className="text-sm text-destructive">The draft could not be generated. No message was sent.</p> : null}
+                                                {aiDraft.content ? <div className="space-y-1 rounded-md bg-background/70 p-3 text-sm"><p className="font-medium">{aiDraft.content.subject}</p><p className="whitespace-pre-wrap text-muted-foreground">{aiDraft.content.message}</p></div> : null}
+                                            </div>
+                                        ) : null}
                                     </div>
                                     {!isClosed && !isDraftingThisIncident ? (
                                         <div className="flex shrink-0 flex-wrap gap-2">
@@ -377,6 +412,7 @@ export function IncidentInbox() {
                                                     Assign to me
                                                 </Button>
                                             ) : null}
+                                            <Button type="button" size="sm" variant="outline" onClick={() => void generateAiDraft(incident.id, "INTERNAL_COORDINATION")}><Sparkles className="size-4" />AI draft</Button>
                                             <Button
                                                 type="button"
                                                 size="sm"

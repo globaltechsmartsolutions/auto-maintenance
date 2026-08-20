@@ -200,14 +200,15 @@ before its dependency and completion criteria are met.
 | 4 | Recovery cockpit | Engineering | Packages 1 and 3 | One ordered `Services at risk now` queue with owner, due time, incident, recommendation, no-candidate state, acknowledgement, and resolution note. |
 | 5 | Pilot onboarding | Engineering + customer success | Package 1 | Guided setup plus CSV dry-run imports for employees, worksites, services, and shifts; row-level errors and a reversible confirmation step. |
 | 6 | AI brief pilot | Product owner + privacy owner + engineering | Packages 1 and 4; approved provider/DPA | Enable the existing read-only brief for one internal workspace, record cost/quality feedback, and review every draft before use. |
-| 7 | AI communication drafts | Engineering | Package 6 passes | A coordinator can edit, approve, and send a generated draft through the existing outbox; prompt, source record IDs, approver, and final text are audited. |
+| 7 | AI communication drafts | Engineering | Package 6 passes | The read-only incident draft generator is delivered. Add coordinator editing, explicit approval, controlled outbox delivery, and audit of the approver/final text before enabling external sending. |
 | 8 | Production and legal launch | Release owner | Packages 1–7 as applicable | Monitoring, alerting, backup restore rehearsal, support runbooks, Spanish worker notices, processor agreement, subprocessor list, and legal/privacy sign-off. |
 | 9 | Controlled commercial pilot | Product owner + customer success | Package 8 | One to three worksites run for 45–60 days beside the existing tool and meet the pilot exit criteria. |
 
 ### AI delivery guardrails
 
-The existing **AI Operations Brief** is the first and only enabled AI use case.
-It must stay disabled by default and return a human-approved draft only.
+The **AI Operations Brief** and **AI Incident Communication Draft** are delivered,
+but disabled by default. Both return human-approved drafts only. The incident draft
+is not connected to a sending action.
 
 **Allowed next:** summarisation, risk explanation, customer/employee message
 drafts, and read-only answers from explicitly scoped operational facts.
