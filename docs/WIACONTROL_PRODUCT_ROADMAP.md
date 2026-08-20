@@ -290,10 +290,10 @@ telephone number, address, or production company. Record the application URL,
 tester, date, browser/device, expected result, actual result, screenshots, and
 the request/audit identifier for every failure.
 
-**Company:** Northstar Facility Services (fictional)  
-**Customer:** Redwood Offices Ltd. (fictional)  
-**Worksites:** Redwood Central and Redwood Riverside  
-**Services:** Morning office cleaning and evening common-area cleaning  
+**Company:** Northstar Facility Services (fictional)
+**Customer:** Redwood Offices Ltd. (fictional)
+**Worksites:** Redwood Central and Redwood Riverside
+**Services:** Morning office cleaning and evening common-area cleaning
 **Roles:** one administrator, one operations manager, and four field workers.
 
 Create these fictional field workers before testing:
