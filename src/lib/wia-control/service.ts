@@ -1836,6 +1836,94 @@ export async function detectIncompleteAttendanceForAllCompanies(now = new Date()
   return results;
 }
 
+function assertExportRange(actor: WiaActor, from: Date, to: Date) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot export the full record.");
+  }
+  if (to <= from) {
+    throw new WiaDomainError("INVALID_EXPORT_RANGE", "The end must be later than the start.");
+  }
+}
+
+/**
+ * Records that an export happened. Who took a copy of a workspace's attendance
+ * or incident history is itself something a customer may need to account for.
+ */
+async function recordExport(actor: WiaActor, dataset: string, from: Date, to: Date, rows: number) {
+  await getPrisma().auditLog.create({
+    data: {
+      companyId: actor.companyId,
+      userId: actor.userId,
+      action: `${dataset}_report.exported`,
+      entity: "Company",
+      entityId: actor.companyId,
+      metadata: { from: from.toISOString(), to: to.toISOString(), rows },
+    },
+  });
+}
+
+/**
+ * Every incident detected in the period. Ordered by detection then id, so two
+ * exports of an unchanged period are byte-identical.
+ */
+export async function exportIncidents(actor: WiaActor, from: Date, to: Date) {
+  assertExportRange(actor, from, to);
+  const incidents = await getPrisma().attendanceIncident.findMany({
+    where: { companyId: actor.companyId, detectedAt: { gte: from, lt: to } },
+    orderBy: [{ detectedAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      type: true,
+      severity: true,
+      status: true,
+      detectedAt: true,
+      dueAt: true,
+      acknowledgedAt: true,
+      resolvedAt: true,
+      resolutionNotes: true,
+      worksite: { select: { name: true } },
+      owner: { select: { firstName: true, lastName: true } },
+      employee: { select: { user: { select: { firstName: true, lastName: true } } } },
+      shift: {
+        select: {
+          title: true,
+          service: { select: { title: true, customer: { select: { name: true } } } },
+        },
+      },
+    },
+  });
+  await recordExport(actor, "incident", from, to, incidents.length);
+  return incidents;
+}
+
+/**
+ * Every human coverage decision in the period, with the reasons the
+ * recommendation gave and any override the coordinator recorded.
+ */
+export async function exportCoverageDecisions(actor: WiaActor, from: Date, to: Date) {
+  assertExportRange(actor, from, to);
+  const decisions = await getPrisma().coverageDecision.findMany({
+    where: { companyId: actor.companyId, createdAt: { gte: from, lt: to } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      createdAt: true,
+      type: true,
+      incidentId: true,
+      score: true,
+      reasons: true,
+      overrideReason: true,
+      shift: { select: { title: true, worksite: { select: { name: true } } } },
+      recommendedEmployee: { select: { user: { select: { firstName: true, lastName: true } } } },
+      selectedEmployee: { select: { user: { select: { firstName: true, lastName: true } } } },
+      actor: { select: { firstName: true, lastName: true } },
+    },
+  });
+  await recordExport(actor, "coverage", from, to, decisions.length);
+  return decisions;
+}
+
 export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
   assertCompany(actor);
   if (actor.role === "EMPLOYEE") {
@@ -1850,8 +1938,9 @@ export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
     include: {
       employee: { include: { user: { select: { firstName: true, lastName: true } } } },
       worksite: { select: { name: true, city: true } },
+      shift: { select: { title: true } },
     },
-    orderBy: { occurredAt: "asc" },
+    orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
   });
   await getPrisma().auditLog.create({
     data: {

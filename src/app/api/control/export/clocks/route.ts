@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { requireWiaApiContext } from "@/lib/wia-control/api-context";
+import { buildExport, exportFileName } from "@/lib/wia-control/exports";
 import { exportClockEvents } from "@/lib/wia-control/service";
 
 const querySchema = z.object({
@@ -8,10 +9,6 @@ const querySchema = z.object({
   from: z.string().datetime({ offset: true }),
   to: z.string().datetime({ offset: true }),
 });
-
-function csvCell(value: string | number | boolean) {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
 
 export const GET = apiRoute(async (request: Request) => {
   const url = new URL(request.url);
@@ -22,26 +19,30 @@ export const GET = apiRoute(async (request: Request) => {
   );
   if (context.response) return context.response;
 
+  const from = new Date(payload.from);
+  const to = new Date(payload.to);
   const events: Awaited<ReturnType<typeof exportClockEvents>> = context.demo
     ? []
-    : await exportClockEvents(context.actor, new Date(payload.from), new Date(payload.to));
-  const rows = [
-    ["Employee", "Worksite", "City", "Event", "Date and time", "Method", "Location verified"],
-    ...events.map((event) => [
-      `${event.employee.user.firstName} ${event.employee.user.lastName}`.trim(),
-      event.worksite.name,
-      event.worksite.city,
-      event.type,
-      event.occurredAt.toISOString(),
-      event.method,
-      event.locationVerified,
-    ]),
-  ];
-  const csv = `\ufeff${rows.map((row) => row.map(csvCell).join(";")).join("\n")}`;
+    : await exportClockEvents(context.actor, from, to);
+
+  const { csv } = buildExport("attendance", events, (event) => ({
+    "Event id": event.id,
+    Employee: `${event.employee.user.firstName} ${event.employee.user.lastName}`.trim(),
+    Worksite: event.worksite.name,
+    City: event.worksite.city,
+    Shift: event.shift.title,
+    Event: event.type,
+    "Occurred at": event.occurredAt,
+    "Recorded at": event.recordedAt,
+    Method: event.method,
+    "Location verified": event.locationVerified,
+    "Captured offline": event.isOffline,
+  }));
+
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="wia-control-time-tracking-${payload.from.slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="${exportFileName("attendance", from, to)}"`,
       "Cache-Control": "no-store",
     },
   });

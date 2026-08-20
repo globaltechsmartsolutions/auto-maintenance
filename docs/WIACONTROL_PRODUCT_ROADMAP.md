@@ -175,14 +175,17 @@ and adjust the two tables in `src/lib/wia-control/recovery-queue.ts`.
    created and the row failure stays visible to the importer.
 6. Downloadable per-kind import templates carry the exact headers the validator
    expects.
+7. Reproducible, company-scoped, audited exports for attendance, incidents,
+   coverage decisions, and service evidence, with every column documented in
+   `docs/WIACONTROL_EXPORT_FIELDS.md` and served at
+   `/api/control/export/dictionary`.
 
 **Remaining**
 
 1. Add timezone and skills checks to the guided setup completion criteria.
-2. Documented exports for attendance, incidents, coverage decisions, and service
-   evidence. Confirm payroll columns with each pilot.
-4. A pilot workspace with setup progress and support contact.
-5. Promise a third-party integration only when authentication, mapping, failure
+2. Confirm the payroll columns each pilot needs against the documented fields.
+3. A pilot workspace with setup progress and support contact.
+4. Promise a third-party integration only when authentication, mapping, failure
    handling, and a support owner have been implemented.
 
 **Acceptance criteria**
@@ -229,7 +232,7 @@ authorisation, audit, error handling, tests, and English product copy.
 | 5 | Cleaning delivery templates | Define four versioned templates: opening, common areas, incident note, and completion. Support offline capture, versioned answers, evidence links, and export. | 4; product workflow approval | A field worker can complete a service consistently and the manager can prove the template version and submitted answers. |
 | 6 | Recovery cockpit completion | Add service filter, clear owner, due time, next action, no-candidate escalation, acknowledgement, resolution path, and recovery-age alerts to the at-risk queue. | 2 and 5 | Every at-risk service has a visible accountable coordinator and next human action. |
 | 7 | Communications delivery hardening | **Delivered in code:** versioned templates that refuse to render an unknown version rather than sending a placeholder, per-recipient channel consent, a unique dedupe key per event, bounded retry/backoff with lease recovery, visible failure, recipient acknowledgement, and outbox health reported to both the app and the scheduler. **Owner task:** choose and configure the real email/SMS provider and its cost owner. | 2; provider decision | A reassignment or incident communication is either delivered, visibly failed, or retried; it is never silently lost or duplicated. |
-| 8 | Reporting and interoperability | Finalise reproducible company-scoped CSV exports for attendance, incidents, coverage, and service evidence; document field definitions and build only one validated integration mapping if a pilot needs it. | 3 and 5 | A customer can reconcile exported evidence without manual database access. |
+| 8 | Reporting and interoperability | **Delivered:** reproducible company-scoped CSV exports for attendance, incidents, coverage decisions, and service evidence, every column declared and documented in `docs/WIACONTROL_EXPORT_FIELDS.md` and served at `/api/control/export/dictionary`, every export audited. **Owner task:** build an integration mapping only if a pilot needs one. | 3 and 5 | A customer can reconcile exported evidence without manual database access. |
 | 9 | AI governance setup | Select provider and processing location; complete DPA/subprocessor/privacy review; add per-company feature flag, rate limit, budget, kill switch, audit convention, and evaluation dataset. | 2; privacy owner approval | AI remains disabled for all customers until these controls and test cases are approved. |
 | 10 | AI operations brief pilot | Enable the existing read-only brief for one internal workspace; measure cost, quality, false statements, coordinator usefulness, and refusal behaviour. | 6 and 9 | The team has a reviewed evaluation record and no unsafe or invented output is accepted as an operational action. |
 | 11 | AI communication workflow | Extend the delivered read-only incident drafts with coordinator editing, explicit approval, controlled outbox delivery, approver/final-text audit, and cancellation. | 7, 9, and 10 | No AI-written message reaches a recipient without named human approval and a traceable final version. |

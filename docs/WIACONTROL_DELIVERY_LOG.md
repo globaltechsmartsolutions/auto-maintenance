@@ -310,3 +310,57 @@ Suite: `npm run lint`, `npm run typecheck`, `npm test`, `prisma validate` — gr
 honestly per attempt and becomes visibly FAILED after bounded retries — it is
 never reported as sent. SMS requires a provider decision, a cost owner, and a
 consent record before `resolveCommunicationChannels` is allowed to return it.
+
+---
+
+## Package 8 — Reporting and interoperability
+
+**Status:** delivered · **Roadmap:** execution order 8, Stage D
+
+### User-visible change
+
+- Two new exports: incidents (`/api/control/export/incidents`) and coverage
+  decisions (`/api/control/export/coverage`), both company-scoped and taking an
+  explicit period.
+- The attendance export now also carries the event id, the shift, the server
+  recording time, and whether the event was captured offline.
+- Every export is reproducible: fixed column set, stated ordering with the row
+  id as a tiebreak, and nothing that varies between runs written into the file.
+  Two downloads of an unchanged period are byte-identical, so a customer can
+  diff them.
+- `docs/WIACONTROL_EXPORT_FIELDS.md` documents every column — meaning and
+  source — and the same content is served at `/api/control/export/dictionary`.
+
+### Data impact
+
+None. New audit actions `incident_report.exported` and
+`coverage_report.exported` join the existing `clock_report.exported`, so who
+took a copy of a workspace's history is itself accountable.
+
+### Migration
+
+None.
+
+### Rollback path
+
+Revert the commit. No data is affected.
+
+### Tests
+
+`src/lib/wia-control/exports.test.ts` (11 cases): cell quoting, quote escaping,
+UTC date rendering and empty cells; byte-identical output for identical input;
+period-based file naming; every dataset having a purpose, an ordering and a
+described source per column; no duplicate header; refusal to write an undeclared
+column; a declared-but-omitted column still filling its cell so every file has
+the same shape; the published documentation containing every declared column, so
+a new column cannot ship undocumented; company scoping and reproducible ordering
+on all three queries; the export audit entries; and refusal of a field worker and
+of an inverted period.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test` — 180 passing.
+
+### Manual configuration
+
+None. If a pilot needs a payroll-specific column set, confirm it against the
+documented fields before adding a column — adding one requires updating the
+dictionary, or the suite fails.
