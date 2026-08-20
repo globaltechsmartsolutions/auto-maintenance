@@ -331,6 +331,28 @@ attendance-integrity, duplicate-clock, incomplete-import, or unauthorised-send
 defect is open. File defects with the exact test number, reproduction steps,
 expected/actual result, relevant IDs, and screenshot.
 
+### Minimum detailed test matrix — 50 cases
+
+The 13 scenarios above are the test sessions. Execute the following individual
+cases inside them; mark every case `PASS`, `FAIL`, or `BLOCKED`.
+
+| Area | Cases to execute | Minimum count |
+| --- | --- | ---: |
+| Authentication and tenant isolation | 1. Administrator sign-in. 2. Manager sign-in. 3. Worker sign-in. 4. Suspended account denied. 5. Worker denied another worker's shift. 6. Worker denied admin route. 7. Cross-company record URL denied. | 7 |
+| Setup and master data | 8. Create customer. 9. Create linked worksite. 10. Create unlinked worksite. 11. Reject invalid timezone/verification input. 12. Create service. 13. Reject archived customer service. 14. Reject service/worksite customer mismatch. | 7 |
+| Shift planning and coverage | 15. Create assigned shift. 16. Create uncovered shift. 17. Reject invalid end-before-start range. 18. Reject employee overlap. 19. Reject unavailable employee. 20. Link compatible service. 21. Reject cancelled service. | 7 |
+| Clocking and corrections | 22. Clock in. 23. Reject duplicate/invalid transition. 24. Start break. 25. End break. 26. Clock out. 27. Offline submission retry is idempotent. 28. Location/QR verification failure is visible. 29. Create correction. 30. Approve correction. 31. Reject correction without required reason. 32. Original clock remains immutable. | 11 |
+| Incidents and recovery | 33. Detect late clock once. 34. Repeat detector with no duplicate incident. 35. Acknowledge incident. 36. Assign owner. 37. Escalate with note. 38. Resolve with note. 39. Dismiss with note. 40. Candidate eligibility/exclusion explanation. 41. Valid coverage decision. 42. Override reason enforcement. | 10 |
+| Service evidence and exports | 43. Completed outcome. 44. Partial outcome requires note. 45. Completion cannot be edited/deleted. 46. Service CSV evidence export. 47. Attendance export scope. 48. Cross-company export rejection. | 6 |
+| Onboarding and imports | 49. Valid worksite CSV preview. 50. Invalid field/row preview. 51. Existing duplicate explicitly skipped. 52. Atomic confirmation creates all accepted rows. 53. Invalid confirmation writes nothing. 54. Employee CSV routes to invitation workflow. | 6 |
+| Communications | 55. Queue a staging message. 56. Sent state with provider reference. 57. Retryable failure. 58. Final failed state and authorised resend. 59. Recipient acknowledgement. | 5 |
+| AI controls | 60. AI disabled response. 61. Operations brief generation. 62. Incident internal draft. 63. Customer draft. 64. No automatic send. 65. Audit record. 66. Output contains no prohibited personal/location data. | 7 |
+| Failure, usability, and release | 67. Expired session. 68. API invalid JSON/input. 69. Network-loss user feedback. 70. Mobile viewport clocking. 71. Keyboard/accessibility check. 72. Error log/request ID captured. 73. Restore/recovery rehearsal recorded. | 7 |
+
+This is **73 individual checks**, not 13. The developer should execute the
+first 53 before enabling communications or AI, then run 54–73 only in a
+staging environment with the required provider/privacy configuration.
+
 ### Pilot offer
 
 - Target: cleaning/facility services first; select only one sector for the first
