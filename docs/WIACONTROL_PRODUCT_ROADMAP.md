@@ -91,14 +91,22 @@ whether a person clocked in.
 2. Read-only service timeline and CSV evidence pack covering shifts, clocks,
    incidents, coverage, and completion.
 
+3. Private evidence attachments: a short-lived signed upload link, server-side
+   screening of the stored bytes before a file counts as evidence, a recorded
+   SHA-256 checksum, tenant-prefixed keys, signed reads that are audited one by
+   one, and a daily retention job that deletes the object as well as the row.
+   The application refuses to issue an upload link for a public bucket.
+
 **Remaining external/product decisions**
 
-1. Add controlled evidence attachments through private storage. Never use public
-   URLs or put sensitive files directly in the database.
+1. Put a real malware scanner in front of the evidence bucket. The shipped
+   screening proves a file is the media type it claims to be and rejects
+   executable, script, and archive headers; it is not antivirus.
 2. Create cleaning templates first: opening check, common-area check, incident
    note, and completion confirmation.
-3. Add private-storage evidence attachments only after selecting the storage
-   provider, retention schedule, access policy, and data-processing terms.
+3. Confirm the storage provider, retention schedule, access policy, and
+   data-processing terms with the privacy owner before enabling attachments for
+   a customer. The code is provider-agnostic behind one storage interface.
 4. Add branded PDF only after pilots validate the evidence pack fields.
 
 **Acceptance criteria**

@@ -199,6 +199,12 @@ enum CoverageDecisionType {
   AUTO_ASSIGNED
 }
 
+enum EvidenceScanStatus {
+  PENDING
+  CLEAN
+  REJECTED
+}
+
 enum CommunicationChannel {
   IN_APP
   EMAIL
@@ -268,6 +274,7 @@ model Company {
   coverageDecisions      CoverageDecision[]
   communicationOutbox    CommunicationOutbox[]
   shiftCompletions       ShiftCompletion[]
+  evidenceAttachments    EvidenceAttachment[]
 
   @@index([subscriptionStatus])
   @@index([plan])
@@ -295,6 +302,7 @@ model User {
   reviewedTimeCorrections TimeCorrectionRequest[] @relation("TimeCorrectionReviewer")
   ownedIncidents          AttendanceIncident[]    @relation("IncidentOwner")
   completedShifts        ShiftCompletion[]       @relation("ShiftCompletionActor")
+  uploadedEvidence       EvidenceAttachment[]    @relation("EvidenceUploader")
 
   @@index([companyId, role])
 }
@@ -335,6 +343,7 @@ model Employee {
   selectedCoverageDecisions    CoverageDecision[]      @relation("CoverageSelectedEmployee")
   communications               CommunicationOutbox[]
   shiftCompletions             ShiftCompletion[]
+  evidenceAttachments          EvidenceAttachment[]
 
   @@index([companyId])
   @@index([companyId, fieldStatus])
@@ -590,6 +599,7 @@ model PlannedShift {
   coverageDecisions CoverageDecision[]
   communications    CommunicationOutbox[]
   completion        ShiftCompletion?
+  evidence          EvidenceAttachment[]
 
   @@index([companyId, scheduledStart])
   @@index([companyId, status])
@@ -772,6 +782,40 @@ model ShiftCompletion {
 
   @@index([companyId, completedAt])
   @@index([employeeId, completedAt])
+}
+
+/// Metadata for one private evidence file. The file itself never lives in this
+/// database and is never publicly addressable: only its tenant-prefixed
+/// storage key is kept, and every read is issued as a short-lived signed URL
+/// and written to the audit log.
+model EvidenceAttachment {
+  id               String             @id @default(uuid())
+  companyId        String
+  shiftId          String
+  employeeId       String?
+  uploadedByUserId String?
+  storageKey       String             @unique
+  fileName         String
+  contentType      String
+  sizeBytes        Int
+  checksum         String?
+  status           EvidenceScanStatus @default(PENDING)
+  scanDetail       String?
+  retentionUntil   DateTime
+  confirmedAt      DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift      PlannedShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  employee   Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  uploadedBy User?        @relation("EvidenceUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([shiftId, createdAt])
+  @@index([companyId, status])
+  @@index([retentionUntil])
 }
 
 model InspectionAccessGrant {
