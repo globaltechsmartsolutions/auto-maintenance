@@ -169,6 +169,49 @@ whether a person clocked in.
 - Coordinators resolve common no-show and late-arrival flows without engineering.
 - The pilot measures a meaningful improvement in detection or recovery time.
 
+### Next execution sequence
+
+The following is the only active delivery order. Do not start a later package
+before its dependency and completion criteria are met.
+
+| Order | Work package | Owner | Dependency | Done when |
+| --- | --- | --- | --- | --- |
+| 1 | Pilot environment | Engineering + product owner | None | Separate staging database, Supabase project, real test users, deployed migrations, and a successful end-to-end smoke flow. |
+| 2 | Private evidence storage | Engineering + privacy owner | Storage provider and DPA decision | Private uploads, signed download URLs, tenant scope, metadata-only database records, retention job, malware/size limits, and tests. |
+| 3 | Cleaning completion templates | Product owner + operations | Pilot workflow agreement | Four versioned templates: opening, common areas, incident note, and completion; workers can complete them offline and managers can export them. |
+| 4 | Recovery cockpit | Engineering | Packages 1 and 3 | One ordered `Services at risk now` queue with owner, due time, incident, recommendation, no-candidate state, acknowledgement, and resolution note. |
+| 5 | Pilot onboarding | Engineering + customer success | Package 1 | Guided setup plus CSV dry-run imports for employees, worksites, services, and shifts; row-level errors and a reversible confirmation step. |
+| 6 | AI brief pilot | Product owner + privacy owner + engineering | Packages 1 and 4; approved provider/DPA | Enable the existing read-only brief for one internal workspace, record cost/quality feedback, and review every draft before use. |
+| 7 | AI communication drafts | Engineering | Package 6 passes | A coordinator can edit, approve, and send a generated draft through the existing outbox; prompt, source record IDs, approver, and final text are audited. |
+| 8 | Production and legal launch | Release owner | Packages 1–7 as applicable | Monitoring, alerting, backup restore rehearsal, support runbooks, Spanish worker notices, processor agreement, subprocessor list, and legal/privacy sign-off. |
+| 9 | Controlled commercial pilot | Product owner + customer success | Package 8 | One to three worksites run for 45–60 days beside the existing tool and meet the pilot exit criteria. |
+
+### AI delivery guardrails
+
+The existing **AI Operations Brief** is the first and only enabled AI use case.
+It must stay disabled by default and return a human-approved draft only.
+
+**Allowed next:** summarisation, risk explanation, customer/employee message
+drafts, and read-only answers from explicitly scoped operational facts.
+
+**Not allowed:** autonomous staff assignment, performance scoring, disciplinary
+recommendations, payroll calculation, continuous tracking, biometric analysis,
+or sending a message without an accountable human approval.
+
+Before enabling any AI feature for a customer, complete all of the following:
+
+1. Confirm the provider, processing location, DPA, subprocessor terms, and
+   retention policy with the privacy owner.
+2. Set a per-company feature flag, monthly budget, request rate limit, and a
+   kill switch.
+3. Send only minimised facts. Never send coordinates, raw attendance history
+   beyond the requested period, credentials, or unnecessary employee data.
+4. Store an audit record with feature, model, source-record counts, actor,
+   outcome, and human approver. Do not log prompts containing personal data.
+5. Test an evaluation set of normal, no-show, late-arrival, no-candidate, and
+   cross-tenant scenarios. A wrong, invented, or unsafe recommendation blocks
+   release until corrected.
+
 ## 5. Commercial rollout
 
 ### Pilot offer
