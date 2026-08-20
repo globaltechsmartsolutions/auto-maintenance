@@ -353,6 +353,130 @@ This is **73 individual checks**, not 13. The developer should execute the
 first 53 before enabling communications or AI, then run 54–73 only in a
 staging environment with the required provider/privacy configuration.
 
+### Developer runbook — execute this in order
+
+Do not improvise company data or change production configuration. Complete one
+step, capture its evidence, then continue. If a step fails, stop that section,
+file the defect, fix it, and restart the section from its first step.
+
+#### Step 0 — Prepare a disposable staging workspace
+
+1. Confirm the URL is the staging URL, not production.
+2. Run `npm ci`, `npm run typecheck`, `npm run lint`, and `npm test` from a
+   clean checkout. Record the commit SHA and outputs.
+3. Apply only the staging migrations. Verify that the database is empty or use
+   a new company named `Northstar Facility Services - QA YYYY-MM-DD`.
+4. Create the following non-real user accounts through the normal invitation
+   flow. Use a controlled QA mailbox domain, not personal addresses:
+
+| Account | Role | Required setup |
+| --- | --- | --- |
+| `qa.admin@northstar.example` | Administrator | Company settings and exports. |
+| `qa.manager@northstar.example` | Manager | Incident and coverage actions. |
+| `qa.maya@northstar.example` | Employee | Maya Torres profile, skills `cleaning`, `opening`, available 06:00–14:00. |
+| `qa.liam@northstar.example` | Employee | Liam Carter profile, skills `cleaning`, `evening`, available 14:00–22:00. |
+| `qa.nora@northstar.example` | Employee | Nora Blake profile, skill `cleaning`, status `VACATION`. |
+| `qa.ethan@northstar.example` | Employee | Ethan Reed profile, skills `cleaning`, `opening`, available 06:00–14:00. |
+
+5. Create customer `Redwood Offices Ltd.`, worksites `Redwood Central` and
+   `Redwood Riverside`, and services `Morning office cleaning` and `Evening
+   common-area cleaning`. Use only fictitious addresses and a staging QR/PIN.
+6. For one chosen test date, create these shifts:
+
+| Shift | Worksite | Time | Assignee | Purpose |
+| --- | --- | --- | --- | --- |
+| `QA Morning Clean` | Redwood Central | 08:00–10:00 | Maya | Normal clocking and evidence. |
+| `QA Evening Clean` | Redwood Central | 18:00–20:00 | Unassigned | Recovery/replacement flow. |
+| `QA Ethan Conflict` | Redwood Riverside | 08:30–10:30 | Ethan | Required overlap exclusion. |
+
+7. Take a baseline screenshot of the company dashboard, worksite list, shift
+   planner, employee list, and empty/open incident inbox. These are the
+   baseline evidence files.
+
+#### Step 1 — Run the core flow exactly once
+
+1. Sign in as `qa.admin`. Create and link the customer, worksites, services,
+   and three shifts above. Verify the morning and evening services appear in
+   the service dashboard.
+2. Sign in as `qa.maya`. Open only the employee area. Clock in at 08:00, start
+   a break, end it, and clock out at 10:00. Save the exact shift ID and clock
+   event IDs.
+3. Retry the same clock request using its idempotency key. Confirm there is
+   still exactly one event of that type.
+4. Sign in as `qa.manager`. Confirm the morning service shows completed
+   attendance evidence, while the evening service is at risk/uncovered.
+5. Request evening replacement candidates. Confirm Liam is eligible, Nora is
+   excluded for vacation, and Ethan is excluded for overlapping work. Capture
+   the reason shown for every exclusion.
+6. Select Liam and record the coverage decision. Then try a lower-ranked
+   selection without a reason; this must be refused. Retry with a reason and
+   confirm the override is audited.
+7. Create one controlled late/no-show condition, run the staging detector, and
+   verify it produces one incident only. Run it again and verify no duplicate
+   is created.
+8. Acknowledge, assign, escalate, and resolve that incident with meaningful
+   QA notes. Confirm every status, actor, and timestamp appears in the inbox.
+9. Record a completed service outcome. Separately record a partial outcome
+   without a note and verify the form rejects it; retry with a note. Attempt to
+   alter the first completion directly through the supported API/UI and verify
+   that immutable evidence cannot be changed.
+10. Export service evidence and attendance. Inspect the files: all rows must
+    belong to Northstar QA and include the expected shift/clock/completion data.
+
+#### Step 2 — Run controlled negative tests
+
+Execute the following without changing test assumptions:
+
+1. As Maya, attempt to open the manager incident route and Ethan's shift URL.
+2. As a user from a second staging company, try every Northstar QA export and
+   one known Northstar ID in a route.
+3. Create an overlapping shift for Maya, an end-before-start shift, and a
+   shift for Nora. Each must be rejected without a partial record.
+4. Send an invalid CSV, then a valid CSV containing one existing row, then a
+   valid all-new CSV. Confirm invalid files write nothing, duplicates are
+   explicitly skipped, and all accepted records arrive together.
+5. Disconnect during one allowed clock submission, reconnect, and retry. The
+   user must see a recoverable result and no duplicate evidence.
+6. Use invalid request data and an expired session. Confirm an English error,
+   no secret in the response, and a request ID for diagnosis.
+
+#### Step 3 — Test communications and AI only when configured
+
+1. Confirm the communication provider is in test mode and recipient addresses
+   are QA-only. Trigger one send, one retryable failure, one final failure, and
+   one authorised resend. Record outbox status and provider reference.
+2. With AI flags disabled, request both AI features and confirm the UI says it
+   is unavailable with no message or record changed.
+3. In the privacy-approved QA workspace only, enable the feature flag and use
+   the approved gateway key. Generate one operations brief, one internal
+   incident draft, and one customer draft.
+4. Review every output manually. Reject it if it invents facts, contains a
+   name, address, GPS/location detail, incident free text, a staff assignment,
+   legal promise, or automatic-send claim. Confirm generated text is never
+   sent without a named human action.
+5. Disable the flag again after testing and record the provider cost, model,
+   audit IDs, reviewer, and outcome.
+
+#### Step 4 — Report results in this exact format
+
+For every test case, add one row to the QA report:
+
+| Field | Required value |
+| --- | --- |
+| Test ID | The numbered matrix case, for example `27`. |
+| Status | `PASS`, `FAIL`, or `BLOCKED`. |
+| Tester and timestamp | Name, browser/device, timezone, and time. |
+| Setup | Company, user role, and record IDs used. |
+| Expected result | Copy the roadmap expectation. |
+| Actual result | Exact observed behaviour; do not summarise a failure. |
+| Evidence | Screenshot/video, request ID, audit ID, export name, and relevant log link. |
+| Defect | Issue link or `None`. |
+
+The developer sends the product owner one short summary at the end: total
+passed/failed/blocked; every open critical/high defect; provider/AI status;
+and a clear recommendation of `DO NOT PILOT`, `FIX AND RETEST`, or `READY FOR
+CONTROLLED PILOT`.
+
 ### Pilot offer
 
 - Target: cleaning/facility services first; select only one sector for the first
