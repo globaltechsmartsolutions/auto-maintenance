@@ -35,6 +35,29 @@ const redactedKeys = [
   "filename",
 ];
 
+/**
+ * Credentials do not arrive under a helpful field name. They arrive inside an
+ * error message — a connection string, a bearer token, an API key echoed back
+ * by a provider — so string values are scrubbed by shape as well as by key.
+ */
+const secretPatterns: Array<[RegExp, string]> = [
+  // scheme://user:password@host
+  [/([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[redacted]@"],
+  // JSON Web Tokens
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted]"],
+  // key=value / token: value pairs
+  [/\b(api[_-]?key|token|secret|password|authorization)\b\s*[=:]\s*\S+/gi, "$1=[redacted]"],
+  // Provider-style prefixed keys
+  [/\b(sk|pk|rk)_[A-Za-z0-9_]{8,}/g, "[redacted]"],
+];
+
+export function scrubSecrets(text: string) {
+  return secretPatterns.reduce(
+    (value, [pattern, replacement]) => value.replace(pattern, replacement),
+    text
+  );
+}
+
 /** Values longer than this are truncated: a log line is not a data store. */
 const maxValueLength = 200;
 const maxDepth = 4;
@@ -51,7 +74,8 @@ export function redactLogFields(value: unknown, depth = 0): unknown {
   if (depth >= maxDepth) return "[truncated]";
 
   if (typeof value === "string") {
-    return value.length > maxValueLength ? `${value.slice(0, maxValueLength)}…` : value;
+    const scrubbed = scrubSecrets(value);
+    return scrubbed.length > maxValueLength ? `${scrubbed.slice(0, maxValueLength)}…` : scrubbed;
   }
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (value instanceof Date) return value.toISOString();

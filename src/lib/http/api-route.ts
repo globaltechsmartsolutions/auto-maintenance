@@ -113,7 +113,9 @@ export function apiRoute<TArguments extends unknown[]>(
         method: request?.method,
         path: request ? new URL(request.url).pathname : undefined,
         durationMs: Date.now() - startedAt,
-        errorName: error instanceof Error ? error.name : "UnknownError",
+        // Named "errorType" rather than "errorName": the logger redacts any
+        // field whose name ends in "name", and an error class is not personal data.
+        errorType: error instanceof Error ? error.name : "UnknownError",
         errorDetail: error instanceof Error ? error.message : "Unknown error",
       });
       return respond(Response.json(

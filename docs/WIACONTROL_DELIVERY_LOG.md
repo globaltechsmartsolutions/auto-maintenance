@@ -519,3 +519,71 @@ error-monitoring platform to the JSON log stream and alert on
 `event: "api.unhandled_error"`. Name an owner for each alert, and run the
 restore rehearsal against real staging — none of those three are done by
 shipping code.
+
+---
+
+## Coverage sweep — tests per block, and enforced thresholds
+
+**Status:** delivered · **Roadmap:** delivery rule 3 (every server write covered
+by a focused test) and package 13's CI gate
+
+### What changed
+
+Coverage is now measured over everything that *decides* something — domain
+rules, tenant scoping, authorisation, the AI gate, the assignment engine, the
+HTTP error contract — and thin adapters over an external SDK are excluded rather
+than tested with mocks that only assert the mock. The browser-only IndexedDB
+queue adapter stays excluded; it is covered by the Playwright offline spec.
+
+Thresholds went from 25/17/25/25 to **75 statements, 62 branches, 78 functions,
+75 lines**, and the suite currently sits above all four.
+
+| | Before | After |
+| --- | --- | --- |
+| Test files | 10 | 24 |
+| Tests | 104 | 272 |
+| Statements | 25% floor | 78.4% |
+| Branches | 17% floor | 65.6% |
+| Functions | 25% floor | 82.8% |
+
+### New test files, by the area they cover
+
+- `src/lib/http/api-route.test.ts` — the error contract every route inherits:
+  request-id echo, schema failure as 400 with fields, each family of domain
+  error mapped to the status a caller can act on, malformed JSON, explicit route
+  errors, and an unexpected error that leaks nothing to the caller.
+- `src/lib/wia-control/tenant-scope.test.ts` — how a request becomes a
+  tenant-scoped actor: an ordinary user bound to their own company whatever they
+  ask for, a super admin acting on a named company, a refusal rather than a
+  guess when none is named, and the employee profile that limits a field worker
+  to their own shifts.
+- `src/lib/wia-control/attendance.test.ts` — recording a clock event: the
+  integrity chain, idempotent replay, the late and outside-location incidents,
+  a worksite with no coordinates, refusal of somebody else's shift, and the
+  incident ownership and escalation path.
+- `src/lib/wia-control/corrections.test.ts` — a correction never rewrites an
+  event: request, review, the affected person's acknowledgement or dispute, and
+  the filters on the incident inbox.
+- `src/lib/wia-control/delivery-transport.test.ts` — email delivery failing
+  honestly without a provider, the outbox id as idempotency key, and the
+  evidence bucket refusing to be public or unreadable.
+- `src/lib/assignment/demo-assignment.test.ts` — every hard constraint refusing
+  with a stated reason, the no-candidate outcome, and past decisions never
+  overriding a constraint.
+- `src/lib/environment.test.ts` — the demo/production switches and the timezone
+  helpers every scheduled time passes through.
+
+### Two defects the new tests found, both fixed
+
+1. The logger redacted `errorName`, because the field name ends in "name". The
+   error class is not personal data and is exactly what a log needs, so the
+   field is now `errorType` and the reason is written next to it.
+2. A database connection string carrying a password reached the log inside an
+   error message. Field-name redaction cannot catch that, so string values are
+   now scrubbed by shape too: URL user-info, JSON Web Tokens, `key=value`
+   credential pairs, and provider-prefixed keys.
+
+### Rollback path
+
+Revert the commit. The thresholds return to their previous values; no
+application behaviour depends on this change apart from the two logger fixes.

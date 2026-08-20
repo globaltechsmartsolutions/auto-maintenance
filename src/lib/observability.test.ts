@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { logEvent, redactLogFields, REDACTED, summariseHealth } from "@/lib/observability";
+import { logEvent, redactLogFields, REDACTED, scrubSecrets, summariseHealth } from "@/lib/observability";
 
 describe("log redaction", () => {
   it("removes personal data by field name, at any depth", () => {
@@ -22,6 +22,23 @@ describe("log redaction", () => {
     expect(
       redactLogFields({ csv: "name,email\nAna,ana@example.com", prompt: "…", message: "…", answers: {} })
     ).toEqual({ csv: REDACTED, prompt: REDACTED, message: REDACTED, answers: REDACTED });
+  });
+
+  it("scrubs a credential that arrived inside a message, not under a field name", () => {
+    expect(scrubSecrets("connect postgres://user:hunter2@db.internal/wia failed")).toBe(
+      "connect postgres://[redacted]@db.internal/wia failed"
+    );
+    expect(scrubSecrets("Authorization: Bearer abc.def.ghi")).toContain("[redacted]");
+    expect(scrubSecrets("stripe key sk_live_ABCDEFGH1234 rejected")).toBe(
+      "stripe key [redacted] rejected"
+    );
+    expect(scrubSecrets("nothing sensitive here")).toBe("nothing sensitive here");
+  });
+
+  it("applies the credential scrub to every logged string, at depth", () => {
+    expect(
+      redactLogFields({ detail: { cause: "postgres://user:hunter2@db.internal/wia" } })
+    ).toEqual({ detail: { cause: "postgres://[redacted]@db.internal/wia" } });
   });
 
   it("keeps operational identifiers, counts, and flags", () => {
