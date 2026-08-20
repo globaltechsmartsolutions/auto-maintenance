@@ -38,6 +38,12 @@ const mocks = vi.hoisted(() => {
     ),
     communicationOutbox,
     attendanceIncident: { findMany: vi.fn() },
+    customer: { count: vi.fn() },
+    worksite: { count: vi.fn() },
+    employee: { count: vi.fn() },
+    service: { count: vi.fn() },
+    plannedShift: { count: vi.fn() },
+    clockEvent: { count: vi.fn() },
   };
   const providers = {
     deliverInApp: vi.fn(),
@@ -57,6 +63,7 @@ import {
   completePlannedShift,
   detectIncompleteAttendance,
   getCoverageRecoveryMetrics,
+  getPilotOnboardingProgress,
   processCommunicationOutbox,
   resendCommunication,
   updateOperationalService,
@@ -100,6 +107,21 @@ describe("coverage recovery metrics", () => {
   it("does not hide unresolved incidents by counting them as zero minutes", async () => {
     mocks.prisma.attendanceIncident.findMany.mockResolvedValue([{ id: "one", detectedAt: new Date(), acknowledgedAt: null, coverageDecisions: [] }]);
     await expect(getCoverageRecoveryMetrics(manager, new Date("2026-08-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).resolves.toEqual(expect.objectContaining({ averageAcknowledgementMinutes: null, averageRecoveryMinutes: null }));
+  });
+});
+
+describe("pilot onboarding progress", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns company-scoped setup counts without exposing operational records", async () => {
+    mocks.prisma.customer.count.mockResolvedValue(1);
+    mocks.prisma.worksite.count.mockResolvedValue(2);
+    mocks.prisma.employee.count.mockResolvedValue(4);
+    mocks.prisma.service.count.mockResolvedValue(3);
+    mocks.prisma.plannedShift.count.mockResolvedValue(5);
+    mocks.prisma.clockEvent.count.mockResolvedValue(6);
+    await expect(getPilotOnboardingProgress(manager)).resolves.toEqual({ customers: 1, worksites: 2, employees: 4, services: 3, shifts: 5, clockEvents: 6 });
+    expect(mocks.prisma.customer.count).toHaveBeenCalledWith({ where: expect.objectContaining({ companyId: "company-1" }) });
   });
 });
 

@@ -138,8 +138,14 @@ whether a person clocked in.
 
 **Outcome:** A pilot starts without forcing an immediate system replacement.
 
-1. Guided setup: timezone, customers, worksites, employees, skills, first
-   service, first shift, and first clock event.
+**Delivered**
+
+1. A company-scoped `Pilot setup` workspace guides the first customer,
+   worksite, field team, service, shift, and verified clock event.
+
+**Remaining**
+
+1. Add timezone and skills checks to the guided setup completion criteria.
 2. CSV import with preview, validation, duplicate handling, and reversible dry
    run for employees, worksites, services, and shifts.
 3. Documented exports for attendance, incidents, coverage decisions, and service

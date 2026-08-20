@@ -2131,6 +2131,24 @@ export async function getCompanySettings(actor: WiaActor) {
   return company;
 }
 
+/** A read-only checklist for starting a controlled pilot without hidden setup work. */
+export async function getPilotOnboardingProgress(actor: WiaActor) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view pilot setup progress.");
+  }
+  const prisma = getPrisma();
+  const [customers, worksites, employees, services, shifts, clockEvents] = await Promise.all([
+    prisma.customer.count({ where: { companyId: actor.companyId, status: { not: "ARCHIVED" } } }),
+    prisma.worksite.count({ where: { companyId: actor.companyId, isActive: true } }),
+    prisma.employee.count({ where: { companyId: actor.companyId } }),
+    prisma.service.count({ where: { companyId: actor.companyId, status: { not: "CANCELLED" } } }),
+    prisma.plannedShift.count({ where: { companyId: actor.companyId, status: { not: "CANCELLED" } } }),
+    prisma.clockEvent.count({ where: { companyId: actor.companyId } }),
+  ]);
+  return { customers, worksites, employees, services, shifts, clockEvents };
+}
+
 export async function updateCompanySettings(actor: WiaActor, input: unknown) {
   assertCompany(actor);
   if (!actor.userId || !["SUPER_ADMIN", "ADMIN"].includes(actor.role)) {
