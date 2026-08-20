@@ -111,13 +111,21 @@ whether a person clocked in.
 
 **Outcome:** A coordinator finds the next action in seconds.
 
-1. Add a `Services at risk now` view ordered by severity and scheduled start.
-2. Group open incidents by service and expose owner, due time, and next action.
-3. Open the existing recommendation flow from the service context, confirm a
-   substitute, and queue a notification.
-4. Measure acknowledgement and detection-to-coverage time.
-5. Add explicit no-candidate and escalation states. Do not automatically assign
-   a worker during the pilot.
+**Delivered**
+
+1. `Services at risk now` is separated from normal shifts and ordered by open
+   incident severity and scheduled start.
+2. Existing shift cards show the linked client service, customer, worksite,
+   assignee, incident context, replacement flow, and audit route.
+3. The no-candidate state, exclusion reasons, escalation, human confirmation,
+   notification outbox, and override evidence remain explicit.
+
+**Remaining**
+
+1. Add dashboard metrics for acknowledgement time and detection-to-coverage
+   time, using persisted timestamps rather than browser state.
+2. Add a service-level filter and a dedicated owner/next-action queue once a
+   pilot validates the coordinator's daily triage workflow.
 
 **Acceptance criteria**
 

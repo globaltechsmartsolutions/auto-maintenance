@@ -409,21 +409,26 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
 
 export function CoverageDashboard() {
   const { shifts, incidents, clockEvents, communications, coverageDecisions } = useWiaControl();
-  const openIncidents = incidents.filter((incident) => incident.status !== "RESOLVED");
+  const openIncidents = incidents.filter((incident) => ["OPEN", "ACKNOWLEDGED"].includes(incident.status));
   const uncovered = shifts.filter((shift) => shift.status === "UNCOVERED").length;
   const active = shifts.filter((shift) => ["ACTIVE", "PAUSED"].includes(shift.status)).length;
   const covered = shifts.filter((shift) => shift.status !== "UNCOVERED").length;
   const coverage = Math.round((covered / Math.max(shifts.length, 1)) * 100);
 
-  const sortedShifts = React.useMemo(
-    () =>
-      [...shifts].sort((first, second) => {
-        if (first.status === "UNCOVERED") return -1;
-        if (second.status === "UNCOVERED") return 1;
-        return first.startsAt.localeCompare(second.startsAt);
-      }),
-    [shifts]
-  );
+  const atRiskShiftIds = React.useMemo(() => new Set(
+    shifts.filter((shift) => shift.status === "UNCOVERED" || incidents.some((incident) =>
+      incident.shiftId === shift.id && ["OPEN", "ACKNOWLEDGED"].includes(incident.status) && ["HIGH", "CRITICAL"].includes(incident.severity)
+    )).map((shift) => shift.id)
+  ), [incidents, shifts]);
+  const sortedRiskShifts = React.useMemo(() => [...shifts]
+    .filter((shift) => atRiskShiftIds.has(shift.id))
+    .sort((first, second) => {
+      const severityRank = (shiftId: string) => Math.max(0, ...incidents.filter((incident) => incident.shiftId === shiftId && ["OPEN", "ACKNOWLEDGED"].includes(incident.status)).map((incident) => ({ LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 })[incident.severity] ?? 0));
+      return severityRank(second.id) - severityRank(first.id) || first.startsAt.localeCompare(second.startsAt);
+    }), [atRiskShiftIds, incidents, shifts]);
+  const plannedShifts = React.useMemo(() => [...shifts]
+    .filter((shift) => !atRiskShiftIds.has(shift.id))
+    .sort((first, second) => first.startsAt.localeCompare(second.startsAt)), [atRiskShiftIds, shifts]);
 
   return (
     <div className="space-y-6">
@@ -481,7 +486,7 @@ export function CoverageDashboard() {
 
       <OperationsAiBrief />
 
-      {uncovered > 0 ? (
+      {sortedRiskShifts.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/[0.055] p-4 sm:flex-row sm:items-center">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
             <AlertTriangle className="size-5" />
@@ -489,11 +494,11 @@ export function CoverageDashboard() {
           <div className="flex-1">
             <p className="font-medium">A customer commitment is at risk</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              WIA has found a compatible replacement. It only needs confirmation.
+              {uncovered > 0 ? "Resolve uncovered work first; high-severity incidents remain visible until reviewed." : "A high-severity incident needs coordinator review."}
             </p>
           </div>
           <Badge variant="destructive" className="h-7 rounded-md px-3">
-            Resolve now
+            {sortedRiskShifts.length} at risk
           </Badge>
         </div>
       ) : (
@@ -508,6 +513,11 @@ export function CoverageDashboard() {
         </div>
       )}
 
+      {sortedRiskShifts.length > 0 ? <section className="space-y-3" aria-labelledby="risk-heading">
+        <div className="flex items-center justify-between gap-3"><div><h2 id="risk-heading" className="text-lg font-semibold">Services at risk now</h2><p className="text-sm text-muted-foreground">Ordered by incident severity and scheduled start. Each action remains human-approved.</p></div><Badge variant="destructive" className="rounded-md">{sortedRiskShifts.length} at risk</Badge></div>
+        <div className="grid gap-3">{sortedRiskShifts.map((shift) => <ShiftCard key={shift.id} shift={shift} />)}</div>
+      </section> : null}
+
       <section className="space-y-3" aria-labelledby="shifts-heading">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -515,15 +525,15 @@ export function CoverageDashboard() {
               Planned shifts
             </h2>
             <p className="text-sm text-muted-foreground">
-              Sorted by urgency and start time.
+            Remaining shifts, sorted by start time.
             </p>
           </div>
           <Badge variant="secondary" className="rounded-md">
-            {shifts.length} shifts
+            {plannedShifts.length} remaining
           </Badge>
         </div>
         <div className="grid gap-3">
-          {sortedShifts.map((shift) => (
+          {plannedShifts.map((shift) => (
             <ShiftCard key={shift.id} shift={shift} />
           ))}
         </div>
