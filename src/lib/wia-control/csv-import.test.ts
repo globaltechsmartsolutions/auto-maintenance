@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { previewCsvImport } from "@/lib/wia-control/csv-import";
+import { csvRecords, previewCsvImport } from "@/lib/wia-control/csv-import";
 
 describe("CSV import preview", () => {
   it("parses quoted cells and validates required employee fields without writing data", () => {
@@ -12,5 +12,11 @@ describe("CSV import preview", () => {
     const preview = previewCsvImport("SHIFTS", "worksite,title,scheduledStart,scheduledEnd\nSite A,Opening,2026-08-20T10:00:00Z,2026-08-20T09:00:00Z\nSite A,Opening,2026-08-20T10:00:00Z,2026-08-20T11:00:00Z");
     expect(preview.invalidRows).toBe(2);
     expect(preview.issues.some((issue) => issue.message === "Duplicate row in this file.")).toBe(true);
+  });
+
+  it("keeps parsed records aligned with the validated headers", () => {
+    expect(csvRecords("\uFEFFname,address,city\nMain site,1 Main Street,Madrid")).toEqual([
+      { name: "Main site", address: "1 Main Street", city: "Madrid" },
+    ]);
   });
 });

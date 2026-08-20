@@ -52,3 +52,9 @@ export function previewCsvImport(kind: ImportKind, csv: string) {
   const invalidRowNumbers = new Set(issues.map((issue) => issue.row));
   return { headers, rowCount: rows.length, validRows: rows.length - [...invalidRowNumbers].filter((row) => row > 1).length, invalidRows: [...invalidRowNumbers].filter((row) => row > 1).length, issues: issues.slice(0, 100) };
 }
+
+export function csvRecords(csv: string) {
+  const rows = parseRows(csv.replace(/^\uFEFF/, ""));
+  const headers = (rows.shift() ?? []).map((header) => header.trim());
+  return rows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index]?.trim() ?? ""])));
+}

@@ -145,13 +145,16 @@ whether a person clocked in.
 2. CSV dry-run preview for employees, worksites, services, and shifts validates
    required fields, email addresses, date ranges, and duplicate file rows
    before any data is written.
+3. Worksite, service, and shift imports now require explicit confirmation,
+   validate tenant-aware duplicates, return per-row outcomes, and create the
+   accepted rows in one transaction. Employee imports remain deliberately
+   routed through secure invitations.
 
 **Remaining**
 
 1. Add timezone and skills checks to the guided setup completion criteria.
-2. Add explicit confirmation, tenant-aware duplicate detection, and one
-   transaction per approved CSV import. Employee imports must use the existing
-   invitation flow and report any rollback failure visibly.
+2. Add employee bulk invitation processing with visible per-recipient failures
+   and no silent account-creation failure.
 3. Documented exports for attendance, incidents, coverage decisions, and service
    evidence. Confirm payroll columns with each pilot.
 4. A pilot workspace with setup progress and support contact.
@@ -195,9 +198,9 @@ authorisation, audit, error handling, tests, and English product copy.
 
 | Order | Work package | Scope | Dependency | Exit criteria |
 | --- | --- | --- | --- | --- |
-| 1 | Stabilise the current baseline | Review every existing stage, remove dead/demo-only paths from real mode, resolve the incomplete CSV-confirmation work as a separately tested change, and keep the working tree clean. | None | `main` is reproducible; lint, type-check, tests, Prisma validation, and production build pass. |
+| 1 | Stabilise the current baseline | Review every existing stage, remove dead/demo-only paths from real mode, keep imports and real-mode paths separately tested, and keep the working tree clean. | None | `main` is reproducible; lint, type-check, tests, Prisma validation, and production build pass. |
 | 2 | Pilot environment | Create separate staging database, Supabase project, storage bucket, test users, secrets, deployed migrations, and a protected end-to-end smoke flow. | 1 | A real non-demo company can create a worksite, employee, shift, and verified clock event in staging. |
-| 3 | Import and onboarding completion | Add explicit CSV confirmation, tenant-aware duplicate detection, transaction/recovery policy, clear row outcomes, sample files, and employee bulk invitations through the existing invitation path. | 2 | A pilot admin can safely import worksites, services, and shifts; employee failures are visible and no partial import is silent. |
+| 3 | Import and onboarding completion | Add sample files, employee bulk invitations through the existing invitation path, and a visible recovery procedure for invitation failures. CSV confirmation, tenant-aware duplicates, row outcomes, and atomic worksite/service/shift creation are delivered. | 2 | A pilot admin can safely import worksites, services, and shifts; employee failures are visible and no partial import is silent. |
 | 4 | Evidence storage | Implement private photo/file uploads, malware and size checks, signed downloads, tenant-scoped metadata, retention/deletion jobs, and access audit records. | 2; storage/DPA decision | No evidence is public, cross-tenant, or stored only as an unprotected URL. |
 | 5 | Cleaning delivery templates | Define four versioned templates: opening, common areas, incident note, and completion. Support offline capture, versioned answers, evidence links, and export. | 4; product workflow approval | A field worker can complete a service consistently and the manager can prove the template version and submitted answers. |
 | 6 | Recovery cockpit completion | Add service filter, clear owner, due time, next action, no-candidate escalation, acknowledgement, resolution path, and recovery-age alerts to the at-risk queue. | 2 and 5 | Every at-risk service has a visible accountable coordinator and next human action. |

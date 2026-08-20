@@ -40,6 +40,7 @@ import {
   type IncidentPolicy,
 } from "@/lib/wia-control/domain";
 import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
+import { csvRecords, previewCsvImport, type ImportKind } from "@/lib/wia-control/csv-import";
 
 export type WiaActor = {
   companyId: string;
@@ -2147,6 +2148,59 @@ export async function getPilotOnboardingProgress(actor: WiaActor) {
     prisma.clockEvent.count({ where: { companyId: actor.companyId } }),
   ]);
   return { customers, worksites, employees, services, shifts, clockEvents };
+}
+
+export async function confirmOperationalCsvImport(actor: WiaActor, kind: ImportKind, csv: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") throw new WiaDomainError("FORBIDDEN", "An employee cannot import company data.");
+  if (kind === "EMPLOYEES") throw new WiaDomainError("EMPLOYEE_IMPORT_REQUIRES_INVITATIONS", "Employee CSV import requires the invitation workflow.");
+  const preview = previewCsvImport(kind, csv);
+  if (preview.invalidRows || preview.issues.some((issue) => issue.row === 1)) throw new WiaDomainError("CSV_VALIDATION_FAILED", "Correct every CSV validation issue before confirming the import.");
+  const prisma = getPrisma();
+  const rows = csvRecords(csv);
+  const results: Array<{ row: number; status: "IMPORTED" | "SKIPPED" | "FAILED"; message: string }> = [];
+  const prepared: Array<{ row: number; data: Prisma.WorksiteCreateManyInput | Prisma.ServiceCreateManyInput | Prisma.PlannedShiftCreateManyInput; entity: "Worksite" | "Service" | "PlannedShift" }> = [];
+  for (const [index, row] of rows.entries()) {
+    const rowNumber = index + 2;
+    try {
+      if (kind === "WORKSITES") {
+        const customer = row.customer ? await prisma.customer.findFirst({ where: { companyId: actor.companyId, name: row.customer, status: { not: "ARCHIVED" } }, select: { id: true } }) : undefined;
+        if (row.customer && !customer) throw new WiaDomainError("CUSTOMER_NOT_FOUND", `Customer '${row.customer}' was not found.`);
+        const data = worksiteInputSchema.parse({ name: row.name, address: row.address, city: row.city, ...(customer ? { customerId: customer.id } : {}), ...(row.timezone ? { timezone: row.timezone } : {}) });
+        const duplicate = await prisma.worksite.findFirst({ where: { companyId: actor.companyId, name: data.name, city: data.city }, select: { id: true } });
+        if (duplicate) { results.push({ row: rowNumber, status: "SKIPPED", message: "A matching worksite already exists." }); continue; }
+        prepared.push({ row: rowNumber, entity: "Worksite", data: { ...data, companyId: actor.companyId } });
+      } else if (kind === "SERVICES") {
+        const customer = await prisma.customer.findFirst({ where: { companyId: actor.companyId, name: row.customer, status: { not: "ARCHIVED" } }, select: { id: true } });
+        if (!customer) throw new WiaDomainError("CUSTOMER_NOT_FOUND", `Customer '${row.customer}' was not found.`);
+        const data = operationalServiceInputSchema.parse({ customerId: customer.id, title: row.title, serviceType: row.serviceType, ...(row.recurrence ? { recurrence: row.recurrence } : {}) });
+        const duplicate = await prisma.service.findFirst({ where: { companyId: actor.companyId, customerId: customer.id, title: data.title }, select: { id: true } });
+        if (duplicate) { results.push({ row: rowNumber, status: "SKIPPED", message: "A matching service already exists." }); continue; }
+        prepared.push({ row: rowNumber, entity: "Service", data: { companyId: actor.companyId, customerId: customer.id, title: data.title, serviceType: data.serviceType, recurrence: data.recurrence, status: "PENDING" } });
+      } else {
+        const worksite = await prisma.worksite.findFirst({ where: { companyId: actor.companyId, name: row.worksite, isActive: true }, select: { id: true, customerId: true } });
+        if (!worksite) throw new WiaDomainError("WORKSITE_NOT_FOUND", `Worksite '${row.worksite}' was not found.`);
+        const data = plannedShiftInputSchema.parse({ worksiteId: worksite.id, title: row.title, scheduledStart: row.scheduledStart, scheduledEnd: row.scheduledEnd });
+        const duplicate = await prisma.plannedShift.findFirst({ where: { companyId: actor.companyId, worksiteId: worksite.id, title: data.title, scheduledStart: new Date(data.scheduledStart) }, select: { id: true } });
+        if (duplicate) { results.push({ row: rowNumber, status: "SKIPPED", message: "A matching shift already exists." }); continue; }
+        prepared.push({ row: rowNumber, entity: "PlannedShift", data: { companyId: actor.companyId, worksiteId: worksite.id, title: data.title, scheduledStart: new Date(data.scheduledStart), scheduledEnd: new Date(data.scheduledEnd), requiredSkills: [], gracePeriodMinutes: data.gracePeriodMinutes, status: "UNCOVERED" } });
+      }
+    } catch (error) { results.push({ row: rowNumber, status: "FAILED", message: error instanceof Error ? error.message : "Import validation failed." }); }
+  }
+  if (results.some((result) => result.status === "FAILED")) return results;
+  await prisma.$transaction(async (transaction) => {
+    for (const item of prepared) {
+      if (item.entity === "Worksite") await transaction.worksite.create({ data: item.data as Prisma.WorksiteUncheckedCreateInput });
+      if (item.entity === "Service") await transaction.service.create({ data: item.data as Prisma.ServiceUncheckedCreateInput });
+      if (item.entity === "PlannedShift") {
+        const shift = await transaction.plannedShift.create({ data: item.data as Prisma.PlannedShiftUncheckedCreateInput });
+        await transaction.attendanceIncident.create({ data: { companyId: actor.companyId, shiftId: shift.id, worksiteId: shift.worksiteId, type: "MISSING_CLOCK_IN", status: "OPEN", title: "Uncovered shift", detail: "The shift was imported without an assigned person." } });
+      }
+      results.push({ row: item.row, status: "IMPORTED", message: "Imported." });
+    }
+    await transaction.auditLog.create({ data: { companyId: actor.companyId, userId: actor.userId, action: "csv_import.confirmed", entity: "CsvImport", entityId: `${kind}:${Date.now()}`, metadata: { kind, imported: prepared.length, skipped: results.filter((item) => item.status === "SKIPPED").length, failed: 0 } } });
+  });
+  return results.sort((left, right) => left.row - right.row);
 }
 
 export async function updateCompanySettings(actor: WiaActor, input: unknown) {
