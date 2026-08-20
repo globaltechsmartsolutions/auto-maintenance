@@ -133,6 +133,7 @@ handler and its domain service before changing a payload or response.
 | `/api/control/export/clocks` | Exports time-record evidence. | Administrator / authorised operations role. |
 | `/api/control/services/[serviceId]` | Reads the client-service evidence timeline. | Coordinator / administrator. |
 | `/api/control/export/services/[serviceId]` | Exports the service evidence CSV. | Coordinator / administrator. |
+| `/api/control/ai/operations-brief` | Generates an approval-required, read-only operations brief. | Coordinator / administrator. |
 | `/api/control/settings` | Reads and updates company policy. | Administrator for changes. |
 
 For every new route: call `requireApiRole`, resolve company scope from the
@@ -161,6 +162,10 @@ authoritative.
 8. **Completion records are evidence.** Create one `ShiftCompletion`; never
    update or delete it. Explain partial or failed delivery in the record or
    linked incident trail.
+9. **AI is advisory only.** Send minimised, tenant-scoped facts to the provider;
+   never send coordinates or use its output to assign staff, change evidence, or
+   make employment decisions. The AI brief must remain disabled until the
+   provider key, privacy review, and processing agreement are in place.
 
 ## 7. Required implementation sequence
 

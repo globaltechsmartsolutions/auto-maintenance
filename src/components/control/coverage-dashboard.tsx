@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CommunicationsOutbox } from "@/components/control/communications-outbox";
+import { OperationsAiBrief } from "@/components/control/operations-ai-brief";
 import {
   Dialog,
   DialogContent,
@@ -477,6 +478,8 @@ export function CoverageDashboard() {
           tone={openIncidents.length > 0 ? "warning" : "success"}
         />
       </div>
+
+      <OperationsAiBrief />
 
       {uncovered > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/[0.055] p-4 sm:flex-row sm:items-center">
