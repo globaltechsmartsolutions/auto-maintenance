@@ -275,6 +275,7 @@ model Company {
   communicationOutbox    CommunicationOutbox[]
   shiftCompletions       ShiftCompletion[]
   evidenceAttachments    EvidenceAttachment[]
+  templateSubmissions    TemplateSubmission[]
 
   @@index([subscriptionStatus])
   @@index([plan])
@@ -303,6 +304,7 @@ model User {
   ownedIncidents          AttendanceIncident[]    @relation("IncidentOwner")
   completedShifts        ShiftCompletion[]       @relation("ShiftCompletionActor")
   uploadedEvidence       EvidenceAttachment[]    @relation("EvidenceUploader")
+  templateSubmissions    TemplateSubmission[]    @relation("TemplateSubmissionActor")
 
   @@index([companyId, role])
 }
@@ -344,6 +346,7 @@ model Employee {
   communications               CommunicationOutbox[]
   shiftCompletions             ShiftCompletion[]
   evidenceAttachments          EvidenceAttachment[]
+  templateSubmissions          TemplateSubmission[]
 
   @@index([companyId])
   @@index([companyId, fieldStatus])
@@ -600,6 +603,7 @@ model PlannedShift {
   communications    CommunicationOutbox[]
   completion        ShiftCompletion?
   evidence          EvidenceAttachment[]
+  templateSubmissions TemplateSubmission[]
 
   @@index([companyId, scheduledStart])
   @@index([companyId, status])
@@ -794,6 +798,7 @@ model EvidenceAttachment {
   shiftId          String
   employeeId       String?
   uploadedByUserId String?
+  submissionId     String?
   storageKey       String             @unique
   fileName         String
   contentType      String
@@ -811,11 +816,42 @@ model EvidenceAttachment {
   shift      PlannedShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
   employee   Employee?    @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   uploadedBy User?        @relation("EvidenceUploader", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  submission TemplateSubmission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
 
   @@index([companyId, createdAt])
+  @@index([submissionId])
   @@index([shiftId, createdAt])
   @@index([companyId, status])
   @@index([retentionUntil])
+}
+
+/// One answered delivery template, captured on site. Append-only: a correction
+/// is a new submission, never an edit, so the answers a manager reads are
+/// always the answers the worker actually gave.
+model TemplateSubmission {
+  id                 String   @id @default(uuid())
+  companyId          String
+  shiftId            String
+  employeeId         String?
+  actorUserId        String?
+  templateKey        String
+  templateVersion    Int
+  answers            Json
+  clientSubmissionId String
+  capturedOffline    Boolean  @default(false)
+  submittedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  company  Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift    PlannedShift         @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  employee Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  actor    User?                @relation("TemplateSubmissionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  evidence EvidenceAttachment[]
+
+  @@unique([companyId, clientSubmissionId])
+  @@index([companyId, submittedAt])
+  @@index([shiftId, submittedAt])
+  @@index([companyId, templateKey, templateVersion])
 }
 
 model InspectionAccessGrant {

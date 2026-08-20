@@ -90,8 +90,12 @@ whether a person clocked in.
    or deletion.
 2. Read-only service timeline and CSV evidence pack covering shifts, clocks,
    incidents, coverage, and completion.
-
-3. Private evidence attachments: a short-lived signed upload link, server-side
+3. Four versioned cleaning templates — opening check, common areas, incident
+   note, completion confirmation — captured on site, validated against the exact
+   version answered, stored append-only, idempotent by the identifier the device
+   generated so an offline resend cannot duplicate a visit, linkable to private
+   evidence files, and included in the service evidence export.
+4. Private evidence attachments: a short-lived signed upload link, server-side
    screening of the stored bytes before a file counts as evidence, a recorded
    SHA-256 checksum, tenant-prefixed keys, signed reads that are audited one by
    one, and a daily retention job that deletes the object as well as the row.
@@ -102,9 +106,7 @@ whether a person clocked in.
 1. Put a real malware scanner in front of the evidence bucket. The shipped
    screening proves a file is the media type it claims to be and rejects
    executable, script, and archive headers; it is not antivirus.
-2. Create cleaning templates first: opening check, common-area check, incident
-   note, and completion confirmation.
-3. Confirm the storage provider, retention schedule, access policy, and
+2. Confirm the storage provider, retention schedule, access policy, and
    data-processing terms with the privacy owner before enabling attachments for
    a customer. The code is provider-agnostic behind one storage interface.
 4. Add branded PDF only after pilots validate the evidence pack fields.

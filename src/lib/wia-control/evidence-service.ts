@@ -93,6 +93,21 @@ export async function requestEvidenceUpload(
     );
   }
 
+  // A file may only be attached to a delivery answer from the same shift, so a
+  // photo can never be filed against another visit's evidence.
+  if (payload.submissionId) {
+    const submission = await prisma.templateSubmission.findFirst({
+      where: { id: payload.submissionId, companyId: actor.companyId, shiftId: shift.id },
+      select: { id: true },
+    });
+    if (!submission) {
+      throw new WiaDomainError(
+        "SUBMISSION_NOT_FOUND",
+        "The delivery answer does not belong to this shift."
+      );
+    }
+  }
+
   const company = await prisma.company.findUnique({
     where: { id: actor.companyId },
     select: { clockRetentionYears: true },
@@ -104,6 +119,7 @@ export async function requestEvidenceUpload(
       shiftId: shift.id,
       employeeId: shift.employeeId,
       uploadedByUserId: actor.userId,
+      submissionId: payload.submissionId,
       storageKey: "",
       fileName: safeFileName,
       contentType,

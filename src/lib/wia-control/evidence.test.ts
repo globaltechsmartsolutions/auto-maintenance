@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     company: { findUnique: vi.fn() },
+    templateSubmission: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
   };
   return { prisma };
@@ -176,6 +177,30 @@ describe("evidence upload", () => {
       expect.objectContaining({ where: expect.objectContaining({ employeeId: "employee-1" }) })
     );
     expect(storage.createUploadUrl).not.toHaveBeenCalled();
+  });
+
+  it("only attaches a file to a delivery answer from the same shift", async () => {
+    mocks.prisma.plannedShift.findFirst.mockResolvedValue({
+      id: "shift-1",
+      employeeId: "employee-1",
+      status: "ACTIVE",
+    });
+    mocks.prisma.templateSubmission.findFirst.mockResolvedValue(null);
+
+    await expect(
+      requestEvidenceUpload(
+        worker,
+        {
+          shiftId: "shift-1",
+          submissionId: "submission-from-another-visit",
+          fileName: "opening.jpg",
+          contentType: "image/jpeg",
+          sizeBytes: 2048,
+        },
+        fakeStorage()
+      )
+    ).rejects.toThrow(/does not belong to this shift/);
+    expect(mocks.prisma.evidenceAttachment.create).not.toHaveBeenCalled();
   });
 
   it("stops a shift being used as general file storage", async () => {

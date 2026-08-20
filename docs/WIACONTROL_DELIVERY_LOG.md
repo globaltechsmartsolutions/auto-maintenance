@@ -129,3 +129,65 @@ Suite: `npm run lint`, `npm run typecheck`, `npm test`, `prisma validate` — gr
 - Before enabling this for a customer: a real malware scanner in front of the
   bucket, plus the storage DPA, retention schedule, and access policy signed off
   by the privacy owner. These are owner tasks, not code.
+
+---
+
+## Package 5 — Cleaning delivery templates
+
+**Status:** delivered · **Roadmap:** execution order 5, Stage B
+
+### User-visible change
+
+- Four versioned templates are published: opening check, common areas, incident
+  note, and completion confirmation.
+- The employee screen shows them for the active shift. Answers are written to
+  the device first, so a worker with no signal can still complete the visit and
+  send it later.
+- The submission identifier is generated once, when the worker starts
+  answering, and reused for every retry: resending a queued visit returns the
+  submission that already exists instead of creating a second one.
+- A photo or PDF can be attached to a specific answer, not just to the shift.
+- The service evidence export now carries a second block listing every
+  submission, its template version, whether it was captured offline, who sent
+  it, the answers in readable form, and the evidence attached to it.
+
+### Data impact
+
+- New table `TemplateSubmission`, append-only through the same trigger pattern
+  as `ShiftCompletion`, unique on `(companyId, clientSubmissionId)`.
+- `EvidenceAttachment.submissionId` links a file to the answer it supports.
+- New audit action `delivery_template.submitted`, recording the template key and
+  version behind every submission.
+- Answers are stored normalised into template field order and anything the
+  template did not ask for is dropped, so a submission cannot carry unrequested
+  personal data.
+
+### Migration
+
+`prisma/migrations/20260821100000_delivery_templates`. Additive; the one change
+to an existing table is a nullable `submissionId` column.
+
+### Rollback path
+
+Revert the commit, drop `TemplateSubmission` and its trigger function, and drop
+the `submissionId` column. Evidence rows survive with their shift link intact.
+
+### Tests
+
+`src/lib/wia-control/delivery-templates.test.ts` (14 cases): the published
+catalogue and its versions, refusal of a superseded version, answer
+normalisation with unrequested keys dropped, all field-level issues reported at
+once, numeric range enforcement, refusal of an unpublished version, readable
+rendering against the version answered, capture with audit, idempotent resend,
+offline-captured timestamps, refusal for another person's shift and for a
+cancelled shift, coordinator readback, and refusal of the company-wide view to a
+field worker. `evidence.test.ts` gained a case proving a photo cannot be filed
+against another visit's answer.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test`, `prisma validate` — green.
+
+### Manual configuration
+
+None. Templates are code: publishing a new version means adding an entry to the
+registry in `src/lib/wia-control/delivery-templates.ts`; published entries are
+never edited, so old submissions stay readable exactly as captured.

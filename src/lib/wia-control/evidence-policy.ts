@@ -32,6 +32,8 @@ const allowedTypes: Record<string, string[]> = {
 
 export const evidenceUploadSchema = z.object({
   shiftId: z.string().trim().min(1).max(160),
+  /** Optional: attaches the file to the delivery answer it supports. */
+  submissionId: z.string().trim().min(1).max(160).optional(),
   fileName: z.string().trim().min(1).max(200),
   contentType: z.string().trim().min(3).max(120),
   sizeBytes: z.number().int().min(EVIDENCE_MIN_BYTES).max(EVIDENCE_MAX_BYTES),

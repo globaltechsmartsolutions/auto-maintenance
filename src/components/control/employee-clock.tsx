@@ -26,6 +26,7 @@ import {
   type PlannedShift,
 } from "@/components/control/wia-control-provider";
 import { CommunicationsOutbox } from "@/components/control/communications-outbox";
+import { DeliveryCapture } from "@/components/control/delivery-capture";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -430,6 +431,8 @@ export function EmployeeClock() {
               )}
             </CardContent>
           </Card>
+
+          {activeShift ? <DeliveryCapture shiftId={activeShift.id} /> : null}
 
           <Card className="border-border/70 bg-card/90 shadow-sm">
             <CardHeader>
