@@ -447,3 +447,75 @@ DPA, subprocessor terms, privacy sign-off, an evaluation run against the shipped
 scenario set, a named cost owner, and a named person who may pull the kill
 switch. Those are listed in `docs/WIACONTROL_AI_GOVERNANCE.md` and are not done
 by shipping code.
+
+---
+
+## Package 13 — Production reliability and security
+
+**Status:** delivered in code; the restore rehearsal and alert ownership remain
+owner tasks · **Roadmap:** execution order 13, Stage E
+
+### User-visible change
+
+- `GET /api/health` now answers in three states rather than two. **200** is
+  healthy, **207** means it is serving normally but something needs a person
+  today (messages that gave up, evidence past retention the job could not
+  delete), and **503** means the database or authentication is unreachable. Page
+  on 503; review 207 in the working day. The distinction exists so an outbox
+  backlog does not wake anyone while a real outage does.
+- Every log line is JSON with a dotted event name, and every field passes
+  redaction on the way out.
+
+### Data impact
+
+None.
+
+### Migration
+
+None.
+
+### Rollback path
+
+Revert the commit. The health endpoint returns to its two-state answer.
+
+### Privacy note
+
+Redaction is driven by field name, not by the caller remembering: names,
+addresses, coordinates, message bodies, CSV contents, prompts, answers, and file
+names are replaced with `[redacted]` at any nesting depth, long values are
+truncated, and deep structures are cut off. The unhandled-error path in
+`apiRoute` now goes through the same logger, because an error message routinely
+quotes the input that caused it. A log platform can no longer become a second,
+unmanaged copy of worker data.
+
+### Runbooks
+
+`docs/WIACONTROL_RUNBOOKS.md` covers failed clocking, incorrect assignment, an
+undelivered message, a customer data request, lost access, incident triage on a
+heavy day, restore rehearsal, migration rollback, and what each health state
+means. Two rules run through all of them: never edit an append-only record, and
+every out-of-product fix is written down the same day.
+
+The restore runbook states the thing most likely to be missed: the database
+backup does not contain evidence files. They live in object storage and are
+backed up separately, so a restore that reinstates metadata whose files are gone
+leaves rows pointing at nothing.
+
+### Tests
+
+`src/lib/observability.test.ts` (6 cases): redaction by field name at depth,
+redaction of the payloads most likely to carry a person's own words, operational
+identifiers and counts surviving untouched, truncation of long values, deep
+structures, and long arrays, one JSON line written at the right console level
+already redacted, and the health summary paging only for a failure while asking
+for attention on a degradation.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test` — 205 passing.
+
+### Manual configuration
+
+Point an uptime monitor at `/api/health` and alert on 503. Connect an
+error-monitoring platform to the JSON log stream and alert on
+`event: "api.unhandled_error"`. Name an owner for each alert, and run the
+restore rehearsal against real staging — none of those three are done by
+shipping code.

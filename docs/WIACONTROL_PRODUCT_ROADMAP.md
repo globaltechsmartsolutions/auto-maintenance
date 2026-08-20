@@ -202,10 +202,14 @@ and adjust the two tables in `src/lib/wia-control/recovery-queue.ts`.
    and environment variables.
 2. CI runs install, lint, type-check, unit tests, Prisma validation, production
    build, dependency audit, and protected staging end-to-end tests.
-3. Add privacy-safe logs, error monitoring, and alerts for failed clocks, crons,
-   outbox processing, and migrations.
-4. Rehearse database restore and rollback. Write support runbooks for failed
-   clocking, incorrect assignment, data export, access loss, and incident triage.
+3. **Delivered:** privacy-safe structured logs that redact by field name, and a
+   health endpoint that separates a page-now failure from a review-today
+   degradation, covering the outbox and the evidence retention backlog. Connect
+   an error-monitoring platform and name an owner per alert.
+4. **Delivered:** support runbooks for failed clocking, incorrect assignment,
+   undelivered messages, data export, access loss, incident triage, restore
+   rehearsal, and migration rollback, in `docs/WIACONTROL_RUNBOOKS.md`. The
+   restore rehearsal itself must still be performed against real staging.
 5. Obtain qualified legal/privacy review of worker information, geolocation,
    retention, terms, and data-processing agreement.
 
@@ -237,7 +241,7 @@ authorisation, audit, error handling, tests, and English product copy.
 | 10 | AI operations brief pilot | **Delivered in code:** the brief runs behind the gate, refuses output that cites a shift it was not given, and records tokens and outcome per call; `GET /api/control/ai/usage` reports spend against budget and the count of each outcome. **Owner task:** run it in one internal workspace and record the review. | 6 and 9 | The team has a reviewed evaluation record and no unsafe or invented output is accepted as an operational action. |
 | 11 | AI communication workflow | **Delivered:** a draft is stored, not sent; a coordinator edits it freely; approval requires restating the accepted text, copies it into the outbox under the `coordinator_message` template, and records the approver and the final text. A database CHECK constraint enforces that an approved draft names its approver. Cancellation is explicit. | 7, 9, and 10 | No AI-written message reaches a recipient without named human approval and a traceable final version. |
 | 12 | AI insight backlog | **Delivered:** risk explanation, deliberately without a model - every at-risk row states in plain sentences why it is at risk, derived only from recorded facts a coordinator can check. **Deferred by design:** coverage-risk prediction and anomaly detection wait for reviewed pilot data. Ranking, discipline, payroll, and autonomous assignment stay refused. | 10; sufficient, reviewed pilot data | Each use case has a measurable benefit, evaluation set, privacy review, and human-response path. |
-| 13 | Production reliability and security | CI/CD gates, dependency/security review, privacy-safe logs, error monitoring, alerting, backup/restore rehearsal, migration rollback/forward-fix plan, performance and mobile accessibility checks, and support runbooks. | 2–12 as applicable | A restore is rehearsed successfully; alerts have owners; no critical authorisation, integrity, or tenant-isolation issue is open. |
+| 13 | Production reliability and security | **Delivered in code:** CI gates already run lint, type-check, tests, Prisma validation, coverage, production build, and dependency audit; privacy-safe structured logging that redacts by field name; a three-state health endpoint that separates a page-now failure from a review-today degradation; and support, restore, and migration-rollback runbooks in `docs/WIACONTROL_RUNBOOKS.md`. **Owner tasks:** run the restore rehearsal against real staging, connect an error-monitoring platform, and name an owner per alert. | 2–12 as applicable | A restore is rehearsed successfully; alerts have owners; no critical authorisation, integrity, or tenant-isolation issue is open. |
 | 14 | Spanish legal and commercial readiness | Complete worker notices, geolocation policy, retention schedule, processor agreement, subprocessor list, terms, support policy, pricing/contract decision, and qualified Spanish legal/privacy sign-off. | 4, 7, 9, and 13 | The product is not marketed as automatically compliant; approved legal materials and accountable owners exist. |
 | 15 | Controlled commercial pilot | Run one to three worksites for 45–60 days alongside the customer’s current system. Review weekly: clock success, incident age, recovery time, evidence completeness, support volume, AI quality, and customer value. | 3–14 | At least 95% of valid clocks succeed without manual support, no critical defect is open, and the pilot demonstrates measurable recovery or coordinator-time improvement. |
 | 16 | Launch decision and scale | Decide go/no-go from pilot metrics; fix exit blockers; publish onboarding/support ownership; then onboard the next cohort gradually. | 15 | A documented launch decision, support capacity, commercial offer, and post-launch monitoring are in place. |

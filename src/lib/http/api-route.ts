@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { WiaDomainError } from "@/lib/wia-control/domain";
+import { logEvent } from "@/lib/observability";
 
 type RouteHandler<TArguments extends unknown[]> = (
   ...arguments_: TArguments
@@ -103,7 +104,9 @@ export function apiRoute<TArguments extends unknown[]>(
         ));
       }
 
-      console.error(JSON.stringify({
+      // Routed through the shared logger so the error message, which can
+      // quote user input, passes redaction like everything else.
+      logEvent({
         level: "error",
         event: "api.unhandled_error",
         requestId,
@@ -111,8 +114,8 @@ export function apiRoute<TArguments extends unknown[]>(
         path: request ? new URL(request.url).pathname : undefined,
         durationMs: Date.now() - startedAt,
         errorName: error instanceof Error ? error.name : "UnknownError",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-      }));
+        errorDetail: error instanceof Error ? error.message : "Unknown error",
+      });
       return respond(Response.json(
         { error: "An internal error occurred.", code: "INTERNAL_ERROR" },
         { status: 500 }
