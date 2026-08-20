@@ -123,6 +123,7 @@ handler and its domain service before changing a payload or response.
 | `/api/control/worksites/[worksiteId]` | Updates or archives a worksite. | Administrator / manager. |
 | `/api/control/shifts` | Lists and creates planned shifts. | Administrator / manager for changes. |
 | `/api/control/shifts/[shiftId]` | Updates or cancels a shift. | Administrator / manager. |
+| `/api/control/shifts/[shiftId]/completion` | Creates one immutable service-delivery outcome after a shift. | Assigned employee or operations role. |
 | `/api/control/clock-events` | Records append-only attendance events. | Employee only for their own shift; authorised staff otherwise. |
 | `/api/control/corrections` | Creates and lists correction requests. | Employee only for their own records; reviewer roles for review. |
 | `/api/control/incidents` | Lists and resolves attendance incidents. | Coordinator / administrator. |
@@ -130,6 +131,8 @@ handler and its domain service before changing a payload or response.
 | `/api/control/coverage/recommend` | Explains eligible replacement candidates. | Coordinator / administrator. |
 | `/api/control/communications` | Reads queued operational communications. | Company-scoped recipient or operations role. |
 | `/api/control/export/clocks` | Exports time-record evidence. | Administrator / authorised operations role. |
+| `/api/control/services/[serviceId]` | Reads the client-service evidence timeline. | Coordinator / administrator. |
+| `/api/control/export/services/[serviceId]` | Exports the service evidence CSV. | Coordinator / administrator. |
 | `/api/control/settings` | Reads and updates company policy. | Administrator for changes. |
 
 For every new route: call `requireApiRole`, resolve company scope from the
@@ -155,6 +158,9 @@ authoritative.
    biometric collection, or hidden monitoring.
 7. **English is the product language.** New user-facing strings, code names,
    API errors, tests, documentation, exports, and routes must be English.
+8. **Completion records are evidence.** Create one `ShiftCompletion`; never
+   update or delete it. Explain partial or failed delivery in the record or
+   linked incident trail.
 
 ## 7. Required implementation sequence
 

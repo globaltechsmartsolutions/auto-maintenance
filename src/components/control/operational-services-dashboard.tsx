@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Building2, ClipboardCheck, Plus, RefreshCw, ShieldAlert } from "lucide-react";
+import { Building2, ClipboardCheck, Download, Eye, Plus, RefreshCw, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -17,10 +17,23 @@ type Service = {
   status: "PENDING" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
   scheduledStart?: string | null;
   customer: { id: string; name: string };
-  plannedShifts: Array<{ id: string; status: string; worksite: { name: string } }>;
+  plannedShifts: Array<{ id: string; status: string; worksite: { name: string }; incidents?: Array<{ status: string; severity: string }> }>;
 };
 
 type Customer = { id: string; name: string; city?: string | null };
+type ServiceDetail = Omit<Service, "plannedShifts"> & {
+  atRisk: boolean;
+  plannedShifts: Array<Service["plannedShifts"][number] & {
+    title: string;
+    scheduledStart: string;
+    scheduledEnd: string;
+    employee: { user: { firstName: string; lastName: string } } | null;
+    clockEvents: Array<unknown>;
+    incidents: Array<{ status: string; severity: string }>;
+    coverageDecisions: Array<unknown>;
+    completion: { outcome: string; completedAt: string; note?: string | null } | null;
+  }>;
+};
 
 const statusTone: Record<Service["status"], string> = {
   PENDING: "border-warning/30 bg-warning/10 text-warning",
@@ -43,6 +56,8 @@ export function OperationalServicesDashboard() {
   const [error, setError] = React.useState<string>();
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [detail, setDetail] = React.useState<ServiceDetail>();
+  const [detailLoading, setDetailLoading] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -95,9 +110,27 @@ export function OperationalServicesDashboard() {
     }
   }
 
-  const servicesAtRisk = services.filter((service) =>
-    service.plannedShifts.some((shift) => shift.status === "UNCOVERED")
-  ).length;
+  async function viewDetail(serviceId: string) {
+    setDetailLoading(true);
+    setError(undefined);
+    try {
+      const response = await fetch(`/api/control/services/${serviceId}`, { cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Service evidence could not be loaded.");
+      setDetail(body.service);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Service evidence could not be loaded.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  const isAtRisk = (service: Service) => service.plannedShifts.some((shift) =>
+    shift.status === "UNCOVERED" || shift.incidents?.some((incident) =>
+      ["OPEN", "ACKNOWLEDGED"].includes(incident.status) && ["HIGH", "CRITICAL"].includes(incident.severity)
+    )
+  );
+  const servicesAtRisk = services.filter(isAtRisk).length;
 
   return (
     <div className="space-y-6">
@@ -139,10 +172,11 @@ export function OperationalServicesDashboard() {
             <div className="rounded-lg border border-dashed border-border py-12 text-center"><ClipboardCheck className="mx-auto size-8 text-muted-foreground" /><p className="mt-3 font-medium">No services yet</p><p className="mt-1 text-sm text-muted-foreground">Create a client service, then link its shifts in the planner.</p></div>
           ) : <div className="space-y-3">{services.map((service) => {
             const uncovered = service.plannedShifts.filter((shift) => shift.status === "UNCOVERED").length;
+            const atRisk = isAtRisk(service);
             return <div key={service.id} className="grid gap-3 rounded-lg border border-border/70 bg-background/55 p-4 md:grid-cols-[1.4fr_1fr_auto] md:items-center">
               <div><p className="font-medium">{service.title}</p><p className="mt-1 text-sm text-muted-foreground">{service.customer.name} · {service.serviceType} · {service.recurrence.toLowerCase()}</p><p className="mt-1 text-xs text-muted-foreground">{dateLabel(service.scheduledStart)}</p></div>
-              <div className="flex flex-wrap gap-2"><Badge variant="outline" className={statusTone[service.status]}>{service.status.replaceAll("_", " ")}</Badge><Badge variant="secondary">{service.plannedShifts.length} linked shifts</Badge>{uncovered ? <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">{uncovered} uncovered</Badge> : null}</div>
-              <p className="text-sm text-muted-foreground md:text-right">{service.plannedShifts.map((shift) => shift.worksite.name).filter((value, index, all) => all.indexOf(value) === index).join(", ") || "No worksite linked"}</p>
+              <div className="flex flex-wrap gap-2"><Badge variant="outline" className={statusTone[service.status]}>{service.status.replaceAll("_", " ")}</Badge><Badge variant="secondary">{service.plannedShifts.length} linked shifts</Badge>{atRisk ? <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">{uncovered ? `${uncovered} uncovered` : "High-severity incident"}</Badge> : null}</div>
+              <div className="flex items-center gap-2 md:justify-end"><p className="text-sm text-muted-foreground">{service.plannedShifts.map((shift) => shift.worksite.name).filter((value, index, all) => all.indexOf(value) === index).join(", ") || "No worksite linked"}</p><Button type="button" size="icon" variant="ghost" aria-label={`View ${service.title} evidence`} onClick={() => void viewDetail(service.id)}><Eye className="size-4" /></Button></div>
             </div>;
           })}</div>}
         </CardContent>
@@ -158,6 +192,10 @@ export function OperationalServicesDashboard() {
           <div className="space-y-2"><Label htmlFor="service-end">First service end</Label><Input id="service-end" name="scheduledEnd" type="datetime-local" /></div>
         </form>
         <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" form="service-form" disabled={saving}>{saving ? "Creating…" : "Create service"}</Button></DialogFooter>
+      </DialogContent></Dialog>
+
+      <Dialog open={Boolean(detail) || detailLoading} onOpenChange={(next) => { if (!next) setDetail(undefined); }}><DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{detail?.title ?? "Loading service evidence…"}</DialogTitle><DialogDescription>{detail ? `${detail.customer.name} · ${detail.atRisk ? "Operational risk requires attention" : "No active high-severity coverage risk"}` : ""}</DialogDescription></DialogHeader>
+        {detail ? <div className="space-y-3"><div className="flex justify-end"><a href={`/api/control/export/services/${detail.id}`}><Button type="button" variant="outline" size="sm"><Download className="size-4" /> Export evidence CSV</Button></a></div>{detail.plannedShifts.length ? detail.plannedShifts.map((shift) => <div key={shift.id} className="rounded-lg border border-border/70 p-3 text-sm"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">{shift.title}</p><Badge variant="secondary">{shift.status}</Badge></div><p className="mt-1 text-muted-foreground">{shift.worksite.name} · {dateLabel(shift.scheduledStart)} · {shift.employee ? `${shift.employee.user.firstName} ${shift.employee.user.lastName}` : "Unassigned"}</p><p className="mt-2 text-xs text-muted-foreground">{shift.clockEvents.length} clock events · {shift.incidents.filter((incident) => ["OPEN", "ACKNOWLEDGED"].includes(incident.status)).length} open incidents · {shift.coverageDecisions.length} coverage decisions</p>{shift.completion ? <p className="mt-2 rounded bg-muted px-2 py-1 text-xs">Completion: {shift.completion.outcome.replaceAll("_", " ")} · {dateLabel(shift.completion.completedAt)}{shift.completion.note ? ` · ${shift.completion.note}` : ""}</p> : <p className="mt-2 text-xs text-warning">No completion record yet.</p>}</div>) : <p className="py-8 text-center text-sm text-muted-foreground">No shifts are linked to this service.</p>}</div> : null}
       </DialogContent></Dialog>
     </div>
   );

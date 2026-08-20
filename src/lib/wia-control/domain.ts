@@ -22,6 +22,7 @@ export const clockEventTypeSchema = z.enum([
 export const clockMethodSchema = z.enum(["MOBILE", "QR", "PIN", "NFC", "KIOSK", "MANUAL"]);
 export const incidentStatusSchema = z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"]);
 export const correctionStatusSchema = z.enum(["PENDING", "APPROVED", "DISPUTED", "REJECTED"]);
+export const shiftCompletionOutcomeSchema = z.enum(["COMPLETED", "PARTIALLY_COMPLETED", "NOT_COMPLETED"]);
 
 const identifier = z.string().trim().min(1).max(160);
 const isoDateTime = z.string().datetime({ offset: true });
@@ -129,6 +130,18 @@ export const plannedShiftUpdateSchema = z
     status: z.literal("CANCELLED").optional(),
   })
   .refine((value) => Object.keys(value).length > 0, "You must specify at least one change.");
+
+export const shiftCompletionSchema = z
+  .object({
+    outcome: shiftCompletionOutcomeSchema,
+    checklist: z.array(z.object({ label: z.string().trim().min(1).max(160), completed: z.boolean() })).max(40).optional(),
+    note: z.string().trim().max(2_000).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.outcome !== "COMPLETED" && !value.note) {
+      context.addIssue({ code: "custom", path: ["note"], message: "Explain why the service was not fully completed." });
+    }
+  });
 
 export const clockCommandSchema = z.object({
   shiftId: identifier,
@@ -285,6 +298,7 @@ export type WorksiteInput = z.infer<typeof worksiteInputSchema>;
 export type WorksiteUpdateInput = z.infer<typeof worksiteUpdateSchema>;
 export type PlannedShiftInput = z.infer<typeof plannedShiftInputSchema>;
 export type PlannedShiftUpdateInput = z.infer<typeof plannedShiftUpdateSchema>;
+export type ShiftCompletionInput = z.infer<typeof shiftCompletionSchema>;
 export type ClockCommand = z.infer<typeof clockCommandSchema>;
 export type CorrectionRequestInput = z.infer<typeof correctionRequestSchema>;
 export type CorrectionReviewInput = z.infer<typeof correctionReviewSchema>;

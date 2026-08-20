@@ -62,15 +62,13 @@ shifts that fulfil it.
 - Shift planner service selector filtered to the selected worksite customer.
 - Server-side company ownership and customer/worksite validation.
 
-**Remaining**
-
-1. Show linked service and customer consistently in shift, coverage, incident,
-   employee, and export views.
-2. Add a service detail view grouping shifts, clocks, incidents, decisions, and
-   communications.
-3. Mark a service at risk when a current shift is uncovered or carries an open
-   high/critical incident; never overwrite the service status silently.
-4. Allow an assigned coordinator to acknowledge risk and add a resolution note.
+- Service evidence detail: linked shifts, clock events, incidents, coverage
+  decisions, communications, and completion outcomes.
+- Derived risk flag for uncovered shifts or open high/critical incidents; the
+  commercial service status is never silently changed.
+- Coordinators retain ownership, acknowledgement, escalation, and resolution
+  notes through the linked incident inbox.
+- Company-scoped CSV evidence export per service.
 
 **Acceptance criteria**
 
@@ -85,16 +83,23 @@ shifts that fulfil it.
 **Outcome:** WIAControl explains what happened to a customer service, not only
 whether a person clocked in.
 
-1. Add one completion record per shift: outcome, optional checklist, note, and
-   timestamp.
-2. Add controlled evidence attachments through private storage. Never use public
+**Delivered**
+
+1. One immutable completion record per shift: outcome, optional checklist,
+   note, timestamp, actor, audit event, and a database trigger preventing edits
+   or deletion.
+2. Read-only service timeline and CSV evidence pack covering shifts, clocks,
+   incidents, coverage, and completion.
+
+**Remaining external/product decisions**
+
+1. Add controlled evidence attachments through private storage. Never use public
    URLs or put sensitive files directly in the database.
-3. Create cleaning templates first: opening check, common-area check, incident
+2. Create cleaning templates first: opening check, common-area check, incident
    note, and completion confirmation.
-4. Present an immutable timeline of shift, clocks, corrections, incident,
-   coverage decision, communication, and completion.
-5. Export a customer-period evidence pack in CSV first. Add branded PDF only
-   after pilots validate the data.
+3. Add private-storage evidence attachments only after selecting the storage
+   provider, retention schedule, access policy, and data-processing terms.
+4. Add branded PDF only after pilots validate the evidence pack fields.
 
 **Acceptance criteria**
 
@@ -181,6 +186,16 @@ Do not sell GPS clocking or AI scheduling. Sell the measurable outcome:
 
 > Prove attendance, detect an uncovered service early, and record how your team
 > recovered it.
+
+### Spain legal launch gate
+
+WIAControl supports a traceable daily record but does not itself make an
+employer legally compliant. Before a live Spanish pilot, complete these
+non-code gates: worker and representative information notices; a data
+processing agreement and subprocessor list; configured retention of at least
+four years; a privacy/security review; and a documented incident/breach
+process. Use point-in-time worksite verification only where proportionate; do
+not introduce continuous tracking or biometric collection.
 
 ### Pricing hypothesis to validate after pilots
 

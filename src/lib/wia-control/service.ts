@@ -29,6 +29,7 @@ import {
   operationalServiceUpdateSchema,
   parseEmployeeAvailability,
   plannedShiftInputSchema,
+  shiftCompletionSchema,
   plannedShiftUpdateSchema,
   rangesOverlap,
   scoreCoverageCandidate,
@@ -198,6 +199,7 @@ export async function listOperationalServices(actor: WiaActor) {
           scheduledStart: true,
           scheduledEnd: true,
           worksite: { select: { id: true, name: true } },
+          incidents: { select: { status: true, severity: true } },
         },
         orderBy: { scheduledStart: "asc" },
       },
@@ -311,6 +313,94 @@ export async function updateOperationalService(actor: WiaActor, serviceId: strin
       },
     });
     return updated;
+  });
+}
+
+/**
+ * Returns a tenant-scoped, read-only evidence timeline for one client service.
+ * It deliberately derives risk from its shifts and incidents instead of changing
+ * the commercial service status behind a coordinator's back.
+ */
+export async function getOperationalServiceDetail(actor: WiaActor, serviceId: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view the company service register.");
+  }
+
+  const service = await getPrisma().service.findFirst({
+    where: { id: serviceId, companyId: actor.companyId },
+    include: {
+      customer: { select: { id: true, name: true } },
+      plannedShifts: {
+        orderBy: { scheduledStart: "asc" },
+        include: {
+          worksite: { select: { id: true, name: true, city: true } },
+          employee: { include: { user: { select: { firstName: true, lastName: true } } } },
+          clockEvents: { orderBy: { occurredAt: "asc" } },
+          incidents: { orderBy: { detectedAt: "asc" } },
+          coverageDecisions: { orderBy: { createdAt: "asc" } },
+          communications: { orderBy: { createdAt: "asc" } },
+          completion: true,
+        },
+      },
+    },
+  });
+  if (!service) throw new WiaDomainError("SERVICE_NOT_FOUND", "The service does not belong to the company.");
+
+  const atRisk = service.plannedShifts.some((shift) =>
+    shift.status === "UNCOVERED" || shift.incidents.some((incident) =>
+      ["OPEN", "ACKNOWLEDGED"].includes(incident.status) && ["HIGH", "CRITICAL"].includes(incident.severity)
+    )
+  );
+
+  return { ...service, atRisk };
+}
+
+/** Creates exactly one immutable service-delivery outcome for a shift. */
+export async function completePlannedShift(actor: WiaActor, shiftId: string, input: unknown) {
+  assertCompany(actor);
+  const payload = shiftCompletionSchema.parse(input);
+  return getPrisma().$transaction(async (transaction) => {
+    const shift = await transaction.plannedShift.findFirst({
+      where: {
+        id: shiftId,
+        companyId: actor.companyId,
+        ...(actor.role === "EMPLOYEE" ? { employeeId: actor.employeeId ?? "__missing_employee__" } : {}),
+      },
+      select: { id: true, employeeId: true, status: true, serviceId: true },
+    });
+    if (!shift) throw new WiaDomainError("SHIFT_NOT_FOUND", "The shift does not belong to the company.");
+    if (shift.status === "CANCELLED") throw new WiaDomainError("SHIFT_CANCELLED", "A cancelled shift cannot be completed.");
+
+    const existing = await transaction.shiftCompletion.findFirst({ where: { shiftId: shift.id }, select: { id: true } });
+    if (existing) throw new WiaDomainError("SHIFT_ALREADY_COMPLETED", "This shift already has an immutable completion record.");
+
+    const completion = await transaction.shiftCompletion.create({
+      data: {
+        companyId: actor.companyId,
+        shiftId: shift.id,
+        employeeId: shift.employeeId,
+        actorUserId: actor.userId,
+        outcome: payload.outcome,
+        checklist: payload.checklist,
+        note: payload.note,
+      },
+    });
+    await transaction.plannedShift.update({
+      where: { id: shift.id },
+      data: { status: payload.outcome === "COMPLETED" ? "COMPLETED" : "COVERED" },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "shift.completion_recorded",
+        entity: "ShiftCompletion",
+        entityId: completion.id,
+        metadata: { shiftId: shift.id, serviceId: shift.serviceId, outcome: payload.outcome },
+      },
+    });
+    return completion;
   });
 }
 

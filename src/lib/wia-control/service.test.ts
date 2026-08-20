@@ -13,10 +13,12 @@ const mocks = vi.hoisted(() => {
     worksite: { findFirst: vi.fn() },
     service: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     plannedShift: {
+      findFirst: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
       create: vi.fn(),
     },
+    shiftCompletion: { findFirst: vi.fn(), create: vi.fn() },
     coverageDecision: { create: vi.fn() },
     communicationOutbox: {
       create: vi.fn(),
@@ -51,6 +53,7 @@ import {
   confirmCoverage,
   createOperationalService,
   createPlannedShift,
+  completePlannedShift,
   detectIncompleteAttendance,
   processCommunicationOutbox,
   resendCommunication,
@@ -77,6 +80,41 @@ const baseInput = {
   incidentId: "incident-1",
   selectedEmployeeId: "employee-recommended",
 };
+
+describe("immutable shift completion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.plannedShift.findFirst.mockResolvedValue({
+      id: "shift-1", employeeId: "employee-recommended", status: "ACTIVE", serviceId: "service-1",
+    });
+    mocks.transaction.shiftCompletion.findFirst.mockResolvedValue(null);
+    mocks.transaction.shiftCompletion.create.mockResolvedValue({ id: "completion-1" });
+    mocks.transaction.plannedShift.update.mockResolvedValue({ id: "shift-1" });
+    mocks.transaction.auditLog.create.mockResolvedValue({ id: "audit-1" });
+  });
+
+  it("records one attributable completion and preserves an audit trail", async () => {
+    await expect(completePlannedShift(employeeActor, "shift-1", { outcome: "COMPLETED" })).resolves.toEqual({ id: "completion-1" });
+    expect(mocks.transaction.plannedShift.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ companyId: "company-1", employeeId: "employee-recommended" }),
+    }));
+    expect(mocks.transaction.shiftCompletion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ companyId: "company-1", shiftId: "shift-1", employeeId: "employee-recommended", outcome: "COMPLETED" }),
+    });
+    expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "shift.completion_recorded" }) });
+  });
+
+  it("refuses a second completion record instead of overwriting evidence", async () => {
+    mocks.transaction.shiftCompletion.findFirst.mockResolvedValue({ id: "completion-existing" });
+    await expect(completePlannedShift(employeeActor, "shift-1", { outcome: "COMPLETED" })).rejects.toMatchObject({ code: "SHIFT_ALREADY_COMPLETED" });
+    expect(mocks.transaction.shiftCompletion.create).not.toHaveBeenCalled();
+  });
+
+  it("requires an explanation when service delivery was not complete", async () => {
+    await expect(completePlannedShift(employeeActor, "shift-1", { outcome: "NOT_COMPLETED" })).rejects.toMatchObject({ name: "ZodError" });
+    expect(mocks.transaction.plannedShift.findFirst).not.toHaveBeenCalled();
+  });
+});
 
 describe("coverage transaction", () => {
   beforeEach(() => {

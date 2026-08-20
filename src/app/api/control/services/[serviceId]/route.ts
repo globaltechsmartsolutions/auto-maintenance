@@ -2,10 +2,22 @@ import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { operationalServiceUpdateSchema } from "@/lib/wia-control/domain";
 import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
-import { updateOperationalService } from "@/lib/wia-control/service";
+import { getOperationalServiceDetail, updateOperationalService } from "@/lib/wia-control/service";
 
 const requestSchema = operationalServiceUpdateSchema.extend({
   companyId: z.string().min(1).optional(),
+});
+
+export const GET = apiRoute(async (
+  request: Request,
+  routeContext: { params: Promise<{ serviceId: string }> }
+) => {
+  const { serviceId } = await routeContext.params;
+  const companyId = new URL(request.url).searchParams.get("companyId") ?? undefined;
+  const context = await requireWiaApiContext(["SUPER_ADMIN", "ADMIN", "MANAGER"], companyId);
+  if (context.response) return context.response;
+  if (context.demo) return Response.json({ service: null, message: "Service evidence is available with a connected workspace." });
+  return Response.json({ service: await getOperationalServiceDetail(context.actor, serviceId) });
 });
 
 export const PATCH = apiRoute(async (

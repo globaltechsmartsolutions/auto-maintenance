@@ -158,6 +158,8 @@ export function EmployeeClock() {
   const [correctionEvent, setCorrectionEvent] = React.useState<ClockEvent>();
   const [disagreementId, setDisagreementId] = React.useState<string>();
   const [disagreementReason, setDisagreementReason] = React.useState("");
+  const [completionOpen, setCompletionOpen] = React.useState(false);
+  const [completionStatus, setCompletionStatus] = React.useState<"idle" | "saving" | "saved" | "error">("idle");
   const employeeShifts = shifts.filter((shift) => shift.employeeName === employeeName);
   const activeShift =
     employeeShifts.find((shift) => ["ACTIVE", "PAUSED"].includes(shift.status)) ??
@@ -189,6 +191,24 @@ export function EmployeeClock() {
         ? "BREAK_END"
         : "BREAK_START";
     recordClockEvent(activeShift.id, type);
+  }
+
+  async function recordCompletion(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeShift) return;
+    const form = new FormData(event.currentTarget);
+    setCompletionStatus("saving");
+    try {
+      const response = await fetch(`/api/control/shifts/${activeShift.id}/completion`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outcome: form.get("outcome"), note: String(form.get("note") ?? "") || undefined }),
+      });
+      if (!response.ok) throw new Error();
+      setCompletionStatus("saved");
+      setCompletionOpen(false);
+    } catch {
+      setCompletionStatus("error");
+    }
   }
 
   const primaryLabel = !hasClockedIn
@@ -352,12 +372,9 @@ export function EmployeeClock() {
                   ) : null}
                 </div>
               ) : (
-                <div className="flex items-center gap-3 rounded-lg border border-success/25 bg-success/[0.06] p-4">
-                  <CheckCircle2 className="size-5 text-success" />
-                  <div>
-                    <p className="font-medium">Shift completed</p>
-                    <p className="text-sm text-muted-foreground">Clock-out was saved successfully.</p>
-                  </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/25 bg-success/[0.06] p-4">
+                  <div className="flex items-center gap-3"><CheckCircle2 className="size-5 text-success" /><div><p className="font-medium">Shift completed</p><p className="text-sm text-muted-foreground">Clock-out was saved successfully.</p></div></div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setCompletionOpen(true)} disabled={completionStatus === "saved"}> {completionStatus === "saved" ? "Outcome recorded" : "Record outcome"}</Button>
                 </div>
               )}
 
@@ -520,6 +537,7 @@ export function EmployeeClock() {
           if (!open) setCorrectionEvent(undefined);
         }}
       />
+      <Dialog open={completionOpen} onOpenChange={setCompletionOpen}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Record service outcome</DialogTitle><DialogDescription>This creates one immutable completion record. Attendance events remain unchanged.</DialogDescription></DialogHeader><form id="completion-form" className="space-y-4" onSubmit={recordCompletion}><div className="space-y-2"><Label htmlFor="completion-outcome">Outcome</Label><select id="completion-outcome" name="outcome" defaultValue="COMPLETED" className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option value="COMPLETED">Completed</option><option value="PARTIALLY_COMPLETED">Partially completed</option><option value="NOT_COMPLETED">Not completed</option></select></div><div className="space-y-2"><Label htmlFor="completion-note">Note</Label><Textarea id="completion-note" name="note" placeholder="Required if the service was not fully completed." /></div></form><DialogFooter>{completionStatus === "error" ? <p className="mr-auto text-sm text-destructive">The outcome could not be recorded. Check the record and try again.</p> : null}<Button type="button" variant="outline" onClick={() => setCompletionOpen(false)}>Cancel</Button><Button type="submit" form="completion-form" disabled={completionStatus === "saving"}>{completionStatus === "saving" ? "Recording…" : "Record outcome"}</Button></DialogFooter></DialogContent></Dialog>
     </main>
   );
 }
