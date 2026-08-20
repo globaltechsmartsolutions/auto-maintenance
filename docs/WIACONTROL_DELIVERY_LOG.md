@@ -242,3 +242,71 @@ Suite: `npm run lint`, `npm run typecheck`, `npm test` — green.
 
 None. The unowned and stale thresholds per severity are two tables in
 `src/lib/wia-control/recovery-queue.ts`; confirm them with the first pilot.
+
+---
+
+## Package 7 — Communications delivery hardening
+
+**Status:** delivered in code · **Roadmap:** execution order 7
+
+### User-visible change
+
+- Messages are versioned. A message whose template version no longer exists
+  fails visibly and immediately instead of going out as a generic placeholder,
+  and it is not retried, because retrying cannot fix it.
+- Channel consent is resolved once, when the message is queued, with a recorded
+  reason for every channel that was skipped. In-app always applies; email needs
+  both an address and an opt-in; SMS and WhatsApp are refused until there is a
+  provider and an explicit opt-in.
+- Every message carries a dedupe key that is stable for the event, backed by a
+  unique index, so requeueing the same reassignment cannot produce a second
+  message.
+- The provider's own reference is stored on a sent message.
+- `/api/control/communications/health` reports the workspace's outbox state, and
+  the scheduled worker answers 207 when something is stuck or has given up.
+
+### Data impact
+
+- `CommunicationOutbox` gains `templateVersion`, `dedupeKey` (unique per
+  company), and `providerReference`.
+- `Employee` gains `contactEmailOptIn` (default true) and `contactSmsOptIn`
+  (default false). Email defaults to on because these messages are about the
+  work the person already agreed to do; SMS stays off until an opt-in exists.
+- New audit action `communication.channel_skipped`.
+- Message rendering moved out of the provider module: a transport can no longer
+  substitute the body it sends.
+
+### Migration
+
+`prisma/migrations/20260821110000_communication_hardening`. Additive with
+defaults; existing rows become version 1 with a null dedupe key, and null keys
+never collide.
+
+### Rollback path
+
+Revert the commit and drop the three outbox columns, the unique index, and the
+two employee columns. Queued messages remain deliverable by the previous worker.
+
+### Tests
+
+`src/lib/wia-control/communications.test.ts` (12 cases): rendering the exact
+queued version, refusal of an unknown template and unknown version, a published
+version for every template, consent resolution across opt-in/no-address/no
+opt-in, dedupe-key stability and its sensitivity to recipient and channel,
+queueing one message per consented channel with distinct keys, refusal to queue
+a duplicate, the recorded skip decision, worker failure on an unpublished
+version without calling the provider, the rendered message reaching the provider
+with its reference stored, health thresholds for stuck and failed queues, and
+workspace scoping with refusal to a field worker.
+
+`service.test.ts` fixtures were updated for the new recipient contact lookup and
+the version now carried on every queued message.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test`, `prisma validate` — green.
+
+### Manual configuration
+
+`RESEND_API_KEY` and `RESEND_FROM_EMAIL` for email. Without them, email fails
+honestly per attempt and becomes visibly FAILED after bounded retries — it is
+never reported as sent. SMS requires a provider decision, a cost owner, and a
+consent record before `resolveCommunicationChannels` is allowed to return it.

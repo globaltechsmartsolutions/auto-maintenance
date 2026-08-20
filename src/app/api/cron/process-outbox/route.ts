@@ -1,4 +1,4 @@
-import { processCommunicationOutbox } from "@/lib/wia-control/service";
+import { getGlobalCommunicationHealth, processCommunicationOutbox } from "@/lib/wia-control/service";
 
 /**
  * Stage 5: scheduled communications delivery.
@@ -21,6 +21,10 @@ export async function GET(request: Request) {
         return Response.json({ error: "Unauthorized." }, { status: 401 });
     }
 
-    const result = await processCommunicationOutbox(new Date());
-    return Response.json(result);
+    const now = new Date();
+    const result = await processCommunicationOutbox(now);
+    // Reported alongside the run so a stuck or given-up message is visible in
+    // the scheduler's own log, not only to someone who opens the app.
+    const health = await getGlobalCommunicationHealth(now);
+    return Response.json({ ...result, health }, { status: health.needsAttention ? 207 : 200 });
 }

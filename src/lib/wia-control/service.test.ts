@@ -182,11 +182,15 @@ describe("coverage transaction", () => {
       availability: null,
       maxHoursPerDay: null,
       maxJobsPerDay: null,
+      contactEmailOptIn: true,
+      contactSmsOptIn: false,
+      user: { firstName: "Ana", lastName: "Lopez", email: "ana@example.com", phone: null },
     });
     mocks.transaction.plannedShift.findMany.mockResolvedValue([]);
     mocks.transaction.coverageDecision.create.mockResolvedValue({ id: "decision-1" });
     mocks.transaction.plannedShift.update.mockResolvedValue({ id: "shift-1" });
     mocks.transaction.attendanceIncident.update.mockResolvedValue({ id: "incident-1" });
+    mocks.transaction.communicationOutbox.findFirst.mockResolvedValue(null);
     mocks.transaction.communicationOutbox.create.mockResolvedValue({ id: "message-1" });
     mocks.transaction.auditLog.create.mockResolvedValue({ id: "audit-1" });
   });
@@ -201,14 +205,17 @@ describe("coverage transaction", () => {
       data: { employeeId: "employee-recommended", status: "COVERED" },
     });
     expect(mocks.transaction.attendanceIncident.update).toHaveBeenCalledOnce();
-    expect(mocks.transaction.communicationOutbox.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        companyId: "company-1",
-        shiftId: "shift-1",
-        recipientEmployeeId: "employee-recommended",
-        template: "coverage_confirmed",
-      }),
-    });
+    expect(mocks.transaction.communicationOutbox.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          companyId: "company-1",
+          shiftId: "shift-1",
+          recipientEmployeeId: "employee-recommended",
+          template: "coverage_confirmed",
+          templateVersion: 1,
+        }),
+      })
+    );
     expect(mocks.transaction.auditLog.create).toHaveBeenCalledOnce();
   });
 
@@ -534,6 +541,7 @@ describe("communications outbox worker (Stage 5)", () => {
       id: "outbox-1",
       channel: "IN_APP",
       template: "coverage_confirmed",
+      templateVersion: 1,
       payload: {},
       status: "PENDING",
       attempts: 0,
@@ -560,6 +568,7 @@ describe("communications outbox worker (Stage 5)", () => {
         attempts: 1,
         lastError: null,
         processingStartedAt: null,
+        providerReference: "in-app",
       },
     });
   });
@@ -640,6 +649,7 @@ describe("communications outbox worker (Stage 5)", () => {
           id: "outbox-email",
           channel: "EMAIL",
           template: "coverage_confirmed",
+          templateVersion: 1,
           payload: {},
           status: currentStatus,
           attempts: currentAttempts,
@@ -674,6 +684,7 @@ describe("communications outbox worker (Stage 5)", () => {
         id: "outbox-no-email",
         channel: "EMAIL",
         template: "coverage_confirmed",
+        templateVersion: 1,
         payload: {},
         status: "PENDING",
         attempts: 0,

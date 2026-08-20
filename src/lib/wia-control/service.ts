@@ -44,6 +44,14 @@ import {
 import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
 import { csvRecords, previewCsvImport, type ImportKind } from "@/lib/wia-control/csv-import";
 import { describeRecovery, type RecoveryFacts } from "@/lib/wia-control/recovery-queue";
+import {
+  activeCommunicationTemplate,
+  communicationDedupeKey,
+  renderCommunication,
+  resolveCommunicationChannels,
+  summariseCommunicationHealth,
+  type CommunicationTemplateKey,
+} from "@/lib/wia-control/communication-policy";
 
 export type WiaActor = {
   companyId: string;
@@ -1979,19 +1987,18 @@ export async function confirmCoverage(actor: WiaActor, input: unknown) {
           : payload.overrideReason,
       },
     });
-    await transaction.communicationOutbox.create({
-      data: {
-        companyId: actor.companyId,
+    await queueCommunicationWithin(transaction, {
+      companyId: actor.companyId,
+      actorUserId: actor.userId,
+      shiftId: incident.shiftId,
+      recipientEmployeeId: selectedEmployee.id,
+      template: "coverage_confirmed",
+      discriminator: incident.id,
+      payload: {
         shiftId: incident.shiftId,
-        recipientEmployeeId: selectedEmployee.id,
-        channel: "IN_APP",
-        template: "coverage_confirmed",
-        payload: {
-          shiftId: incident.shiftId,
-          incidentId: incident.id,
-          scheduledStart: incident.shift.scheduledStart.toISOString(),
-          scheduledEnd: incident.shift.scheduledEnd.toISOString(),
-        },
+        incidentId: incident.id,
+        scheduledStart: incident.shift.scheduledStart.toISOString(),
+        scheduledEnd: incident.shift.scheduledEnd.toISOString(),
       },
     });
     await transaction.auditLog.create({
@@ -2150,6 +2157,158 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
   });
 }
 
+/**
+ * Queues one operational message on every channel the recipient has actually
+ * agreed to, and never twice for the same event.
+ *
+ * Consent is resolved here rather than at send time so a skipped channel is a
+ * decision that was made once, with a reason, instead of a silent failure in
+ * the worker. The dedupe key is stable for the event, so a retried request or
+ * a replayed job cannot produce a second message.
+ */
+async function queueCommunicationWithin(
+  transaction: WiaTransaction,
+  input: {
+    companyId: string;
+    actorUserId?: string;
+    shiftId?: string | null;
+    recipientEmployeeId: string;
+    template: CommunicationTemplateKey;
+    payload: Prisma.InputJsonObject;
+    discriminator?: string;
+  }
+) {
+  const template = activeCommunicationTemplate(input.template);
+  const recipient = await transaction.employee.findFirst({
+    where: { id: input.recipientEmployeeId, companyId: input.companyId },
+    select: {
+      id: true,
+      contactEmailOptIn: true,
+      contactSmsOptIn: true,
+      user: { select: { email: true, phone: true } },
+    },
+  });
+  if (!recipient) {
+    throw new WiaDomainError("EMPLOYEE_NOT_FOUND", "The message recipient is not part of the company.");
+  }
+
+  const decision = resolveCommunicationChannels(
+    input.template,
+    {
+      email: recipient.user.email,
+      phone: recipient.user.phone,
+      emailOptIn: recipient.contactEmailOptIn,
+      smsOptIn: recipient.contactSmsOptIn,
+    },
+    { smsProviderConfigured: false }
+  );
+
+  const queued: string[] = [];
+  const duplicates: string[] = [];
+
+  for (const channel of decision.channels) {
+    const dedupeKey = communicationDedupeKey({
+      template: input.template,
+      version: template.version,
+      channel,
+      shiftId: input.shiftId,
+      recipientEmployeeId: recipient.id,
+      discriminator: input.discriminator,
+    });
+    const existing = await transaction.communicationOutbox.findFirst({
+      where: { companyId: input.companyId, dedupeKey },
+      select: { id: true },
+    });
+    if (existing) {
+      duplicates.push(existing.id);
+      continue;
+    }
+    const created = await transaction.communicationOutbox.create({
+      data: {
+        companyId: input.companyId,
+        shiftId: input.shiftId ?? undefined,
+        recipientEmployeeId: recipient.id,
+        channel,
+        template: input.template,
+        templateVersion: template.version,
+        dedupeKey,
+        payload: input.payload,
+      },
+      select: { id: true },
+    });
+    queued.push(created.id);
+  }
+
+  if (decision.skipped.length) {
+    // A channel the recipient has not agreed to is a recorded decision, not a
+    // delivery failure discovered later by the worker.
+    await transaction.auditLog.create({
+      data: {
+        companyId: input.companyId,
+        userId: input.actorUserId,
+        action: "communication.channel_skipped",
+        entity: "CommunicationOutbox",
+        entityId: recipient.id,
+        metadata: { template: input.template, skipped: decision.skipped },
+      },
+    });
+  }
+
+  return { queued, duplicates, skipped: decision.skipped };
+}
+
+/**
+ * Operational health of the outbox. A coordinator, and the cron run itself,
+ * can see at a glance whether anything is stuck or has given up, which is the
+ * difference between "delivered, visibly failed, or retried" and "lost".
+ */
+export async function getCommunicationHealth(actor: WiaActor, now = new Date()) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view outbox health.");
+  }
+  return communicationHealthFor({ companyId: actor.companyId }, now);
+}
+
+/** The same measurement across every company, for the scheduled worker. */
+export async function getGlobalCommunicationHealth(now = new Date()) {
+  return communicationHealthFor({}, now);
+}
+
+async function communicationHealthFor(scope: { companyId?: string }, now: Date) {
+  const prisma = getPrisma();
+  const since = new Date(now.getTime() - 24 * 60 * 60_000);
+  const where = scope.companyId ? { companyId: scope.companyId } : {};
+
+  const [pending, retrying, processing, failed, sentLast24h, unacknowledgedLast24h, oldestPending] =
+    await Promise.all([
+      prisma.communicationOutbox.count({ where: { ...where, status: "PENDING" } }),
+      prisma.communicationOutbox.count({ where: { ...where, status: "RETRYING" } }),
+      prisma.communicationOutbox.count({ where: { ...where, status: "PROCESSING" } }),
+      prisma.communicationOutbox.count({ where: { ...where, status: "FAILED" } }),
+      prisma.communicationOutbox.count({ where: { ...where, status: "SENT", sentAt: { gte: since } } }),
+      prisma.communicationOutbox.count({
+        where: { ...where, status: "SENT", sentAt: { gte: since }, acknowledgedAt: null },
+      }),
+      prisma.communicationOutbox.findFirst({
+        where: { ...where, status: { in: ["PENDING", "RETRYING"] } },
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+      }),
+    ]);
+
+  return summariseCommunicationHealth({
+    pending,
+    retrying,
+    processing,
+    failed,
+    sentLast24h,
+    unacknowledgedLast24h,
+    oldestPendingAt: oldestPending?.createdAt ?? null,
+    now,
+  });
+}
+
 export async function listCommunicationOutbox(actor: WiaActor) {
   assertCompany(actor);
   return getPrisma().communicationOutbox.findMany({
@@ -2217,18 +2376,36 @@ export async function processCommunicationOutbox(now = new Date(), batchSize = 2
     });
     if (claimed.count === 0) continue; // another worker run already claimed this one
 
+    let content: { subject: string; body: string };
+    try {
+      content = renderCommunication(
+        record.template,
+        record.templateVersion,
+        record.payload as Record<string, unknown>
+      );
+    } catch (error) {
+      // A message whose template version no longer exists must never go out as
+      // a placeholder. Retrying cannot fix it, so it fails visibly at once.
+      await prisma.communicationOutbox.update({
+        where: { id: record.id },
+        data: {
+          status: "FAILED",
+          attempts: record.attempts + 1,
+          processingStartedAt: null,
+          lastError: error instanceof Error ? error.message.slice(0, 500) : "Unknown template.",
+        },
+      });
+      results.push({ id: record.id, status: "FAILED" });
+      continue;
+    }
+
     let result: Awaited<ReturnType<typeof deliverInApp>>;
     if (record.channel === "IN_APP") {
       result = await deliverInApp();
     } else if (record.channel === "EMAIL") {
       const email = record.recipientEmployee?.user.email;
       result = email
-        ? await deliverEmail(
-          record.id,
-          record.template,
-          record.payload as Record<string, unknown>,
-          email
-        )
+        ? await deliverEmail(record.id, content, email)
         : { success: false, error: "Recipient has no email address on file." };
     } else {
       // SMS/WhatsApp are explicitly out of scope for this stage (see the
@@ -2246,6 +2423,7 @@ export async function processCommunicationOutbox(now = new Date(), batchSize = 2
             attempts: record.attempts + 1,
             lastError: null,
             processingStartedAt: null,
+            providerReference: result.providerReference,
         },
       });
       results.push({ id: record.id, status: "SENT" });

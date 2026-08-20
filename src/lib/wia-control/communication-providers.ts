@@ -1,34 +1,10 @@
 import "server-only";
 
 /**
- * Stage 5: a minimal, versioned template registry. Rendering only uses
- * the safe, minimal payload fields already stored on the outbox record —
- * never raw location, tokens, or anything not already meant to be shown
- * to the recipient.
+ * Delivery transport only. What a message says, and which version of it was
+ * sent, is decided in communication-policy.ts and passed in already rendered,
+ * so a provider can never quietly substitute a placeholder body.
  */
-type TemplateContent = { subject: string; body: string };
-
-function renderTemplate(template: string, payload: Record<string, unknown>): TemplateContent {
-    switch (template) {
-        case "coverage_confirmed": {
-            const start = typeof payload.scheduledStart === "string" ? payload.scheduledStart : "";
-            const end = typeof payload.scheduledEnd === "string" ? payload.scheduledEnd : "";
-            return {
-                subject: "You have been assigned to a shift",
-                body:
-                    `You have been assigned to cover a shift.\n\n` +
-                    `Start: ${start}\nEnd: ${end}\n\n` +
-                    `Open WIA Control to see the full details and confirm you have seen this message.`,
-            };
-        }
-        default:
-            return {
-                subject: "WIA Control notification",
-                body: "You have a new notification in WIA Control.",
-            };
-    }
-}
-
 export type DeliveryResult =
     | { success: true; providerReference: string }
     | { success: false; error: string };
@@ -57,8 +33,7 @@ export async function deliverInApp(): Promise<DeliveryResult> {
  */
 export async function deliverEmail(
     outboxId: string,
-    template: string,
-    payload: Record<string, unknown>,
+    content: { subject: string; body: string },
     recipientEmail: string
 ): Promise<DeliveryResult> {
     const apiKey = process.env.RESEND_API_KEY;
@@ -69,7 +44,6 @@ export async function deliverEmail(
         };
     }
 
-    const content = renderTemplate(template, payload);
     try {
         const response = await fetch("https://api.resend.com/emails", {
             method: "POST",

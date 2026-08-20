@@ -324,6 +324,11 @@ model Employee {
   preferredServiceTypes String[]            @default([])
   maxJobsPerDay         Int?
   maxHoursPerDay        Int?
+  /// Operational messages about this person's own shifts. Email is on by
+  /// default because it carries the work they agreed to do; SMS is off until
+  /// an explicit opt-in and a provider exist.
+  contactEmailOptIn     Boolean             @default(true)
+  contactSmsOptIn       Boolean             @default(false)
   incidentRate          Decimal             @default(0) @db.Decimal(5, 2)
   hiredAt               DateTime?
   createdAt             DateTime            @default(now())
@@ -745,6 +750,10 @@ model CommunicationOutbox {
   recipientEmployeeId String?
   channel             CommunicationChannel @default(IN_APP)
   template            String
+  templateVersion     Int                  @default(1)
+  /// Stable identity of one message, so requeueing the same event cannot
+  /// produce a second copy. Unique per company.
+  dedupeKey           String?
   payload             Json
     status              CommunicationStatus  @default(PENDING)
   attempts            Int                  @default(0)
@@ -752,6 +761,7 @@ model CommunicationOutbox {
   sentAt              DateTime?
   acknowledgedAt      DateTime?
   processingStartedAt DateTime?
+  providerReference   String?
   lastError           String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -760,6 +770,7 @@ model CommunicationOutbox {
   shift             PlannedShift? @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   recipientEmployee Employee?     @relation(fields: [recipientEmployeeId], references: [id], onDelete: SetNull)
 
+  @@unique([companyId, dedupeKey])
   @@index([companyId, status, nextAttemptAt])
   @@index([shiftId, createdAt])
   @@index([recipientEmployeeId, createdAt])
