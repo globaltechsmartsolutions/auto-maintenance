@@ -283,6 +283,54 @@ Before enabling any AI feature for a customer, complete all of the following:
 
 ## 5. Commercial rollout
 
+### Staging acceptance scenario — fictional company
+
+Run this scenario in staging only. Do not use a real employee, customer,
+telephone number, address, or production company. Record the application URL,
+tester, date, browser/device, expected result, actual result, screenshots, and
+the request/audit identifier for every failure.
+
+**Company:** Northstar Facility Services (fictional)  
+**Customer:** Redwood Offices Ltd. (fictional)  
+**Worksites:** Redwood Central and Redwood Riverside  
+**Services:** Morning office cleaning and evening common-area cleaning  
+**Roles:** one administrator, one operations manager, and four field workers.
+
+Create these fictional field workers before testing:
+
+| Worker | Skills | Availability | Purpose in the test |
+| --- | --- | --- | --- |
+| Maya Torres | `cleaning`, `opening` | Every day, 06:00–14:00 | Normal morning assignment and verified clocking. |
+| Liam Carter | `cleaning`, `evening` | Every day, 14:00–22:00 | Valid replacement for an evening issue. |
+| Nora Blake | `cleaning` | Vacation / unavailable | Must never be offered as a replacement. |
+| Ethan Reed | `cleaning`, `opening` | Every day, 06:00–14:00 | Give an overlapping shift so he must be excluded. |
+
+Create a morning and an evening shift for the same test day. Link both to the
+customer service and compatible worksite. Assign Maya to the morning shift;
+leave the evening shift uncovered initially. Give Ethan a conflicting morning
+shift at another worksite.
+
+| Test | Tester action | Expected result | Evidence to retain |
+| --- | --- | --- | --- |
+| 1. Setup and permissions | Sign in as administrator, manager, and each worker. Attempt to open another worker’s records as a worker. | Each role sees only permitted screens and records; a worker cannot access company administration or another worker’s evidence. | Screenshots and denied-route response. |
+| 2. Normal verified clock | Maya clocks in, starts/ends a break, and clocks out using the configured worksite method. | Events are ordered, attributed, and visible in her shift and service evidence timeline. | Clock IDs, shift timeline, audit entry. |
+| 3. Offline and retry safety | Submit one permitted clock while offline, restore connectivity, then retry the same idempotency key. | The event is recorded once only; retry is safe and the final shift state is correct. | Event count and idempotency key. |
+| 4. Late or no-show detection | Create a late/missing-clock condition in staging and run the approved incident-detection job. | One actionable incident is created with severity, due time, worksite, shift, and no duplicate on a second run. | Incident IDs and detector output. |
+| 5. Uncovered-service recovery | Open the uncovered evening shift and request replacement candidates. | Liam is eligible; Nora is excluded for availability and Ethan for overlap. The reason for each exclusion is visible. | Candidate list and score/exclusion reasons. |
+| 6. Human override controls | Choose the recommended worker, then try a lower-ranked choice without a reason. | The valid decision is audited; an override requiring a reason cannot be silently saved. | Coverage decision and audit record. |
+| 7. Incident workflow | Acknowledge, assign, escalate, resolve, and dismiss separate staging incidents with notes. | State transitions, owner, notes, and timestamps remain visible and invalid transitions are rejected. | Incident history and error response. |
+| 8. Service completion and evidence | Record a completed, partial, and failed service outcome; attempt to edit/delete a completion record; export service evidence. | Each completion is immutable, partial/failed delivery needs an explanation, and the export contains only this company’s evidence. | Export file and rejected edit/delete attempt. |
+| 9. CSV onboarding | Preview and confirm a file with valid worksites/services/shifts, an existing duplicate, and a deliberately invalid file. | Valid non-duplicates are created atomically; existing rows are explicitly skipped; an invalid file writes nothing and identifies row/field. Employee CSV remains routed to invitations. | Preview, confirmation results, and database/audit count. |
+| 10. Communications | Trigger a staging reassignment/incident communication, observe queued, sent, retry, and failed paths using the provider test mode. | A message is never silently lost or duplicated; failed delivery is visible and can be handled by an authorised coordinator. | Outbox status, provider reference, and retry history. |
+| 11. Exports and isolation | Export clocks, incidents, coverage, and service evidence; then repeat while authenticated to a second staging company. | Every export is scoped to the active company and cross-company IDs are rejected. | Files and 403/404 response evidence. |
+| 12. AI safety | With AI disabled, request a brief/draft. In the approved test workspace, generate an operations brief and an incident draft. | Disabled mode exposes no provider call; enabled output is clearly a human-review draft, does not send a message, and does not contain names, addresses, GPS, or incident free text. | Audit record, reviewed output, and provider-cost record. |
+| 13. Failure and recovery | Use invalid input, expired/invalid session, lost connection, and provider failure simulations. | The user receives an English actionable error; no evidence, coverage decision, or import is partially or silently corrupted. | Screenshots, server logs, and request IDs. |
+
+**Test exit rule:** do not proceed to a customer pilot while a tenant-isolation,
+attendance-integrity, duplicate-clock, incomplete-import, or unauthorised-send
+defect is open. File defects with the exact test number, reproduction steps,
+expected/actual result, relevant IDs, and screenshot.
+
 ### Pilot offer
 
 - Target: cleaning/facility services first; select only one sector for the first
