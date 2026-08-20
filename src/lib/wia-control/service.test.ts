@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
     },
     company: { findUnique: vi.fn() },
+    customer: { findFirst: vi.fn() },
     employee: { findFirst: vi.fn() },
+    worksite: { findFirst: vi.fn() },
+    service: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     plannedShift: {
       findMany: vi.fn(),
       update: vi.fn(),
+      create: vi.fn(),
     },
     coverageDecision: { create: vi.fn() },
     communicationOutbox: {
@@ -45,9 +49,12 @@ vi.mock("@/lib/wia-control/communication-providers", () => mocks.providers);
 import {
   acknowledgeCommunication,
   confirmCoverage,
+  createOperationalService,
+  createPlannedShift,
   detectIncompleteAttendance,
   processCommunicationOutbox,
   resendCommunication,
+  updateOperationalService,
   type WiaActor,
 } from "@/lib/wia-control/service";
 import { MAX_COMMUNICATION_ATTEMPTS } from "@/lib/wia-control/domain-core";
@@ -226,6 +233,115 @@ describe("coverage transaction", () => {
         baseInput
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("operational service register", () => {
+  const serviceInput = {
+    customerId: "customer-1",
+    title: "Daily common-area cleaning",
+    serviceType: "Cleaning",
+    recurrence: "DAILY" as const,
+    scheduledStart: "2026-08-08T08:00:00+02:00",
+    scheduledEnd: "2026-08-08T10:00:00+02:00",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.customer.findFirst.mockResolvedValue({ id: "customer-1" });
+    mocks.transaction.service.create.mockResolvedValue({
+      id: "service-1",
+      recurrence: "DAILY",
+    });
+    mocks.transaction.service.findFirst.mockResolvedValue({
+      id: "service-1",
+      customerId: "customer-1",
+      scheduledStart: new Date("2026-08-08T06:00:00Z"),
+      scheduledEnd: new Date("2026-08-08T08:00:00Z"),
+    });
+    mocks.transaction.service.update.mockResolvedValue({ id: "service-1" });
+    mocks.transaction.auditLog.create.mockResolvedValue({ id: "audit-1" });
+  });
+
+  it("creates a company-scoped service and records the commercial commitment", async () => {
+    await expect(createOperationalService(manager, serviceInput)).resolves.toMatchObject({ id: "service-1" });
+    expect(mocks.transaction.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: "customer-1", companyId: "company-1", status: { not: "ARCHIVED" } },
+      select: { id: true },
+    });
+    expect(mocks.transaction.service.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        companyId: "company-1",
+        customerId: "customer-1",
+        title: "Daily common-area cleaning",
+        status: "SCHEDULED",
+      }),
+    });
+    expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: "operational_service.created", entity: "Service" }),
+    });
+  });
+
+  it("rejects a service for a customer outside the active company", async () => {
+    mocks.transaction.customer.findFirst.mockResolvedValueOnce(null);
+    await expect(createOperationalService(manager, serviceInput)).rejects.toMatchObject({
+      code: "CUSTOMER_NOT_FOUND",
+    });
+    expect(mocks.transaction.service.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps a service update inside the active company and writes an audit entry", async () => {
+    await expect(
+      updateOperationalService(manager, "service-1", { status: "IN_PROGRESS" })
+    ).resolves.toMatchObject({ id: "service-1" });
+    expect(mocks.transaction.service.findFirst).toHaveBeenCalledWith({
+      where: { id: "service-1", companyId: "company-1" },
+      select: { id: true, customerId: true, scheduledStart: true, scheduledEnd: true },
+    });
+    expect(mocks.transaction.service.update).toHaveBeenCalledWith({
+      where: { id: "service-1" },
+      data: expect.objectContaining({ status: "IN_PROGRESS" }),
+    });
+  });
+});
+
+describe("service-linked shift planning", () => {
+  const shiftInput = {
+    worksiteId: "worksite-1",
+    serviceId: "service-1",
+    title: "Morning clean",
+    scheduledStart: "2026-08-08T08:00:00+02:00",
+    scheduledEnd: "2026-08-08T10:00:00+02:00",
+    requiredSkills: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.transaction.worksite.findFirst.mockResolvedValue({ id: "worksite-1", customerId: "customer-1" });
+    mocks.transaction.service.findFirst.mockResolvedValue({ id: "service-1", customerId: "customer-1" });
+    mocks.transaction.plannedShift.create.mockResolvedValue({ id: "shift-1" });
+    mocks.transaction.auditLog.create.mockResolvedValue({ id: "audit-1" });
+  });
+
+  it("rejects a shift when its worksite and service belong to different customers", async () => {
+    mocks.transaction.service.findFirst.mockResolvedValueOnce({ id: "service-1", customerId: "customer-2" });
+    await expect(createPlannedShift(manager, shiftInput)).rejects.toMatchObject({
+      code: "SERVICE_WORKSITE_MISMATCH",
+    });
+    expect(mocks.transaction.plannedShift.create).not.toHaveBeenCalled();
+  });
+
+  it("persists a compatible service link and includes it in the audit trail", async () => {
+    await expect(createPlannedShift(manager, shiftInput)).resolves.toMatchObject({ id: "shift-1" });
+    expect(mocks.transaction.plannedShift.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ serviceId: "service-1", companyId: "company-1" }),
+    });
+    expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "planned_shift.created",
+        metadata: expect.objectContaining({ serviceId: "service-1" }),
+      }),
+    });
   });
 });
 
