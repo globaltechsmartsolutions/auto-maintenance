@@ -145,17 +145,22 @@ whether a person clocked in.
 2. CSV dry-run preview for employees, worksites, services, and shifts validates
    required fields, email addresses, date ranges, and duplicate file rows
    before any data is written.
-3. Worksite, service, and shift imports now require explicit confirmation,
-   validate tenant-aware duplicates, return per-row outcomes, and create the
-   accepted rows in one transaction. Employee imports remain deliberately
-   routed through secure invitations.
+3. Worksite, service, and shift imports require explicit confirmation, skip
+   tenant-scoped duplicates instead of merging them, return per-row outcomes,
+   and write the accepted rows in one transaction: the first unusable row rolls
+   the whole file back and the rejection is audited outside that transaction.
+4. Re-confirming an identical file is a recorded replay, not a second import.
+5. Employee files are confirmed row by row through the existing Supabase
+   invitation workflow, because an invitation is an external side effect that
+   cannot be rolled back. A failed profile write revokes the login it just
+   created and the row failure stays visible to the importer.
+6. Downloadable per-kind import templates carry the exact headers the validator
+   expects.
 
 **Remaining**
 
 1. Add timezone and skills checks to the guided setup completion criteria.
-2. Add employee bulk invitation processing with visible per-recipient failures
-   and no silent account-creation failure.
-3. Documented exports for attendance, incidents, coverage decisions, and service
+2. Documented exports for attendance, incidents, coverage decisions, and service
    evidence. Confirm payroll columns with each pilot.
 4. A pilot workspace with setup progress and support contact.
 5. Promise a third-party integration only when authentication, mapping, failure

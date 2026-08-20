@@ -30,6 +30,24 @@ function parseRows(csv: string) {
   return rows;
 }
 
+/**
+ * The tenant-scoped natural key of an import row. The same key is used to
+ * reject a duplicate inside a single file (preview) and to detect a row that
+ * already exists in the workspace (confirmation), so a file can never be
+ * accepted by one check and silently duplicated by the other.
+ */
+export function duplicateKey(kind: ImportKind, row: Record<string, string>) {
+  const value =
+    kind === "EMPLOYEES"
+      ? (row.email ?? "").toLowerCase()
+      : kind === "WORKSITES"
+        ? `${row.name}|${row.city}`
+        : kind === "SERVICES"
+          ? `${row.customer}|${row.title}`
+          : `${row.worksite}|${row.title}|${row.scheduledStart}`;
+  return value.replace(/\|+$/, "") ? value.toLowerCase() : "";
+}
+
 export function previewCsvImport(kind: ImportKind, csv: string) {
   const rows = parseRows(csv.replace(/^\uFEFF/, ""));
   const headers = (rows.shift() ?? []).map((header) => header.trim());
@@ -46,7 +64,7 @@ export function previewCsvImport(kind: ImportKind, csv: string) {
       const start = new Date(row.scheduledStart); const end = new Date(row.scheduledEnd);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) add("scheduledEnd", "Use valid ISO times and an end after the start.");
     }
-    const key = kind === "EMPLOYEES" ? row.email.toLowerCase() : kind === "WORKSITES" ? `${row.name}|${row.city}` : kind === "SERVICES" ? `${row.customer}|${row.title}` : `${row.worksite}|${row.title}|${row.scheduledStart}`;
+    const key = duplicateKey(kind, row);
     if (key && unique.has(key)) add("row", "Duplicate row in this file."); else unique.add(key);
   });
   const invalidRowNumbers = new Set(issues.map((issue) => issue.row));
@@ -57,4 +75,32 @@ export function csvRecords(csv: string) {
   const rows = parseRows(csv.replace(/^\uFEFF/, ""));
   const headers = (rows.shift() ?? []).map((header) => header.trim());
   return rows.map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index]?.trim() ?? ""])));
+}
+
+/**
+ * Downloadable starting point for each import. A pilot administrator gets the
+ * exact headers the validator expects plus one example row, which removes the
+ * most common import failure: a file whose columns were guessed.
+ */
+const templateExamples: Record<ImportKind, string[]> = {
+  EMPLOYEES: ["Ana", "Lopez", "ana.lopez@example.com", "Cleaning operative", "floors;windows", "Madrid Centro"],
+  WORKSITES: ["Main office", "1 Gran Via", "Madrid", "Europe/Madrid"],
+  SERVICES: ["Acme Facilities", "Daily office cleaning", "cleaning", "WEEKLY"],
+  SHIFTS: ["Main office", "Opening shift", "2026-09-01T06:00:00Z", "2026-09-01T10:00:00Z"],
+};
+
+const templateHeaders: Record<ImportKind, string[]> = {
+  EMPLOYEES: [...requiredHeaders.EMPLOYEES, "position", "skills", "zones"],
+  WORKSITES: [...requiredHeaders.WORKSITES, "timezone"],
+  SERVICES: [...requiredHeaders.SERVICES, "recurrence"],
+  SHIFTS: [...requiredHeaders.SHIFTS],
+};
+
+export function importTemplateCsv(kind: ImportKind) {
+  const escape = (cell: string) => (/[",;\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell);
+  return `${templateHeaders[kind].join(",")}\n${templateExamples[kind].map(escape).join(",")}\n`;
+}
+
+export function importTemplateFields(kind: ImportKind) {
+  return templateHeaders[kind].map((field) => ({ field, required: requiredHeaders[kind].includes(field) }));
 }
