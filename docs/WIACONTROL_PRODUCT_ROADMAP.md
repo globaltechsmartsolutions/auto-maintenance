@@ -187,22 +187,45 @@ whether a person clocked in.
 - Coordinators resolve common no-show and late-arrival flows without engineering.
 - The pilot measures a meaningful improvement in detection or recovery time.
 
-### Next execution sequence
+### Full execution sequence
 
-The following is the only active delivery order. Do not start a later package
-before its dependency and completion criteria are met.
+This is the only active delivery order. Start a later package only when its
+dependencies and exit criteria are met. Each package must include tenant-scope,
+authorisation, audit, error handling, tests, and English product copy.
 
-| Order | Work package | Owner | Dependency | Done when |
+| Order | Work package | Scope | Dependency | Exit criteria |
 | --- | --- | --- | --- | --- |
-| 1 | Pilot environment | Engineering + product owner | None | Separate staging database, Supabase project, real test users, deployed migrations, and a successful end-to-end smoke flow. |
-| 2 | Private evidence storage | Engineering + privacy owner | Storage provider and DPA decision | Private uploads, signed download URLs, tenant scope, metadata-only database records, retention job, malware/size limits, and tests. |
-| 3 | Cleaning completion templates | Product owner + operations | Pilot workflow agreement | Four versioned templates: opening, common areas, incident note, and completion; workers can complete them offline and managers can export them. |
-| 4 | Recovery cockpit | Engineering | Packages 1 and 3 | One ordered `Services at risk now` queue with owner, due time, incident, recommendation, no-candidate state, acknowledgement, and resolution note. |
-| 5 | Pilot onboarding | Engineering + customer success | Package 1 | Guided setup plus CSV dry-run imports for employees, worksites, services, and shifts; row-level errors and a reversible confirmation step. |
-| 6 | AI brief pilot | Product owner + privacy owner + engineering | Packages 1 and 4; approved provider/DPA | Enable the existing read-only brief for one internal workspace, record cost/quality feedback, and review every draft before use. |
-| 7 | AI communication drafts | Engineering | Package 6 passes | The read-only incident draft generator is delivered. Add coordinator editing, explicit approval, controlled outbox delivery, and audit of the approver/final text before enabling external sending. |
-| 8 | Production and legal launch | Release owner | Packages 1–7 as applicable | Monitoring, alerting, backup restore rehearsal, support runbooks, Spanish worker notices, processor agreement, subprocessor list, and legal/privacy sign-off. |
-| 9 | Controlled commercial pilot | Product owner + customer success | Package 8 | One to three worksites run for 45–60 days beside the existing tool and meet the pilot exit criteria. |
+| 1 | Stabilise the current baseline | Review every existing stage, remove dead/demo-only paths from real mode, resolve the incomplete CSV-confirmation work as a separately tested change, and keep the working tree clean. | None | `main` is reproducible; lint, type-check, tests, Prisma validation, and production build pass. |
+| 2 | Pilot environment | Create separate staging database, Supabase project, storage bucket, test users, secrets, deployed migrations, and a protected end-to-end smoke flow. | 1 | A real non-demo company can create a worksite, employee, shift, and verified clock event in staging. |
+| 3 | Import and onboarding completion | Add explicit CSV confirmation, tenant-aware duplicate detection, transaction/recovery policy, clear row outcomes, sample files, and employee bulk invitations through the existing invitation path. | 2 | A pilot admin can safely import worksites, services, and shifts; employee failures are visible and no partial import is silent. |
+| 4 | Evidence storage | Implement private photo/file uploads, malware and size checks, signed downloads, tenant-scoped metadata, retention/deletion jobs, and access audit records. | 2; storage/DPA decision | No evidence is public, cross-tenant, or stored only as an unprotected URL. |
+| 5 | Cleaning delivery templates | Define four versioned templates: opening, common areas, incident note, and completion. Support offline capture, versioned answers, evidence links, and export. | 4; product workflow approval | A field worker can complete a service consistently and the manager can prove the template version and submitted answers. |
+| 6 | Recovery cockpit completion | Add service filter, clear owner, due time, next action, no-candidate escalation, acknowledgement, resolution path, and recovery-age alerts to the at-risk queue. | 2 and 5 | Every at-risk service has a visible accountable coordinator and next human action. |
+| 7 | Communications delivery hardening | Configure the actual email/SMS provider, template versioning, consent/channel policy, retry/backoff, failed-message handling, recipient acknowledgement, and operational monitoring. | 2; provider decision | A reassignment or incident communication is either delivered, visibly failed, or retried; it is never silently lost or duplicated. |
+| 8 | Reporting and interoperability | Finalise reproducible company-scoped CSV exports for attendance, incidents, coverage, and service evidence; document field definitions and build only one validated integration mapping if a pilot needs it. | 3 and 5 | A customer can reconcile exported evidence without manual database access. |
+| 9 | AI governance setup | Select provider and processing location; complete DPA/subprocessor/privacy review; add per-company feature flag, rate limit, budget, kill switch, audit convention, and evaluation dataset. | 2; privacy owner approval | AI remains disabled for all customers until these controls and test cases are approved. |
+| 10 | AI operations brief pilot | Enable the existing read-only brief for one internal workspace; measure cost, quality, false statements, coordinator usefulness, and refusal behaviour. | 6 and 9 | The team has a reviewed evaluation record and no unsafe or invented output is accepted as an operational action. |
+| 11 | AI communication workflow | Extend the delivered read-only incident drafts with coordinator editing, explicit approval, controlled outbox delivery, approver/final-text audit, and cancellation. | 7, 9, and 10 | No AI-written message reaches a recipient without named human approval and a traceable final version. |
+| 12 | AI insight backlog | Add risk explanation first; only after pilot data exists, evaluate coverage-risk prediction and attendance anomaly detection. Never use outputs for staff ranking, discipline, payroll, or autonomous assignment. | 10; sufficient, reviewed pilot data | Each use case has a measurable benefit, evaluation set, privacy review, and human-response path. |
+| 13 | Production reliability and security | CI/CD gates, dependency/security review, privacy-safe logs, error monitoring, alerting, backup/restore rehearsal, migration rollback/forward-fix plan, performance and mobile accessibility checks, and support runbooks. | 2–12 as applicable | A restore is rehearsed successfully; alerts have owners; no critical authorisation, integrity, or tenant-isolation issue is open. |
+| 14 | Spanish legal and commercial readiness | Complete worker notices, geolocation policy, retention schedule, processor agreement, subprocessor list, terms, support policy, pricing/contract decision, and qualified Spanish legal/privacy sign-off. | 4, 7, 9, and 13 | The product is not marketed as automatically compliant; approved legal materials and accountable owners exist. |
+| 15 | Controlled commercial pilot | Run one to three worksites for 45–60 days alongside the customer’s current system. Review weekly: clock success, incident age, recovery time, evidence completeness, support volume, AI quality, and customer value. | 3–14 | At least 95% of valid clocks succeed without manual support, no critical defect is open, and the pilot demonstrates measurable recovery or coordinator-time improvement. |
+| 16 | Launch decision and scale | Decide go/no-go from pilot metrics; fix exit blockers; publish onboarding/support ownership; then onboard the next cohort gradually. | 15 | A documented launch decision, support capacity, commercial offer, and post-launch monitoring are in place. |
+
+### Delivery rules for the implementation partner
+
+1. Work one package at a time and open a pull request or commit only when its
+   automated checks pass.
+2. Do not merge temporary code, placeholder credentials, public storage URLs,
+   or a partial import path into a production release.
+3. Every new server write must be tenant-scoped, authorised server-side,
+   audited, idempotent where retries are possible, and covered by a focused
+   test.
+4. Use pilot evidence to decide integrations and AI expansion. Do not build
+   predictions from synthetic assumptions or promise a feature before its
+   operational owner exists.
+5. Record a short release note after each package: user-visible change, data
+   impact, migration, rollback path, tests run, and any manual configuration.
 
 ### AI delivery guardrails
 
