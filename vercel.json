@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/detect-incidents",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/process-outbox",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

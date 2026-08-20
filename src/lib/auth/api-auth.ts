@@ -9,6 +9,7 @@ export type ApiProfile = {
   id: string;
   companyId: string | null;
   role: Role;
+  status: "ACTIVE" | "INVITED" | "DISABLED";
 };
 
 export type ApiAuthResult =
@@ -53,10 +54,11 @@ export async function requireApiRole(allowedRoles: Role[]): Promise<ApiAuthResul
       id: true,
       companyId: true,
       role: true,
+      status: true,
     },
   });
 
-  if (!profile || !isRole(profile.role)) {
+  if (!profile || !isRole(profile.role) || profile.status !== "ACTIVE") {
     return {
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     };

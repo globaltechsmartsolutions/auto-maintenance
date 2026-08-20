@@ -37,7 +37,7 @@ export const getDashboardViewer = cache(async (): Promise<DashboardViewer> => {
     where: { supabaseUserId: user.id },
     include: { company: { select: { id: true, name: true, crmEnabled: true } } },
   });
-  if (!profile || !isRole(profile.role)) {
+  if (!profile || !isRole(profile.role) || profile.status !== "ACTIVE") {
     // The Supabase session is valid but there is no matching application
     // profile (e.g. an orphaned auth user, or provisioning failed).
     // Without signing out, middleware would see a live session on /login

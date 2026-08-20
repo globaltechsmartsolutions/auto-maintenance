@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
 import {
@@ -10,15 +10,18 @@ import {
   companySettingsSchema,
   computeIncidentDueAt,
   computeIncidentSeverity,
+  computeNextCommunicationAttempt,
   correctionAcknowledgementSchema,
   correctionRequestSchema,
   correctionReviewSchema,
   coverageDecisionSchema,
   coverageRecommendationSchema,
   DEFAULT_INCIDENT_POLICY,
+  employeeProfileUpdateSchema,
   escalateSeverity,
   evaluateCoverageEligibility,
   getShiftStatusAfterClock,
+  hasExceededCommunicationAttempts,
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
@@ -33,6 +36,7 @@ import {
   type ClockEventType,
   type IncidentPolicy,
 } from "@/lib/wia-control/domain";
+import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
 
 export type WiaActor = {
   companyId: string;
@@ -228,9 +232,217 @@ export async function listEmployees(actor: WiaActor) {
       skills: true,
       zones: true,
       performanceScore: true,
-      user: { select: { firstName: true, lastName: true } },
+      maxHoursPerDay: true,
+      maxJobsPerDay: true,
+      internalNotes: true,
+      position: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+      jobs: {
+        select: { service: { select: { status: true, price: true } } },
+      },
     },
     orderBy: { user: { firstName: "asc" } },
+  });
+}
+
+/**
+ * Creates the Postgres side of a new employee (User + Employee, in one
+ * transaction). The caller is responsible for first creating the
+ * matching Supabase Auth account and rolling it back if this fails --
+ * see POST /api/control/employees, which mirrors the same
+ * create-then-rollback pattern already used by the sign-up flow.
+ */
+export async function createEmployeeProfile(
+  actor: WiaActor,
+  input: {
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    position?: string;
+    skills?: string[];
+    zones?: string[];
+  }
+) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot create other employees.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const user = await transaction.user.create({
+      data: {
+        companyId: actor.companyId,
+        supabaseUserId: input.supabaseUserId,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: "EMPLOYEE",
+        status: "ACTIVE",
+      },
+    });
+    const employee = await transaction.employee.create({
+      data: {
+        companyId: actor.companyId,
+        userId: user.id,
+        position: input.position,
+        skills: input.skills ?? [],
+        zones: input.zones ?? [],
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.created",
+        entity: "Employee",
+        entityId: employee.id,
+        metadata: { email: input.email },
+      },
+    });
+    return employee;
+  });
+}
+
+/**
+ * Removes an employee from the active field team. Their historical
+ * records (past shifts, clock events, incidents, audit entries) are
+ * kept for the record and their Employee row is never deleted -- this
+ * is a deactivation, not an erasure, matching how this system never
+ * silently discards history elsewhere (see the audit log and the
+ * Stage 5 communications outbox). Their login is disabled and their
+ * status set to INACTIVE, so they stop appearing as assignable and can
+ * no longer sign in, without breaking the many historical records that
+ * still reference them.
+ */
+export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot remove other employees.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const employee = await transaction.employee.findFirst({
+      where: { id: employeeId, companyId: actor.companyId },
+      select: { id: true, userId: true, user: { select: { email: true } } },
+    });
+    if (!employee) {
+      throw new WiaDomainError(
+        "EMPLOYEE_NOT_FOUND",
+        "The employee does not belong to the company."
+      );
+    }
+
+    const activeShift = await transaction.plannedShift.findFirst({
+      where: { employeeId, status: { in: ["ACTIVE", "PAUSED"] } },
+      select: { id: true },
+    });
+    if (activeShift) {
+      throw new WiaDomainError(
+        "EMPLOYEE_HAS_ACTIVE_SHIFT",
+        "This employee has an active shift in progress and cannot be removed right now."
+      );
+    }
+
+    await transaction.employee.update({
+      where: { id: employeeId },
+      data: { fieldStatus: "INACTIVE" },
+    });
+    await transaction.user.update({
+      where: { id: employee.userId },
+      data: { status: "DISABLED" },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.deactivated",
+        entity: "Employee",
+        entityId: employeeId,
+        metadata: { email: employee.user.email },
+      },
+    });
+    return { id: employeeId };
+  });
+}
+
+/**
+ * Closes the Stage 4 follow-up gap: an admin/manager can now configure
+ * an employee's skills, zones, availability, and working-time limits
+ * from inside the app -- the exact fields the coverage-recommendation
+ * hard constraints (Stage 4) depend on, which previously could only be
+ * set by direct database access.
+ */
+export async function updateEmployeeProfile(actor: WiaActor, employeeId: string, input: unknown) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot edit employee profiles.");
+  }
+  const payload = employeeProfileUpdateSchema.parse(input);
+
+  return getPrisma().$transaction(async (transaction) => {
+    const employee = await transaction.employee.findFirst({
+      where: { id: employeeId, companyId: actor.companyId },
+      select: { id: true, userId: true, user: { select: { email: true, supabaseUserId: true } } },
+    });
+    if (!employee) {
+      throw new WiaDomainError(
+        "EMPLOYEE_NOT_FOUND",
+        "The employee does not belong to the company."
+      );
+    }
+
+      if (payload.firstName !== undefined || payload.lastName !== undefined) {
+        await transaction.user.update({
+          where: { id: employee.userId },
+          data: {
+            ...(payload.firstName !== undefined ? { firstName: payload.firstName } : {}),
+            ...(payload.lastName !== undefined ? { lastName: payload.lastName } : {}),
+          },
+      });
+    }
+
+    const updated = await transaction.employee.update({
+      where: { id: employeeId },
+      data: {
+        ...(payload.skills !== undefined ? { skills: payload.skills } : {}),
+        ...(payload.zones !== undefined ? { zones: payload.zones } : {}),
+        ...(payload.availability !== undefined
+          ? {
+            availability:
+              payload.availability === null
+                ? Prisma.JsonNull
+                : (payload.availability as Prisma.InputJsonValue),
+          }
+          : {}),
+        ...(payload.maxHoursPerDay !== undefined ? { maxHoursPerDay: payload.maxHoursPerDay } : {}),
+        ...(payload.maxJobsPerDay !== undefined ? { maxJobsPerDay: payload.maxJobsPerDay } : {}),
+        ...(payload.fieldStatus !== undefined ? { fieldStatus: payload.fieldStatus } : {}),
+      },
+      select: {
+        id: true,
+        fieldStatus: true,
+        availability: true,
+        skills: true,
+        zones: true,
+        maxHoursPerDay: true,
+        maxJobsPerDay: true,
+        user: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.profile_updated",
+        entity: "Employee",
+        entityId: employeeId,
+        metadata: payload as Prisma.InputJsonValue,
+      },
+    });
+      return {
+        ...updated,
+      };
   });
 }
 
@@ -1416,12 +1628,198 @@ export async function listCommunicationOutbox(actor: WiaActor) {
     },
     include: {
       recipientEmployee: {
-        include: { user: { select: { firstName: true, lastName: true } } },
+        include: { user: { select: { firstName: true, lastName: true, email: true } } },
       },
       shift: { select: { title: true, scheduledStart: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 100,
+  });
+}
+
+/**
+ * Stage 5: the communications outbox worker. Claims due PENDING/RETRYING
+ * records with an optimistic-lock update (so two overlapping worker runs
+ * can never both process the same record), attempts delivery through the
+ * channel-appropriate provider, and moves each record to SENT, RETRYING
+ * (with a bounded backoff), or FAILED. Never wraps the external provider
+ * call in a database transaction -- that would hold a lock for the
+ * duration of a network call, which is unsafe.
+ */
+export async function processCommunicationOutbox(now = new Date(), batchSize = 20) {
+  const prisma = getPrisma();
+  const leaseExpiredBefore = new Date(now.getTime() - 15 * 60_000);
+  await prisma.communicationOutbox.updateMany({
+    where: {
+      status: "PROCESSING",
+      processingStartedAt: { lt: leaseExpiredBefore },
+    },
+    data: {
+      status: "RETRYING",
+      processingStartedAt: null,
+      nextAttemptAt: now,
+      lastError: "Delivery processing lease expired and was recovered.",
+    },
+  });
+  const due = await prisma.communicationOutbox.findMany({
+    where: {
+      status: { in: ["PENDING", "RETRYING"] },
+      nextAttemptAt: { lte: now },
+    },
+    take: batchSize,
+    orderBy: { nextAttemptAt: "asc" },
+    include: {
+      recipientEmployee: {
+        include: { user: { select: { email: true } } },
+      },
+    },
+  });
+
+  const results: Array<{ id: string; status: string }> = [];
+
+  for (const record of due) {
+    const claimed = await prisma.communicationOutbox.updateMany({
+      where: { id: record.id, status: record.status },
+      data: { status: "PROCESSING", processingStartedAt: now },
+    });
+    if (claimed.count === 0) continue; // another worker run already claimed this one
+
+    let result: Awaited<ReturnType<typeof deliverInApp>>;
+    if (record.channel === "IN_APP") {
+      result = await deliverInApp();
+    } else if (record.channel === "EMAIL") {
+      const email = record.recipientEmployee?.user.email;
+      result = email
+        ? await deliverEmail(
+          record.id,
+          record.template,
+          record.payload as Record<string, unknown>,
+          email
+        )
+        : { success: false, error: "Recipient has no email address on file." };
+    } else {
+      // SMS/WhatsApp are explicitly out of scope for this stage (see the
+      // playbook: consent, cost, templates, and failure policy all need
+      // business approval first).
+      result = { success: false, error: `${record.channel} delivery is not yet available.` };
+    }
+
+    if (result.success) {
+      await prisma.communicationOutbox.update({
+        where: { id: record.id },
+        data: {
+          status: "SENT",
+          sentAt: now,
+            attempts: record.attempts + 1,
+            lastError: null,
+            processingStartedAt: null,
+        },
+      });
+      results.push({ id: record.id, status: "SENT" });
+    } else {
+      const attempts = record.attempts + 1;
+      const exhausted = hasExceededCommunicationAttempts(attempts);
+      await prisma.communicationOutbox.update({
+        where: { id: record.id },
+        data: {
+          status: exhausted ? "FAILED" : "RETRYING",
+          attempts,
+            lastError: result.error.slice(0, 500),
+            processingStartedAt: null,
+          nextAttemptAt: exhausted
+            ? record.nextAttemptAt
+            : computeNextCommunicationAttempt(attempts, now),
+        },
+      });
+      results.push({ id: record.id, status: exhausted ? "FAILED" : "RETRYING" });
+    }
+  }
+
+  return { processed: results.length, results };
+}
+
+/** Stage 5: a coordinator can manually resend a message that has FAILED. */
+export async function resendCommunication(actor: WiaActor, outboxId: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot resend communications.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const record = await transaction.communicationOutbox.findFirst({
+      where: { id: outboxId, companyId: actor.companyId },
+    });
+    if (!record) {
+      throw new WiaDomainError(
+        "COMMUNICATION_NOT_FOUND",
+        "The message does not belong to the company."
+      );
+    }
+    if (record.status !== "FAILED") {
+      throw new WiaDomainError("COMMUNICATION_NOT_FAILED", "Only a failed message can be resent.");
+    }
+
+    const updated = await transaction.communicationOutbox.update({
+      where: { id: record.id },
+        data: {
+          status: "PENDING",
+          attempts: 0,
+          lastError: null,
+          processingStartedAt: null,
+          nextAttemptAt: new Date(),
+        },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "communication.resent",
+        entity: "CommunicationOutbox",
+        entityId: record.id,
+        metadata: { previousAttempts: record.attempts },
+      },
+    });
+    return updated;
+  });
+}
+
+/**
+ * Stage 5, Task 4: the recipient employee acknowledges a reassignment
+ * message -- distinct from delivery. A message can be SENT without ever
+ * being acknowledged; this records that the employee has actually seen
+ * and understood it.
+ */
+export async function acknowledgeCommunication(actor: WiaActor, outboxId: string) {
+  assertCompany(actor);
+  if (actor.role !== "EMPLOYEE" || !actor.employeeId) {
+    throw new WiaDomainError("FORBIDDEN", "Only the recipient can acknowledge this message.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const record = await transaction.communicationOutbox.findFirst({
+      where: { id: outboxId, companyId: actor.companyId, recipientEmployeeId: actor.employeeId },
+    });
+    if (!record) {
+      throw new WiaDomainError(
+        "COMMUNICATION_NOT_FOUND",
+        "The message does not belong to this employee."
+      );
+    }
+
+    const updated = await transaction.communicationOutbox.update({
+      where: { id: record.id },
+      data: { acknowledgedAt: new Date() },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "communication.acknowledged",
+        entity: "CommunicationOutbox",
+        entityId: record.id,
+      },
+    });
+    return updated;
   });
 }
 

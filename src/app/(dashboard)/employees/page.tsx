@@ -1,12 +1,7 @@
 import Link from "next/link";
-import { NotebookPen, Plus, Smartphone, UserRoundCheck } from "lucide-react";
-import {
-  DemoActionButton,
-  DemoEmployeesTable,
-} from "@/components/demo/demo-widgets";
+import { Smartphone } from "lucide-react";
+import { EmployeeDirectory } from "@/components/control/employee-directory";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 
 export default function EmployeesPage() {
   return (
@@ -23,50 +18,10 @@ export default function EmployeesPage() {
               Employee view
             </Link>
           </Button>
-          <DemoActionButton action="new-employee">
-            <Plus className="size-4" />
-            New employee
-          </DemoActionButton>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <UserRoundCheck className="size-4 text-primary" />
-              Available
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">27</p>
-            <p className="text-sm text-muted-foreground">for new visits</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-base">Average performance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">92/100</p>
-            <Progress value={92} className="mt-3" />
-          </CardContent>
-        </Card>
-        <Card className="border-border/70 bg-card/85 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <NotebookPen className="size-4 text-primary" />
-              Internal notes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">14</p>
-            <p className="text-sm text-muted-foreground">updated this week</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <DemoEmployeesTable />
+      <EmployeeDirectory />
     </div>
   );
 }

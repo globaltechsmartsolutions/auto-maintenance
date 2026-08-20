@@ -25,6 +25,7 @@ import {
   type ClockEvent,
   type PlannedShift,
 } from "@/components/control/wia-control-provider";
+import { CommunicationsOutbox } from "@/components/control/communications-outbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -509,6 +510,8 @@ export function EmployeeClock() {
             )}
           </CardContent>
         </Card>
+
+        <CommunicationsOutbox />
       </div>
       <CorrectionDialog
         event={correctionEvent}

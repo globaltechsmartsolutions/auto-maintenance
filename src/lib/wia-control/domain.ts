@@ -156,6 +156,55 @@ export const incidentUpdateSchema = z.union([
   incidentEscalateSchema,
 ]);
 
+/**
+ * Stage 5: a communication can be either resent by a coordinator (after
+ * it has FAILED) or acknowledged by its recipient employee.
+ */
+export const communicationActionSchema = z.union([
+  z.object({ action: z.literal("RESEND") }),
+  z.object({ action: z.literal("ACKNOWLEDGE") }),
+]);
+
+/**
+ * Closes the Stage 4 follow-up gap: lets an admin/manager configure the
+ * exact fields the coverage-recommendation hard constraints depend on
+ * (skills, zones, availability, working-time limits) from inside the
+ * app, instead of only via direct database access. Every field is
+ * optional so a partial update (e.g. only skills) never clears the rest.
+ */
+export const employeeProfileUpdateSchema = z.object({
+  firstName: z.string().trim().min(1).max(80).optional(),
+  lastName: z.string().trim().min(1).max(80).optional(),
+  skills: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  zones: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  availability: z
+    .object({
+      daysOfWeek: z.array(z.number().int().min(0).max(6)).max(7).optional(),
+      startMinute: z.number().int().min(0).max(1440).optional(),
+      endMinute: z.number().int().min(0).max(1440).optional(),
+    })
+    .nullable()
+    .optional(),
+  maxHoursPerDay: z.number().int().min(1).max(24).nullable().optional(),
+  maxJobsPerDay: z.number().int().min(1).max(50).nullable().optional(),
+  fieldStatus: z.enum(["AVAILABLE", "ASSIGNED", "VACATION", "SICK_LEAVE", "INACTIVE"]).optional(),
+});
+
+/**
+ * Creates a new employee -- both a login (Supabase Auth) and a company
+ * profile (Postgres) -- from inside the app, closing the gap where an
+ * employee could previously only be provisioned by direct database and
+ * Supabase Admin API access.
+ */
+export const employeeCreateSchema = z.object({
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().max(160),
+  position: z.string().trim().max(80).optional(),
+  skills: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  zones: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+});
+
 export const coverageDecisionSchema = z.object({
   shiftId: identifier,
   incidentId: identifier,

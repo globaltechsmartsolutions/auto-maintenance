@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CommunicationsOutbox } from "@/components/control/communications-outbox";
 import {
   Dialog,
   DialogContent,
@@ -211,7 +212,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
       )}
     >
       <CardContent className="p-0">
-        <div className="grid gap-4 p-4 lg:grid-cols-[130px_1.2fr_1fr_auto] lg:items-center">
+        <div className="grid gap-4 p-4 lg:grid-cols-[minmax(130px,auto)_1.2fr_1fr_auto] lg:items-center">
           <div>
             <p className="text-lg font-semibold tabular-nums">
               {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
@@ -542,6 +543,8 @@ export function CoverageDashboard() {
           </CardContent>
         </Card>
       ) : null}
+
+      <CommunicationsOutbox />
     </div>
   );
 }
@@ -561,6 +564,16 @@ function ExcludedCandidatesList({
   onToggle: () => void;
 }) {
   if (excluded.length === 0) return null;
+
+  // Grouped by reason so a large team reads as "12 people — missing a
+  // skill" instead of a long, repetitive flat list of names.
+  const groups = new Map<string, string[]>();
+  for (const candidate of excluded) {
+    const names = groups.get(candidate.reason) ?? [];
+    names.push(candidate.employeeName);
+    groups.set(candidate.reason, names);
+  }
+
   return (
     <div className="mt-3">
       <button
@@ -571,15 +584,16 @@ function ExcludedCandidatesList({
         {show ? "Hide" : "Show"} {excluded.length} ineligible {excluded.length === 1 ? "person" : "people"}
       </button>
       {show ? (
-        <ul className="mt-2 space-y-1">
-          {excluded.map((candidate) => (
-            <li key={candidate.employeeId} className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">{candidate.employeeName}</span>
-              {" — "}
-              {candidate.reason}
-            </li>
+        <div className="mt-2 max-h-48 space-y-2 overflow-y-auto pr-1">
+          {Array.from(groups.entries()).map(([reason, names]) => (
+            <div key={reason} className="text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">
+                {names.length} {names.length === 1 ? "person" : "people"} — {reason}
+              </p>
+              <p className="mt-0.5">{names.join(", ")}</p>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
     </div>
   );
