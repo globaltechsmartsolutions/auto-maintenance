@@ -25,6 +25,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CommunicationsOutbox } from "@/components/control/communications-outbox";
 import { OperationsAiBrief } from "@/components/control/operations-ai-brief";
 import { CoverageRecoveryMetrics } from "@/components/control/coverage-recovery-metrics";
+import { RecoveryQueue } from "@/components/control/recovery-queue";
 import {
   Dialog,
   DialogContent,
@@ -485,6 +486,7 @@ export function CoverageDashboard() {
         />
       </div>
 
+      <RecoveryQueue />
       <OperationsAiBrief />
       <CoverageRecoveryMetrics />
 

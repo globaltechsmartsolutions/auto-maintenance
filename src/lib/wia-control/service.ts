@@ -43,6 +43,7 @@ import {
 } from "@/lib/wia-control/domain";
 import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
 import { csvRecords, previewCsvImport, type ImportKind } from "@/lib/wia-control/csv-import";
+import { describeRecovery, type RecoveryFacts } from "@/lib/wia-control/recovery-queue";
 
 export type WiaActor = {
   companyId: string;
@@ -477,6 +478,202 @@ export async function listIncidents(actor: WiaActor, filters: IncidentListFilter
       owner: { select: { id: true, firstName: true, lastName: true } },
     },
   });
+}
+
+export type RecoveryQueueFilters = {
+  /** Narrows the queue to one client service commitment. */
+  serviceId?: string;
+  /** A specific coordinator, "UNASSIGNED" for no owner, or omitted for any. */
+  ownerId?: string;
+  worksiteId?: string;
+  /** Includes closed incidents, for review rather than triage. */
+  includeClosed?: boolean;
+};
+
+/**
+ * The coordinator's triage queue: every service currently at risk, ordered by
+ * what will hurt first, each row carrying its accountable owner, its due time,
+ * and the single next human action.
+ *
+ * It reads the same incident records as the inbox — this is a different
+ * question asked of the same facts, not a second source of truth.
+ */
+export async function listRecoveryQueue(
+  actor: WiaActor,
+  filters: RecoveryQueueFilters = {},
+  now = new Date()
+) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view the recovery queue.");
+  }
+
+  const incidents = await getPrisma().attendanceIncident.findMany({
+    where: {
+      companyId: actor.companyId,
+      ...(filters.includeClosed ? {} : { status: { in: ["OPEN", "ACKNOWLEDGED"] } }),
+      ...(filters.worksiteId ? { worksiteId: filters.worksiteId } : {}),
+      ...(filters.ownerId === "UNASSIGNED"
+        ? { ownerId: null }
+        : filters.ownerId
+          ? { ownerId: filters.ownerId }
+          : {}),
+      ...(filters.serviceId ? { shift: { serviceId: filters.serviceId } } : {}),
+    },
+    select: {
+      id: true,
+      type: true,
+      status: true,
+      severity: true,
+      title: true,
+      detectedAt: true,
+      dueAt: true,
+      acknowledgedAt: true,
+      ownerId: true,
+      owner: { select: { id: true, firstName: true, lastName: true } },
+      worksite: { select: { id: true, name: true } },
+      employee: { select: { id: true, user: { select: { firstName: true, lastName: true } } } },
+      shift: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          employeeId: true,
+          scheduledStart: true,
+          scheduledEnd: true,
+          service: {
+            select: { id: true, title: true, customer: { select: { id: true, name: true } } },
+          },
+        },
+      },
+      coverageDecisions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          createdAt: true,
+          selectedEmployeeId: true,
+          selectedEmployee: { select: { user: { select: { firstName: true, lastName: true } } } },
+        },
+      },
+    },
+  });
+
+  // One query for the acknowledgement state of the latest coverage message per
+  // shift, rather than one per row.
+  const shiftIds = incidents.map((incident) => incident.shift.id);
+  const communications = shiftIds.length
+    ? await getPrisma().communicationOutbox.findMany({
+        where: { companyId: actor.companyId, shiftId: { in: shiftIds } },
+        orderBy: { createdAt: "desc" },
+        select: { shiftId: true, acknowledgedAt: true, status: true, createdAt: true },
+      })
+    : [];
+  const latestCommunication = new Map<string, (typeof communications)[number]>();
+  for (const communication of communications) {
+    if (communication.shiftId && !latestCommunication.has(communication.shiftId)) {
+      latestCommunication.set(communication.shiftId, communication);
+    }
+  }
+
+  const rows = incidents.map((incident) => {
+    const communication = latestCommunication.get(incident.shift.id);
+    const facts: RecoveryFacts = {
+      status: incident.status,
+      severity: incident.severity,
+      detectedAt: incident.detectedAt,
+      dueAt: incident.dueAt,
+      acknowledgedAt: incident.acknowledgedAt,
+      hasOwner: Boolean(incident.ownerId),
+      hasCoverageDecision: incident.coverageDecisions.length > 0,
+      coverageAcknowledged: Boolean(communication?.acknowledgedAt),
+      shiftUncovered: !incident.shift.employeeId || incident.shift.status === "UNCOVERED",
+    };
+    const described = describeRecovery(facts, now);
+    const decision = incident.coverageDecisions[0];
+
+    return {
+      incidentId: incident.id,
+      type: incident.type,
+      status: incident.status,
+      severity: incident.severity,
+      title: incident.title,
+      detectedAt: incident.detectedAt,
+      dueAt: incident.dueAt,
+      owner: incident.owner
+        ? { id: incident.owner.id, name: `${incident.owner.firstName} ${incident.owner.lastName}`.trim() }
+        : null,
+      worksite: incident.worksite,
+      service: incident.shift.service
+        ? {
+            id: incident.shift.service.id,
+            title: incident.shift.service.title,
+            customer: incident.shift.service.customer.name,
+          }
+        : null,
+      shift: {
+        id: incident.shift.id,
+        title: incident.shift.title,
+        status: incident.shift.status,
+        scheduledStart: incident.shift.scheduledStart,
+        scheduledEnd: incident.shift.scheduledEnd,
+      },
+      assignedTo: incident.employee
+        ? `${incident.employee.user.firstName} ${incident.employee.user.lastName}`.trim()
+        : null,
+      coverage: decision
+        ? {
+            decidedAt: decision.createdAt,
+            employee: decision.selectedEmployee
+              ? `${decision.selectedEmployee.user.firstName} ${decision.selectedEmployee.user.lastName}`.trim()
+              : null,
+            acknowledged: Boolean(communication?.acknowledgedAt),
+          }
+        : null,
+      ...described,
+    };
+  });
+
+  rows.sort((left, right) => right.urgency - left.urgency);
+
+  return {
+    generatedAt: now,
+    counts: {
+      total: rows.length,
+      overdue: rows.filter((row) => row.alert === "OVERDUE").length,
+      unowned: rows.filter((row) => row.alert === "UNOWNED").length,
+      stale: rows.filter((row) => row.alert === "STALE").length,
+    },
+    rows,
+  };
+}
+
+/**
+ * The services a coordinator can filter the queue by. Only services that
+ * currently have an at-risk shift are offered, so the filter never presents a
+ * choice that would return nothing.
+ */
+export async function listRecoveryQueueServices(actor: WiaActor) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view the recovery queue.");
+  }
+  const incidents = await getPrisma().attendanceIncident.findMany({
+    where: {
+      companyId: actor.companyId,
+      status: { in: ["OPEN", "ACKNOWLEDGED"] },
+      shift: { serviceId: { not: null } },
+    },
+    select: {
+      shift: { select: { service: { select: { id: true, title: true } } } },
+    },
+  });
+  const services = new Map<string, string>();
+  for (const incident of incidents) {
+    const service = incident.shift.service;
+    if (service) services.set(service.id, service.title);
+  }
+  return [...services].map(([id, title]) => ({ id, title })).sort((left, right) => left.title.localeCompare(right.title));
 }
 
 /**

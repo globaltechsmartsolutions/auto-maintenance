@@ -131,11 +131,20 @@ whether a person clocked in.
    notification outbox, and override evidence remain explicit.
 4. Recovery performance measures average acknowledgement and detection-to-
    coverage time over the last 30 days from persisted server timestamps.
+5. A dedicated recovery queue orders every at-risk service by what will hurt
+   first, filters by client service and by owner (including "no owner yet"),
+   and states one next human action per row: assign an owner, acknowledge,
+   confirm coverage, chase the replacement's acknowledgement, escalate, or
+   record the resolution.
+6. Recovery-age alerting flags an incident that is overdue, that has sat with
+   no accountable coordinator, or that was acknowledged and then left without a
+   coverage decision. An overdue promise outranks a more severe one that is
+   still inside its window.
 
 **Remaining**
 
-1. Add a service-level filter and a dedicated owner/next-action queue once a
-   pilot validates the coordinator's daily triage workflow.
+Nothing in code. Confirm the alert thresholds per severity with the first pilot
+and adjust the two tables in `src/lib/wia-control/recovery-queue.ts`.
 
 **Acceptance criteria**
 

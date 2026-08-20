@@ -191,3 +191,54 @@ Suite: `npm run lint`, `npm run typecheck`, `npm test`, `prisma validate` — gr
 None. Templates are code: publishing a new version means adding an entry to the
 registry in `src/lib/wia-control/delivery-templates.ts`; published entries are
 never edited, so old submissions stay readable exactly as captured.
+
+---
+
+## Package 6 — Recovery cockpit completion
+
+**Status:** delivered · **Roadmap:** execution order 6, Stage C
+
+### User-visible change
+
+- `/control` gains a **Recovery queue**: every at-risk service in one list,
+  ordered by urgency, filterable by client service and by owner including "no
+  owner yet".
+- Each row names its accountable coordinator, how long it has been open, how
+  long it is overdue, the confirmed cover and whether that person acknowledged
+  it, and exactly one next human action.
+- Rows are flagged when they are overdue, have been left with no owner, or were
+  acknowledged and then stalled without a coverage decision.
+- Take-ownership and acknowledge act directly from the queue through the
+  existing incident endpoint; nothing is ever reassigned automatically.
+
+### Data impact
+
+None. The queue is a second question asked of the incident, coverage, and
+communication records that already exist — not a new source of truth.
+
+### Migration
+
+None.
+
+### Rollback path
+
+Revert the commit. No data is affected.
+
+### Tests
+
+`src/lib/wia-control/recovery-queue.test.ts` (12 cases): owner-before-everything
+ordering of the next action, escalation instead of assignment once the promise
+is missed, the acknowledge → cover → chase → resolve walk, silence on a closed
+incident, each of the three alerts and the case where none applies, an overdue
+medium outranking a critical still inside its window, forward-only age
+measurement, urgency ordering across a mixed queue with its counts, service and
+coverage acknowledgement carried into a row, the service and unassigned-owner
+filters reaching the query, the filter offering only services with something at
+risk, and refusal of the whole queue to a field worker.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test` — green.
+
+### Manual configuration
+
+None. The unowned and stale thresholds per severity are two tables in
+`src/lib/wia-control/recovery-queue.ts`; confirm them with the first pilot.
