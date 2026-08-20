@@ -49,6 +49,27 @@ export function apiRoute<TArguments extends unknown[]>(
       }
 
       if (error instanceof WiaDomainError) {
+        // AI refusals carry their own meaning: an unconfigured or stopped
+        // feature is unavailable, a rate limit is a retry-later, and a
+        // workspace that has not enabled a feature is simply not allowed.
+        const unavailable = ["AI_NOT_CONFIGURED", "AI_KILL_SWITCH", "EVIDENCE_STORAGE_NOT_CONFIGURED", "EVIDENCE_STORAGE_UNAVAILABLE"].includes(error.code);
+        if (unavailable) {
+          return respond(Response.json({ error: error.message, code: error.code }, { status: 503 }));
+        }
+        if (error.code === "AI_RATE_LIMITED") {
+          return respond(Response.json({ error: error.message, code: error.code }, { status: 429 }));
+        }
+        const notAllowed = [
+          "AI_FEATURE_NOT_ENABLED",
+          "AI_DISABLED_FOR_COMPANY",
+          "AI_BUDGET_NOT_AUTHORISED",
+          "AI_BUDGET_EXHAUSTED",
+          "EVIDENCE_STORAGE_PUBLIC",
+          "EVIDENCE_TENANT_MISMATCH",
+        ].includes(error.code);
+        if (notAllowed) {
+          return respond(Response.json({ error: error.message, code: error.code }, { status: 403 }));
+        }
         const forbidden = error.code === "FORBIDDEN";
         const missing = error.code.endsWith("_NOT_FOUND");
         const conflict = [
@@ -64,6 +85,10 @@ export function apiRoute<TArguments extends unknown[]>(
           "CORRECTION_NOT_REVIEWED",
           "INCIDENT_CLOSED",
           "NO_COVERAGE_CANDIDATE",
+          "AI_DRAFT_CLOSED",
+          "EVIDENCE_ALREADY_CONFIRMED",
+          "EVIDENCE_LIMIT_REACHED",
+          "SHIFT_ALREADY_COMPLETED",
         ].includes(error.code);
         return respond(Response.json(
           { error: error.message, code: error.code },

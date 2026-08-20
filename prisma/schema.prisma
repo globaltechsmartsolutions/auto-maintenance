@@ -244,6 +244,15 @@ model Company {
    timezone             String             @default("Europe/Madrid")
   clockRetentionYears  Int                @default(4)
   crmEnabled           Boolean            @default(false)
+  /// AI features this company has explicitly turned on. Empty means no AI runs
+  /// for this workspace, whatever the environment allows.
+  aiFeatures           String[]           @default([])
+  /// Monthly token ceiling across all AI features. 0 means no AI spend is
+  /// authorised, which is the safe default.
+  aiMonthlyTokenBudget Int                @default(0)
+  /// Set to stop every AI feature for this company immediately, without
+  /// touching its configuration.
+  aiDisabledAt         DateTime?
   lateSeverityThresholdMinutes Int        @default(30)
   incidentDueMinutesCritical   Int        @default(60)
   incidentDueMinutesHigh       Int        @default(240)
@@ -276,6 +285,8 @@ model Company {
   shiftCompletions       ShiftCompletion[]
   evidenceAttachments    EvidenceAttachment[]
   templateSubmissions    TemplateSubmission[]
+  aiUsage                AiUsageRecord[]
+  aiCommunicationDrafts  AiCommunicationDraft[]
 
   @@index([subscriptionStatus])
   @@index([plan])
@@ -305,6 +316,9 @@ model User {
   completedShifts        ShiftCompletion[]       @relation("ShiftCompletionActor")
   uploadedEvidence       EvidenceAttachment[]    @relation("EvidenceUploader")
   templateSubmissions    TemplateSubmission[]    @relation("TemplateSubmissionActor")
+  aiUsage                AiUsageRecord[]         @relation("AiUsageActor")
+  authoredAiDrafts       AiCommunicationDraft[]  @relation("AiDraftAuthor")
+  approvedAiDrafts       AiCommunicationDraft[]  @relation("AiDraftApprover")
 
   @@index([companyId, role])
 }
@@ -679,6 +693,7 @@ model AttendanceIncident {
   owner               User?              @relation("IncidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   worksite            Worksite           @relation(fields: [worksiteId], references: [id], onDelete: Restrict)
   coverageDecisions   CoverageDecision[]
+  aiDrafts            AiCommunicationDraft[]
 
   @@index([companyId, status, detectedAt])
   @@index([companyId, severity, status])
@@ -863,6 +878,65 @@ model TemplateSubmission {
   @@index([companyId, submittedAt])
   @@index([shiftId, submittedAt])
   @@index([companyId, templateKey, templateVersion])
+}
+
+enum AiDraftStatus {
+  DRAFT
+  APPROVED
+  CANCELLED
+}
+
+/// One AI call. Written whether the call succeeded, was refused by the gate, or
+/// failed, so cost and behaviour can be measured before the feature is offered
+/// to a customer.
+model AiUsageRecord {
+  id               String   @id @default(uuid())
+  companyId        String
+  userId           String?
+  feature          String
+  model            String
+  outcome          String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  detail           String?
+  createdAt        DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation("AiUsageActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, feature, createdAt])
+}
+
+/// An AI-written message on its way to a human decision. It is never sent from
+/// here: approval copies the final text a named person accepted into the
+/// communication outbox, and that copy is what a recipient receives.
+model AiCommunicationDraft {
+  id               String        @id @default(uuid())
+  companyId        String
+  incidentId       String
+  audience         String
+  model            String
+  generatedSubject String
+  generatedMessage String
+  finalSubject     String
+  finalMessage     String
+  status           AiDraftStatus @default(DRAFT)
+  createdByUserId  String?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  cancelledAt      DateTime?
+  outboxId         String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  incident   AttendanceIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  createdBy  User?              @relation("AiDraftAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  approvedBy User?              @relation("AiDraftApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, createdAt])
+  @@index([incidentId, createdAt])
 }
 
 model InspectionAccessGrant {

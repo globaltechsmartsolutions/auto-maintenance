@@ -153,10 +153,54 @@ export function recoveryUrgency(facts: RecoveryFacts, now: Date) {
   );
 }
 
+function formatMinutes(minutes: number) {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
+/**
+ * Why this service is at risk, in plain sentences, derived only from recorded
+ * facts.
+ *
+ * This is the roadmap's "risk explanation first": an explanation a coordinator
+ * can check against the record, produced without a model, without a prediction,
+ * and without any judgement about the people involved.
+ */
+export function explainRisk(facts: RecoveryFacts, now: Date): string[] {
+  if (isClosed(facts.status)) return [];
+  const reasons: string[] = [];
+  const age = minutesBetween(facts.detectedAt, now);
+
+  if (facts.shiftUncovered) {
+    reasons.push("The shift has nobody assigned.");
+  }
+  if (facts.dueAt && facts.dueAt.getTime() <= now.getTime()) {
+    reasons.push(`The resolution time passed ${formatMinutes(minutesBetween(facts.dueAt, now))} ago.`);
+  }
+  if (!facts.hasOwner) {
+    reasons.push(`Nobody has taken ownership in the ${formatMinutes(age)} since it was detected.`);
+  }
+  if (facts.status === "ACKNOWLEDGED" && !facts.hasCoverageDecision && facts.acknowledgedAt) {
+    reasons.push(
+      `It was acknowledged ${formatMinutes(minutesBetween(facts.acknowledgedAt, now))} ago and no cover has been decided.`
+    );
+  }
+  if (facts.hasCoverageDecision && !facts.coverageAcknowledged) {
+    reasons.push("A replacement was confirmed but has not acknowledged the message.");
+  }
+  if (!reasons.length) {
+    reasons.push(`A ${facts.severity.toLowerCase()} incident has been open for ${formatMinutes(age)}.`);
+  }
+  return reasons;
+}
+
 export function describeRecovery(facts: RecoveryFacts, now: Date) {
   return {
     action: nextRecoveryAction(facts, now),
     alert: recoveryAlert(facts, now),
+    reasons: explainRisk(facts, now),
     urgency: recoveryUrgency(facts, now),
     ageMinutes: minutesBetween(facts.detectedAt, now),
     overdueMinutes:

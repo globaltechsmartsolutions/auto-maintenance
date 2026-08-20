@@ -25,6 +25,7 @@ type QueueRow = {
   coverage: { decidedAt: string; employee: string | null; acknowledged: boolean } | null;
   action: { code: string; label: string };
   alert: Alert;
+  reasons: string[];
   ageMinutes: number;
   overdueMinutes: number;
 };
@@ -177,6 +178,12 @@ export function RecoveryQueue() {
                 {row.overdueMinutes ? <p>overdue by {formatAge(row.overdueMinutes)}</p> : null}
               </div>
             </div>
+
+            <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
+              {row.reasons.map((reason) => (
+                <li key={reason}>· {reason}</li>
+              ))}
+            </ul>
 
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               <span>

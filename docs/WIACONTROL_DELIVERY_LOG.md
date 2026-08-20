@@ -364,3 +364,86 @@ Suite: `npm run lint`, `npm run typecheck`, `npm test` — 180 passing.
 None. If a pilot needs a payroll-specific column set, confirm it against the
 documented fields before adding a column — adding one requires updating the
 dictionary, or the suite fails.
+
+---
+
+## Packages 9–12 — AI governance, usage measurement, approval workflow, risk explanation
+
+**Status:** delivered in code; provider, DPA, and privacy sign-off remain owner
+tasks · **Roadmap:** execution order 9, 10, 11, 12
+
+### User-visible change
+
+- AI is off at four independent levels: the environment flag, the company's own
+  feature list, two kill switches, and an authorised monthly token budget. A
+  per-feature hourly rate limit sits on top. Each refusal has its own code and
+  its own HTTP status, so "why did nothing happen" is always answerable.
+- Every AI call — including a refused one — is recorded with its feature, model,
+  outcome, and token counts. `GET /api/control/ai/usage` reports the month's
+  spend against budget and the count of each outcome per feature.
+- Generated output is refused before a human sees it if it leaks a withheld
+  term, cites an identifier it was not given, claims an action was taken, claims
+  legal compliance, or proposes an employment or payroll consequence.
+- An AI incident draft is now a real workflow: stored rather than sent, freely
+  editable, cancellable, and deliverable only by an approval that restates the
+  accepted text. The approved text is queued under a `coordinator_message`
+  template and recorded with its approver.
+- Every at-risk row in the recovery queue explains itself in plain sentences
+  derived from recorded facts — the roadmap's "risk explanation first",
+  deliberately without a model.
+
+### Data impact
+
+- `Company` gains `aiFeatures` (empty by default), `aiMonthlyTokenBudget`
+  (0 by default) and `aiDisabledAt`. The defaults are the "no AI runs here"
+  state.
+- New tables `AiUsageRecord` and `AiCommunicationDraft`, plus enum
+  `AiDraftStatus`. A CHECK constraint enforces that an approved draft names its
+  approver and the moment of approval.
+- New audit convention `ai.<feature>.<outcome>`. Prompts and generated text are
+  never audited; the one exception is the final text of an approved message.
+- New communication template `coordinator_message` v1, which adds no wording of
+  its own because a person already agreed to the exact text.
+
+### Migration
+
+`prisma/migrations/20260821120000_ai_governance`. Additive with safe defaults.
+
+**Environment change:** `AI_OPERATIONS_BRIEF_ENABLED` is replaced by
+`AI_FEATURES_ENABLED`, and `AI_KILL_SWITCH` is new. An environment that still
+sets only the old variable now behaves as "AI not configured", which is the safe
+direction for a rename to fail in.
+
+### Rollback path
+
+Revert the commit, drop the two tables, the enum, and the three company columns.
+Any approved message already in the outbox is unaffected: it carries human text
+under an ordinary template.
+
+### Tests
+
+`src/lib/ai/governance.test.ts` (19 cases): the gate allowing only when every
+control agrees and refusing with a distinct code for each of the seven controls;
+the global kill switch taking precedence; the audit naming convention and month
+boundary; a refusal recorded without contacting the provider; token recording on
+success; a provider failure recorded rather than lost; the audit entry never
+containing generated text; each of the five output-safety checks including an
+invented UUID; a clean draft passing; the five required evaluation scenarios
+being present and well-formed; a scenario-violating output failing and a
+compliant one passing; approval queueing the approver's own text with the
+approver named in the audit; approval using the restated text rather than the
+stored one; refusal to approve text that claims an action or a legal conclusion;
+refusal to approve, edit, or cancel a closed draft; refusal of the whole workflow
+to a field worker; and the demand for a recipient when the incident has none.
+
+Suite: `npm run lint`, `npm run typecheck`, `npm test` — 199 passing.
+
+### Manual configuration
+
+`AI_GATEWAY_API_KEY` and `AI_FEATURES_ENABLED=true` make the environment
+capable. Nothing runs for a customer until that company's `aiFeatures` and
+`aiMonthlyTokenBudget` are set. Before that: provider and processing location,
+DPA, subprocessor terms, privacy sign-off, an evaluation run against the shipped
+scenario set, a named cost owner, and a named person who may pull the kill
+switch. Those are listed in `docs/WIACONTROL_AI_GOVERNANCE.md` and are not done
+by shipping code.

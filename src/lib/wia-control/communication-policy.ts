@@ -11,7 +11,11 @@ import { WiaDomainError } from "@/lib/wia-control/domain-core";
 
 export type CommunicationChannel = "IN_APP" | "EMAIL" | "SMS" | "WHATSAPP";
 
-export type CommunicationTemplateKey = "coverage_confirmed" | "incident_opened" | "shift_cancelled";
+export type CommunicationTemplateKey =
+  | "coverage_confirmed"
+  | "incident_opened"
+  | "shift_cancelled"
+  | "coordinator_message";
 
 type TemplateVersion = {
   version: number;
@@ -56,6 +60,21 @@ const templates: Record<CommunicationTemplateKey, TemplateVersion[]> = {
           `Shift: ${text(payload, "shiftTitle")}\n` +
           `Detail: ${text(payload, "detail")}\n\n` +
           "Open WIAControl to see what is being done about it.",
+      }),
+    },
+  ],
+  /**
+   * A message a named coordinator wrote or approved, carried verbatim. The
+   * template adds no wording of its own precisely because a person already
+   * agreed to this exact text.
+   */
+  coordinator_message: [
+    {
+      version: 1,
+      channels: ["IN_APP", "EMAIL"],
+      render: (payload) => ({
+        subject: text(payload, "subject") || "A message from your coordinator",
+        body: text(payload, "body"),
       }),
     },
   ],

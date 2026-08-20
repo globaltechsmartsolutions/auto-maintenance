@@ -2,8 +2,11 @@ import "server-only";
 
 import { generateText, gateway, Output } from "ai";
 import { z } from "zod";
-import { getPrisma } from "@/lib/prisma";
+import { WiaDomainError } from "@/lib/wia-control/domain";
 import { listControlDay, type WiaActor } from "@/lib/wia-control/service";
+import { runGuardedAiCall } from "@/lib/ai/usage";
+import { assertSafeAiOutput } from "@/lib/ai/evaluation";
+import { isAiEnvironmentConfigured } from "@/lib/ai/governance";
 
 const severitySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 
@@ -32,8 +35,15 @@ type BriefFact = {
   hasClockOut: boolean;
 };
 
+export const AI_BRIEF_MODEL = "openai/gpt-5.4-mini";
+
+/**
+ * Environment-level readiness only. Whether this particular workspace may call
+ * AI is decided by the gate in governance.ts, which also enforces the company
+ * feature flag, the kill switches, the rate limit, and the budget.
+ */
 export function isOperationsBriefEnabled() {
-  return process.env.AI_OPERATIONS_BRIEF_ENABLED === "true" && Boolean(process.env.AI_GATEWAY_API_KEY);
+  return isAiEnvironmentConfigured();
 }
 
 function operationalFacts(day: Awaited<ReturnType<typeof listControlDay>>): BriefFact[] {
@@ -52,32 +62,45 @@ function operationalFacts(day: Awaited<ReturnType<typeof listControlDay>>): Brie
 }
 
 export async function generateOperationsBrief(actor: WiaActor, date: string) {
-  if (!isOperationsBriefEnabled()) {
-    throw new Error("AI_NOT_CONFIGURED");
-  }
   const facts = operationalFacts(await listControlDay(actor, date));
-  const allowedShiftIds = new Set(facts.map((fact) => fact.shiftId));
-  const { output } = await generateText({
-    model: gateway("openai/gpt-5.4-mini"),
-    system: "You are WIAControl's operations assistant. Work only from the supplied facts. Do not claim legal compliance, make employment decisions, assign employees, or invent missing information. Your output is an internal draft that requires human approval. Use concise professional English.",
-    prompt: `Create an operations brief for ${date}. Use only these tenant-scoped operational facts. Do not mention employee names, GPS coordinates, or data not supplied.\n${JSON.stringify(facts)}`,
-    output: Output.object({ schema: briefSchema, name: "operations_brief" }),
-  });
-  if (!output || output.priorities.some((priority) => !allowedShiftIds.has(priority.shiftId))) {
-    throw new Error("AI_INVALID_OUTPUT");
-  }
+  const allowedShiftIds = facts.map((fact) => fact.shiftId);
 
-  await getPrisma().auditLog.create({
-    data: {
-      companyId: actor.companyId,
-      userId: actor.userId,
-      action: "ai.operations_brief.generated",
-      entity: "OperationsBrief",
-      entityId: date,
-      metadata: { date, model: "openai/gpt-5.4-mini", sourceShiftCount: facts.length, priorityCount: output.priorities.length },
+  return runGuardedAiCall(
+    {
+      actor,
+      feature: "operations_brief",
+      model: AI_BRIEF_MODEL,
+      entity: { entity: "OperationsBrief", entityId: date },
+      metadata: { date, sourceShiftCount: facts.length },
     },
-  });
-  return output;
+    async () => {
+      const { output, usage } = await generateText({
+        model: gateway(AI_BRIEF_MODEL),
+        system:
+          "You are WIAControl's operations assistant. Work only from the supplied facts. Do not claim legal compliance, make employment decisions, assign employees, or invent missing information. Your output is an internal draft that requires human approval. Use concise professional English.",
+        prompt: `Create an operations brief for ${date}. Use only these tenant-scoped operational facts. Do not mention employee names, GPS coordinates, or data not supplied.
+${JSON.stringify(facts)}`,
+        output: Output.object({ schema: briefSchema, name: "operations_brief" }),
+      });
+      if (!output || output.priorities.some((priority) => !allowedShiftIds.includes(priority.shiftId))) {
+        throw new WiaDomainError(
+          "AI_INVALID_OUTPUT",
+          "The brief referred to a shift that was not among the supplied facts."
+        );
+      }
+      assertSafeAiOutput(
+        [output.headline, output.summary, output.draftMessage, ...output.priorities.map((priority) => `${priority.reason} ${priority.recommendedAction}`)].join("\n"),
+        { allowedIds: allowedShiftIds }
+      );
+      return {
+        result: output,
+        tokens: {
+          promptTokens: usage?.inputTokens ?? 0,
+          completionTokens: usage?.outputTokens ?? 0,
+        },
+      };
+    }
+  );
 }
 
 export const __test__ = { operationalFacts };
