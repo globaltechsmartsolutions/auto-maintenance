@@ -142,12 +142,16 @@ whether a person clocked in.
 
 1. A company-scoped `Pilot setup` workspace guides the first customer,
    worksite, field team, service, shift, and verified clock event.
+2. CSV dry-run preview for employees, worksites, services, and shifts validates
+   required fields, email addresses, date ranges, and duplicate file rows
+   before any data is written.
 
 **Remaining**
 
 1. Add timezone and skills checks to the guided setup completion criteria.
-2. CSV import with preview, validation, duplicate handling, and reversible dry
-   run for employees, worksites, services, and shifts.
+2. Add explicit confirmation, tenant-aware duplicate detection, and one
+   transaction per approved CSV import. Employee imports must use the existing
+   invitation flow and report any rollback failure visibly.
 3. Documented exports for attendance, incidents, coverage decisions, and service
    evidence. Confirm payroll columns with each pilot.
 4. A pilot workspace with setup progress and support contact.
