@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
 import {
@@ -17,6 +17,7 @@ import {
   coverageDecisionSchema,
   coverageRecommendationSchema,
   DEFAULT_INCIDENT_POLICY,
+  employeeProfileUpdateSchema,
   escalateSeverity,
   evaluateCoverageEligibility,
   getShiftStatusAfterClock,
@@ -231,9 +232,225 @@ export async function listEmployees(actor: WiaActor) {
       skills: true,
       zones: true,
       performanceScore: true,
-      user: { select: { firstName: true, lastName: true } },
+      maxHoursPerDay: true,
+      maxJobsPerDay: true,
+      internalNotes: true,
+      position: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+      jobs: {
+        select: { service: { select: { status: true, price: true } } },
+      },
     },
     orderBy: { user: { firstName: "asc" } },
+  });
+}
+
+/**
+ * Creates the Postgres side of a new employee (User + Employee, in one
+ * transaction). The caller is responsible for first creating the
+ * matching Supabase Auth account and rolling it back if this fails --
+ * see POST /api/control/employees, which mirrors the same
+ * create-then-rollback pattern already used by the sign-up flow.
+ */
+export async function createEmployeeProfile(
+  actor: WiaActor,
+  input: {
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    position?: string;
+    skills?: string[];
+    zones?: string[];
+  }
+) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot create other employees.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const user = await transaction.user.create({
+      data: {
+        companyId: actor.companyId,
+        supabaseUserId: input.supabaseUserId,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: "EMPLOYEE",
+        status: "ACTIVE",
+      },
+    });
+    const employee = await transaction.employee.create({
+      data: {
+        companyId: actor.companyId,
+        userId: user.id,
+        position: input.position,
+        skills: input.skills ?? [],
+        zones: input.zones ?? [],
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.created",
+        entity: "Employee",
+        entityId: employee.id,
+        metadata: { email: input.email },
+      },
+    });
+    return employee;
+  });
+}
+
+/**
+ * Removes an employee from the active field team. Their historical
+ * records (past shifts, clock events, incidents, audit entries) are
+ * kept for the record and their Employee row is never deleted -- this
+ * is a deactivation, not an erasure, matching how this system never
+ * silently discards history elsewhere (see the audit log and the
+ * Stage 5 communications outbox). Their login is disabled and their
+ * status set to INACTIVE, so they stop appearing as assignable and can
+ * no longer sign in, without breaking the many historical records that
+ * still reference them.
+ */
+export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot remove other employees.");
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const employee = await transaction.employee.findFirst({
+      where: { id: employeeId, companyId: actor.companyId },
+      select: { id: true, userId: true, user: { select: { email: true } } },
+    });
+    if (!employee) {
+      throw new WiaDomainError(
+        "EMPLOYEE_NOT_FOUND",
+        "The employee does not belong to the company."
+      );
+    }
+
+    const activeShift = await transaction.plannedShift.findFirst({
+      where: { employeeId, status: { in: ["ACTIVE", "PAUSED"] } },
+      select: { id: true },
+    });
+    if (activeShift) {
+      throw new WiaDomainError(
+        "EMPLOYEE_HAS_ACTIVE_SHIFT",
+        "This employee has an active shift in progress and cannot be removed right now."
+      );
+    }
+
+    await transaction.employee.update({
+      where: { id: employeeId },
+      data: { fieldStatus: "INACTIVE" },
+    });
+    await transaction.user.update({
+      where: { id: employee.userId },
+      data: { status: "DISABLED" },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.deactivated",
+        entity: "Employee",
+        entityId: employeeId,
+        metadata: { email: employee.user.email },
+      },
+    });
+    return { id: employeeId };
+  });
+}
+
+/**
+ * Closes the Stage 4 follow-up gap: an admin/manager can now configure
+ * an employee's skills, zones, availability, and working-time limits
+ * from inside the app -- the exact fields the coverage-recommendation
+ * hard constraints (Stage 4) depend on, which previously could only be
+ * set by direct database access.
+ */
+export async function updateEmployeeProfile(actor: WiaActor, employeeId: string, input: unknown) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot edit employee profiles.");
+  }
+  const payload = employeeProfileUpdateSchema.parse(input);
+
+  return getPrisma().$transaction(async (transaction) => {
+    const employee = await transaction.employee.findFirst({
+      where: { id: employeeId, companyId: actor.companyId },
+      select: { id: true, userId: true, user: { select: { email: true, supabaseUserId: true } } },
+    });
+    if (!employee) {
+      throw new WiaDomainError(
+        "EMPLOYEE_NOT_FOUND",
+        "The employee does not belong to the company."
+      );
+    }
+
+    const emailChanged = payload.email !== undefined && payload.email !== employee.user.email;
+    if (
+      payload.firstName !== undefined ||
+      payload.lastName !== undefined ||
+      payload.email !== undefined
+    ) {
+      await transaction.user.update({
+        where: { id: employee.userId },
+        data: {
+          ...(payload.firstName !== undefined ? { firstName: payload.firstName } : {}),
+          ...(payload.lastName !== undefined ? { lastName: payload.lastName } : {}),
+          ...(payload.email !== undefined ? { email: payload.email } : {}),
+        },
+      });
+    }
+
+    const updated = await transaction.employee.update({
+      where: { id: employeeId },
+      data: {
+        ...(payload.skills !== undefined ? { skills: payload.skills } : {}),
+        ...(payload.zones !== undefined ? { zones: payload.zones } : {}),
+        ...(payload.availability !== undefined
+          ? {
+            availability:
+              payload.availability === null
+                ? Prisma.JsonNull
+                : (payload.availability as Prisma.InputJsonValue),
+          }
+          : {}),
+        ...(payload.maxHoursPerDay !== undefined ? { maxHoursPerDay: payload.maxHoursPerDay } : {}),
+        ...(payload.maxJobsPerDay !== undefined ? { maxJobsPerDay: payload.maxJobsPerDay } : {}),
+        ...(payload.fieldStatus !== undefined ? { fieldStatus: payload.fieldStatus } : {}),
+      },
+      select: {
+        id: true,
+        fieldStatus: true,
+        availability: true,
+        skills: true,
+        zones: true,
+        maxHoursPerDay: true,
+        maxJobsPerDay: true,
+        user: { select: { firstName: true, lastName: true, email: true } },
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "employee.profile_updated",
+        entity: "Employee",
+        entityId: employeeId,
+        metadata: payload as Prisma.InputJsonValue,
+      },
+    });
+    return {
+      ...updated,
+      supabaseUserId: employee.user.supabaseUserId,
+      emailChanged,
+    };
   });
 }
 

@@ -531,12 +531,12 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       const employeesData = await readJson<{
         employees: Array<{
           id: string;
+          name: string;
           fieldStatus: EmployeeOption["status"];
           availability?: unknown;
           skills: string[];
           zones: string[];
           performanceScore: number;
-          user: { firstName: string; lastName: string };
         }>;
       }>(employeesResponse);
       const correctionsData = await readJson<{
@@ -645,7 +645,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         })),
         employees: employeesData.employees.map((employee) => ({
           id: employee.id,
-          name: `${employee.user.firstName} ${employee.user.lastName}`.trim(),
+          name: employee.name,
           status: employee.fieldStatus,
           availability:
             typeof employee.availability === "string"
