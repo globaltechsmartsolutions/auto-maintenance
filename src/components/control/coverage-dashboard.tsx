@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CommunicationsOutbox } from "@/components/control/communications-outbox";
 import { OperationsAiBrief } from "@/components/control/operations-ai-brief";
+import { CoverageRecoveryMetrics } from "@/components/control/coverage-recovery-metrics";
 import {
   Dialog,
   DialogContent,
@@ -485,6 +486,7 @@ export function CoverageDashboard() {
       </div>
 
       <OperationsAiBrief />
+      <CoverageRecoveryMetrics />
 
       {sortedRiskShifts.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/[0.055] p-4 sm:flex-row sm:items-center">

@@ -119,12 +119,12 @@ whether a person clocked in.
    assignee, incident context, replacement flow, and audit route.
 3. The no-candidate state, exclusion reasons, escalation, human confirmation,
    notification outbox, and override evidence remain explicit.
+4. Recovery performance measures average acknowledgement and detection-to-
+   coverage time over the last 30 days from persisted server timestamps.
 
 **Remaining**
 
-1. Add dashboard metrics for acknowledgement time and detection-to-coverage
-   time, using persisted timestamps rather than browser state.
-2. Add a service-level filter and a dedicated owner/next-action queue once a
+1. Add a service-level filter and a dedicated owner/next-action queue once a
    pilot validates the coordinator's daily triage workflow.
 
 **Acceptance criteria**

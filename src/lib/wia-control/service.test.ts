@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
       callback(transaction)
     ),
     communicationOutbox,
+    attendanceIncident: { findMany: vi.fn() },
   };
   const providers = {
     deliverInApp: vi.fn(),
@@ -55,6 +56,7 @@ import {
   createPlannedShift,
   completePlannedShift,
   detectIncompleteAttendance,
+  getCoverageRecoveryMetrics,
   processCommunicationOutbox,
   resendCommunication,
   updateOperationalService,
@@ -80,6 +82,26 @@ const baseInput = {
   incidentId: "incident-1",
   selectedEmployeeId: "employee-recommended",
 };
+
+describe("coverage recovery metrics", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("calculates acknowledgement and recovery time from persisted timestamps", async () => {
+    mocks.prisma.attendanceIncident.findMany.mockResolvedValue([
+      { id: "one", detectedAt: new Date("2026-08-20T08:00:00Z"), acknowledgedAt: new Date("2026-08-20T08:10:00Z"), coverageDecisions: [{ createdAt: new Date("2026-08-20T08:30:00Z") }] },
+      { id: "two", detectedAt: new Date("2026-08-20T09:00:00Z"), acknowledgedAt: null, coverageDecisions: [] },
+    ]);
+    await expect(getCoverageRecoveryMetrics(manager, new Date("2026-08-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).resolves.toEqual({
+      incidentCount: 2, acknowledgedCount: 1, recoveredCount: 1, averageAcknowledgementMinutes: 10, averageRecoveryMinutes: 30,
+    });
+    expect(mocks.prisma.attendanceIncident.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ companyId: "company-1" }) }));
+  });
+
+  it("does not hide unresolved incidents by counting them as zero minutes", async () => {
+    mocks.prisma.attendanceIncident.findMany.mockResolvedValue([{ id: "one", detectedAt: new Date(), acknowledgedAt: null, coverageDecisions: [] }]);
+    await expect(getCoverageRecoveryMetrics(manager, new Date("2026-08-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).resolves.toEqual(expect.objectContaining({ averageAcknowledgementMinutes: null, averageRecoveryMinutes: null }));
+  });
+});
 
 describe("immutable shift completion", () => {
   beforeEach(() => {

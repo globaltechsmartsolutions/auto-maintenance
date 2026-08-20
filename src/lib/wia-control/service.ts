@@ -461,6 +461,37 @@ export async function listIncidents(actor: WiaActor, filters: IncidentListFilter
   });
 }
 
+/**
+ * Measures operational recovery from persisted timestamps.  It intentionally
+ * excludes unresolved records from averages rather than treating them as zero.
+ */
+export async function getCoverageRecoveryMetrics(actor: WiaActor, from: Date, to: Date) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view company recovery metrics.");
+  }
+  const incidents = await getPrisma().attendanceIncident.findMany({
+    where: { companyId: actor.companyId, detectedAt: { gte: from, lt: to } },
+    select: { id: true, detectedAt: true, acknowledgedAt: true, coverageDecisions: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 } },
+  });
+  const averageMinutes = (values: number[]) => values.length
+    ? Math.round(values.reduce((total, value) => total + value, 0) / values.length)
+    : null;
+  const acknowledgementMinutes = incidents
+    .filter((incident) => incident.acknowledgedAt)
+    .map((incident) => Math.max(0, (incident.acknowledgedAt!.getTime() - incident.detectedAt.getTime()) / 60_000));
+  const recoveryMinutes = incidents
+    .filter((incident) => incident.coverageDecisions[0])
+    .map((incident) => Math.max(0, (incident.coverageDecisions[0]!.createdAt.getTime() - incident.detectedAt.getTime()) / 60_000));
+  return {
+    incidentCount: incidents.length,
+    acknowledgedCount: acknowledgementMinutes.length,
+    recoveredCount: recoveryMinutes.length,
+    averageAcknowledgementMinutes: averageMinutes(acknowledgementMinutes),
+    averageRecoveryMinutes: averageMinutes(recoveryMinutes),
+  };
+}
+
 export async function listEmployees(actor: WiaActor) {
   assertCompany(actor);
   return getPrisma().employee.findMany({
