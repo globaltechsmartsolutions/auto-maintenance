@@ -14,6 +14,7 @@ export type CorrectionStatus = "PENDING" | "APPROVED" | "DISPUTED" | "REJECTED";
 
 export type WorksiteDto = {
   id: string;
+  customerId?: string;
   name: string;
   customer: string;
   address: string;
@@ -21,6 +22,15 @@ export type WorksiteDto = {
   verificationMode: string;
   radiusMeters: number;
   isActive?: boolean;
+};
+
+export type OperationalServiceDto = {
+  id: string;
+  title: string;
+  customerId: string;
+  customerName: string;
+  recurrence: "ONE_TIME" | "DAILY" | "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "CUSTOM";
+  status: "PENDING" | "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
 };
 
 export type PlannedShiftDto = {

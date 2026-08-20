@@ -27,6 +27,56 @@ const identifier = z.string().trim().min(1).max(160);
 const isoDateTime = z.string().datetime({ offset: true });
 const coordinate = z.number().finite();
 
+const operationalServiceBaseSchema = z.object({
+  customerId: identifier,
+  title: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(2_000).optional(),
+  serviceType: z.string().trim().min(2).max(100),
+  recurrence: z
+    .enum(["ONE_TIME", "DAILY", "WEEKLY", "BIWEEKLY", "MONTHLY", "CUSTOM"])
+    .default("ONE_TIME"),
+  scheduledStart: isoDateTime.optional(),
+  scheduledEnd: isoDateTime.optional(),
+  address: z.string().trim().max(240).optional(),
+  city: z.string().trim().max(100).optional(),
+  internalNotes: z.string().trim().max(2_000).optional(),
+});
+
+export const operationalServiceInputSchema = operationalServiceBaseSchema
+  .superRefine((value, context) => {
+    if (
+      value.scheduledStart &&
+      value.scheduledEnd &&
+      new Date(value.scheduledEnd).getTime() <= new Date(value.scheduledStart).getTime()
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["scheduledEnd"],
+        message: "The service end time must be later than its start time.",
+      });
+    }
+  });
+
+export const operationalServiceUpdateSchema = operationalServiceBaseSchema
+  .partial()
+  .extend({
+    status: z.enum(["PENDING", "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]).optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, "You must specify at least one change.")
+  .superRefine((value, context) => {
+    if (
+      value.scheduledStart &&
+      value.scheduledEnd &&
+      new Date(value.scheduledEnd).getTime() <= new Date(value.scheduledStart).getTime()
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["scheduledEnd"],
+        message: "The service end time must be later than its start time.",
+      });
+    }
+  });
+
 export const worksiteInputSchema = z.object({
   customerId: identifier.optional(),
   name: z.string().trim().min(2).max(140),
@@ -70,6 +120,7 @@ export const plannedShiftInputSchema = z
 export const plannedShiftUpdateSchema = z
   .object({
     employeeId: identifier.nullable().optional(),
+    serviceId: identifier.nullable().optional(),
     title: z.string().trim().min(2).max(160).optional(),
     scheduledStart: isoDateTime.optional(),
     scheduledEnd: isoDateTime.optional(),

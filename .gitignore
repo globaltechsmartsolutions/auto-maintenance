@@ -16,6 +16,8 @@
 /playwright-report
 /blob-report
 /playwright/.cache
+/.playwright-mcp
+/wiacontrol-services.png
 
 # next.js
 /.next/

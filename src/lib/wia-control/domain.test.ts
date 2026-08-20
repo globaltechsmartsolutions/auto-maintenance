@@ -20,6 +20,7 @@ import {
   MAX_COMMUNICATION_ATTEMPTS,
   parseEmployeeAvailability,
   plannedShiftInputSchema,
+  operationalServiceInputSchema,
   rangesOverlap,
   scoreCoverageCandidate,
   WiaDomainError,
@@ -54,6 +55,28 @@ describe("clock-event sequence", () => {
 });
 
 describe("planning", () => {
+  it("accepts a recurring client service and rejects an inverted service window", () => {
+    expect(
+      operationalServiceInputSchema.safeParse({
+        customerId: "customer-1",
+        title: "Daily common-area cleaning",
+        serviceType: "Cleaning",
+        recurrence: "DAILY",
+        scheduledStart: "2026-08-08T08:00:00+02:00",
+        scheduledEnd: "2026-08-08T10:00:00+02:00",
+      }).success
+    ).toBe(true);
+    expect(
+      operationalServiceInputSchema.safeParse({
+        customerId: "customer-1",
+        title: "Invalid service window",
+        serviceType: "Cleaning",
+        scheduledStart: "2026-08-08T10:00:00+02:00",
+        scheduledEnd: "2026-08-08T09:00:00+02:00",
+      }).success
+    ).toBe(false);
+  });
+
   it("detects overlapping shifts", () => {
     expect(
       rangesOverlap(

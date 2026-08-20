@@ -11,15 +11,15 @@ and the exact order in which to make WIAControl safe for a pilot customer.
 WIAControl is an operations system for service companies. Its critical workflow
 is:
 
-1. An administrator configures a company, its people, worksites, and policies.
-2. A coordinator creates and assigns shifts.
+1. An administrator configures a company, its customers, worksites, people, and policies.
+2. A coordinator records a customer service, then creates and assigns the shifts that fulfil it.
 3. An employee records attendance for their own assigned shift.
 4. The system records exceptions such as late arrival, missing attendance, or
    an uncovered shift.
 5. A coordinator reviews the exception, selects a replacement when needed, and
    records the decision.
 6. The affected employee is notified and the company can later export the
-   complete evidence trail.
+   complete attendance and coverage evidence trail.
 
 The goal is not to add screens quickly. The goal is that this workflow works
 reliably for a real company, with clear accountability and tenant isolation.
@@ -36,6 +36,7 @@ real customer workflow has been validated in staging.
 | Authentication | Partially implemented | Supabase session lookup, roles, protected server routes, and auth pages. | Provision staging Supabase; test all role and cross-company boundaries. |
 | Tenant scoping | Implemented in core services | Company ID is resolved server-side and passed to domain services. | Add route-level regression tests for every mutation and malicious-ID attempt. |
 | Worksites and shifts | Implemented foundation | CRUD routes, overlap checks, worksite archive protection, and audit records. | Validate real coordinator workflows, time zones, cancellation, and role permissions. |
+| Client services | Implemented foundation | Managers can create a customer service, link compatible shifts, and view its linked-shift coverage in the service register. Server validation prevents cross-company and cross-customer service/worksite links. | Add service evidence, risk ownership, a service timeline, import/export, and staging role-boundary tests. |
 | Clock events | Implemented foundation | Append-only events, idempotency keys, transition validation, integrity hashes, and location/alternative-method verification. | Add device behaviour, offline queue, retry UX, and end-to-end mobile tests. |
 | Corrections | Implemented foundation | Separate correction requests linked to original clock events. | Test employee acknowledgement, review, disagreement, export, and permissions in staging. |
 | Incidents | Implemented foundation | Severity policy, ownership, due times, a filterable inbox, and scheduled detection are implemented. Database idempotency prevents duplicate detection under concurrent cron runs. | Apply the migration and verify the protected cron endpoint and coordinator workflow in staging. |
@@ -66,6 +67,7 @@ stages are called externally verified.
 | --- | --- | --- |
 | `src/app/(dashboard)` | Internal pages and layouts. | Business rules or direct cross-tenant queries. |
 | `src/app/api/control` | WIAControl HTTP endpoints. | Unvalidated database writes. |
+| `src/app/api/control/services` | Tenant-scoped service register API. | Direct Prisma calls from UI components. |
 | `src/components/control` | Employee, coordinator, worksite, shift, and settings UI. | Authorisation decisions. |
 | `src/lib/wia-control/domain.ts` | Zod input schemas, rules, and pure domain logic. | React state or browser-only APIs. |
 | `src/lib/wia-control/service.ts` | Transactions, tenant-scoped reads/writes, audit records. | UI formatting or demo-only logic. |

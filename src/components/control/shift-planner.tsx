@@ -101,8 +101,13 @@ function ShiftDialog({
   onOpenChange: (open: boolean) => void;
   defaultDate: string;
 }) {
-  const { addShift, companyTimezone, employees, worksites } = useWiaControl();
+  const { addShift, companyTimezone, employees, services, worksites } = useWiaControl();
   const activeWorksites = worksites.filter((worksite) => worksite.isActive !== false);
+  const [selectedWorksiteId, setSelectedWorksiteId] = React.useState(activeWorksites[0]?.id ?? "");
+  const selectedWorksite = activeWorksites.find((worksite) => worksite.id === selectedWorksiteId);
+  const availableServices = services.filter(
+    (service) => !selectedWorksite?.customerId || service.customerId === selectedWorksite.customerId
+  );
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,6 +116,7 @@ function ShiftDialog({
     const employeeName = String(data.get("employeeName") ?? "").trim() || undefined;
     const created = addShift({
       worksiteId: String(data.get("worksiteId") ?? ""),
+      serviceId: String(data.get("serviceId") ?? "").trim() || undefined,
       title: String(data.get("title") ?? "").trim(),
       employeeName,
       startsAt: toIsoWithTimezone(date, String(data.get("startsAt") ?? "09:00"), companyTimezone),
@@ -149,7 +155,8 @@ function ShiftDialog({
             <select
               id="shift-worksite"
               name="worksiteId"
-              defaultValue={activeWorksites[0]?.id}
+              value={selectedWorksiteId}
+              onChange={(event) => setSelectedWorksiteId(event.target.value)}
               className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               required
             >
@@ -159,6 +166,23 @@ function ShiftDialog({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="shift-service">Client service</Label>
+            <select
+              id="shift-service"
+              name="serviceId"
+              defaultValue=""
+              className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <option value="">Internal or unlinked shift</option>
+              {availableServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.title} · {service.customerName}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">Only services for this worksite&apos;s customer are shown.</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="shift-employee">Assignee</Label>
@@ -214,8 +238,9 @@ function ShiftDialog({
 }
 
 function ShiftRow({ shift }: { shift: PlannedShift }) {
-  const { assignShift, cancelShift, companyTimezone, employees, worksites } = useWiaControl();
+  const { assignShift, cancelShift, companyTimezone, employees, services, worksites } = useWiaControl();
   const worksite = worksites.find((item) => item.id === shift.worksiteId);
+  const service = services.find((item) => item.id === shift.serviceId);
   const status = statusConfig[shift.status];
 
   return (
@@ -236,6 +261,7 @@ function ShiftRow({ shift }: { shift: PlannedShift }) {
       </div>
       <div className="min-w-0">
         <p className="font-medium">{shift.title}</p>
+        {service ? <p className="mt-1 text-xs text-primary">{service.title} · {service.customerName}</p> : null}
         <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
           <Building2 className="size-3.5 shrink-0" />
           <span className="truncate">{worksite?.name ?? "Archived worksite"}</span>

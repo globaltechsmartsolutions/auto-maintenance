@@ -25,6 +25,8 @@ import {
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
+  operationalServiceInputSchema,
+  operationalServiceUpdateSchema,
   parseEmployeeAvailability,
   plannedShiftInputSchema,
   plannedShiftUpdateSchema,
@@ -83,6 +85,7 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
     orderBy: { scheduledStart: "asc" },
     include: {
       worksite: true,
+      service: { include: { customer: { select: { id: true, name: true } } } },
       employee: { include: { user: true } },
       clockEvents: { orderBy: { occurredAt: "asc" } },
       incidents: {
@@ -100,6 +103,7 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
 
   return shifts.map((shift) => ({
     id: shift.id,
+    serviceId: shift.serviceId ?? undefined,
     title: shift.title,
     status: shift.status,
     startsAt: shift.scheduledStart.toISOString(),
@@ -116,6 +120,14 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
       city: shift.worksite.city,
       verificationMode: shift.worksite.verificationMode,
     },
+    service: shift.service
+      ? {
+        id: shift.service.id,
+        title: shift.service.title,
+        customerId: shift.service.customer.id,
+        customerName: shift.service.customer.name,
+      }
+      : null,
     clockEvents: shift.clockEvents.map((event) => ({
       id: event.id,
       type: event.type,
@@ -158,6 +170,147 @@ export async function listWorksites(actor: WiaActor) {
       customer: { select: { id: true, name: true } },
       _count: { select: { shifts: true, incidents: true } },
     },
+  });
+}
+
+/**
+ * Operational services are the commercial commitments that shifts fulfil.
+ * Keeping them in the control domain lets WIAControl answer "was the client
+ * service covered?", rather than only "did a person clock in?".
+ */
+export async function listOperationalServices(actor: WiaActor) {
+  assertCompany(actor);
+  return getPrisma().service.findMany({
+    where: {
+      companyId: actor.companyId,
+      ...(actor.role === "EMPLOYEE"
+        ? { plannedShifts: { some: { employeeId: actor.employeeId ?? "__missing_employee__" } } }
+        : {}),
+    },
+    orderBy: [{ scheduledStart: "asc" }, { createdAt: "desc" }],
+    include: {
+      customer: { select: { id: true, name: true } },
+      plannedShifts: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          scheduledStart: true,
+          scheduledEnd: true,
+          worksite: { select: { id: true, name: true } },
+        },
+        orderBy: { scheduledStart: "asc" },
+      },
+    },
+  });
+}
+
+export async function listOperationalCustomers(actor: WiaActor) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view customers.");
+  }
+  return getPrisma().customer.findMany({
+    where: { companyId: actor.companyId, status: { not: "ARCHIVED" } },
+    select: { id: true, name: true, city: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function createOperationalService(actor: WiaActor, input: unknown) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot create services.");
+  }
+  const payload = operationalServiceInputSchema.parse(input);
+
+  return getPrisma().$transaction(async (transaction) => {
+    const customer = await transaction.customer.findFirst({
+      where: { id: payload.customerId, companyId: actor.companyId, status: { not: "ARCHIVED" } },
+      select: { id: true },
+    });
+    if (!customer) {
+      throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+    }
+
+    const service = await transaction.service.create({
+      data: {
+        companyId: actor.companyId,
+        customerId: customer.id,
+        title: payload.title,
+        description: payload.description,
+        serviceType: payload.serviceType,
+        recurrence: payload.recurrence,
+        status: payload.scheduledStart ? "SCHEDULED" : "PENDING",
+        scheduledStart: payload.scheduledStart ? new Date(payload.scheduledStart) : undefined,
+        scheduledEnd: payload.scheduledEnd ? new Date(payload.scheduledEnd) : undefined,
+        address: payload.address,
+        city: payload.city,
+        internalNotes: payload.internalNotes,
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "operational_service.created",
+        entity: "Service",
+        entityId: service.id,
+        metadata: { customerId: customer.id, recurrence: service.recurrence },
+      },
+    });
+    return service;
+  });
+}
+
+export async function updateOperationalService(actor: WiaActor, serviceId: string, input: unknown) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot update services.");
+  }
+  const payload = operationalServiceUpdateSchema.parse(input);
+
+  return getPrisma().$transaction(async (transaction) => {
+    const service = await transaction.service.findFirst({
+      where: { id: serviceId, companyId: actor.companyId },
+      select: { id: true, customerId: true, scheduledStart: true, scheduledEnd: true },
+    });
+    if (!service) {
+      throw new WiaDomainError("SERVICE_NOT_FOUND", "The service does not belong to the company.");
+    }
+    if (payload.customerId && payload.customerId !== service.customerId) {
+      const customer = await transaction.customer.findFirst({
+        where: { id: payload.customerId, companyId: actor.companyId, status: { not: "ARCHIVED" } },
+        select: { id: true },
+      });
+      if (!customer) {
+        throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+      }
+    }
+    const scheduledStart = payload.scheduledStart ? new Date(payload.scheduledStart) : service.scheduledStart;
+    const scheduledEnd = payload.scheduledEnd ? new Date(payload.scheduledEnd) : service.scheduledEnd;
+    if (scheduledStart && scheduledEnd && scheduledEnd <= scheduledStart) {
+      throw new WiaDomainError("INVALID_SERVICE_RANGE", "The service end time must be later than its start time.");
+    }
+    const updated = await transaction.service.update({
+      where: { id: service.id },
+      data: {
+        ...payload,
+        scheduledStart,
+        scheduledEnd,
+      },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "operational_service.updated",
+        entity: "Service",
+        entityId: service.id,
+        metadata: payload,
+      },
+    });
+    return updated;
   });
 }
 
@@ -540,10 +693,26 @@ export async function createPlannedShift(actor: WiaActor, input: unknown) {
   return getPrisma().$transaction(async (transaction) => {
     const worksite = await transaction.worksite.findFirst({
       where: { id: payload.worksiteId, companyId: actor.companyId, isActive: true },
-      select: { id: true },
+      select: { id: true, customerId: true },
     });
     if (!worksite) {
       throw new WiaDomainError("WORKSITE_NOT_FOUND", "The worksite does not belong to the company or is inactive.");
+    }
+
+    if (payload.serviceId) {
+      const service = await transaction.service.findFirst({
+        where: { id: payload.serviceId, companyId: actor.companyId, status: { not: "CANCELLED" } },
+        select: { id: true, customerId: true },
+      });
+      if (!service) {
+        throw new WiaDomainError("SERVICE_NOT_FOUND", "The service does not belong to the company or is cancelled.");
+      }
+      if (worksite.customerId && worksite.customerId !== service.customerId) {
+        throw new WiaDomainError(
+          "SERVICE_WORKSITE_MISMATCH",
+          "The selected service belongs to a different customer than this worksite."
+        );
+      }
     }
 
     if (payload.employeeId) {
@@ -610,7 +779,7 @@ export async function createPlannedShift(actor: WiaActor, input: unknown) {
         action: "planned_shift.created",
         entity: "PlannedShift",
         entityId: shift.id,
-        metadata: { employeeId: payload.employeeId ?? null },
+        metadata: { employeeId: payload.employeeId ?? null, serviceId: payload.serviceId ?? null },
       },
     });
 

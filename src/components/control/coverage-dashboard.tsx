@@ -135,6 +135,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
   const {
     companyTimezone,
     incidents,
+    services,
     worksites,
     assignReplacement,
     employees,
@@ -149,6 +150,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
   } | null>(null);
   const [showExcluded, setShowExcluded] = React.useState(false);
   const site = worksites.find((item) => item.id === shift.worksiteId);
+  const service = services.find((item) => item.id === shift.serviceId);
   const incident = incidents.find((item) => item.shiftId === shift.id);
   const [selectedEmployee, setSelectedEmployee] = React.useState(
     incident?.recommendedEmployee ?? ""
@@ -222,6 +224,11 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
 
           <div className="min-w-0">
             <p className="font-medium">{shift.title}</p>
+            {service ? (
+              <p className="mt-1 text-xs text-primary">
+                {service.title} · {service.customerName}
+              </p>
+            ) : null}
             <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
               <Building2 className="size-3.5 shrink-0" />
               <span className="truncate">{site?.name ?? "Undefined worksite"}</span>

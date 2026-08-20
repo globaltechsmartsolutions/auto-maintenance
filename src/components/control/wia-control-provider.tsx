@@ -13,6 +13,7 @@ import {
   type CommunicationDto,
   type CoverageDecisionDto,
   type EmployeeOptionDto,
+  type OperationalServiceDto,
   type PlannedShiftDto,
   type ShiftStatus as DomainShiftStatus,
   type TimeCorrectionDto,
@@ -49,6 +50,7 @@ export type TimeCorrection = TimeCorrectionDto;
 export type CoverageDecision = CoverageDecisionDto;
 export type Communication = CommunicationDto;
 export type EmployeeOption = EmployeeOptionDto;
+export type OperationalService = OperationalServiceDto;
 
 type WiaControlState = {
   worksites: Worksite[];
@@ -59,6 +61,7 @@ type WiaControlState = {
   coverageDecisions: CoverageDecision[];
   communications: Communication[];
   employees: EmployeeOption[];
+  services: OperationalService[];
   /** The company's configured display timezone (e.g. "Asia/Dubai"). */
   companyTimezone: string;
 };
@@ -76,6 +79,7 @@ type WiaControlContextValue = WiaControlState & {
     startsAt: string;
     endsAt: string;
     requiredSkills: string[];
+    serviceId?: string;
   }) => boolean;
   addWorksite: (input: Omit<Worksite, "id">) => void;
   archiveWorksite: (worksiteId: string) => boolean;
@@ -311,6 +315,12 @@ function createInitialState(): WiaControlState {
     coverageDecisions: [],
     communications: [],
     employees: [],
+    services: [
+      { id: "srv-1001", title: "Atrium daily cleaning", customerId: "customer-atrium", customerName: "Atrium Labs", recurrence: "DAILY", status: "SCHEDULED" },
+      { id: "srv-1002", title: "Clinic disinfection", customerId: "customer-alameda", customerName: "Alameda Clinic", recurrence: "WEEKLY", status: "SCHEDULED" },
+      { id: "srv-1003", title: "Hotel common areas", customerId: "customer-bruma", customerName: "Hotel Bruma", recurrence: "DAILY", status: "SCHEDULED" },
+      { id: "srv-1004", title: "Northern Towers cleaning", customerId: "customer-torres", customerName: "Northern Towers Community", recurrence: "DAILY", status: "SCHEDULED" },
+    ],
     companyTimezone: "Europe/Madrid",
   };
 }
@@ -330,6 +340,7 @@ function mergeSavedState(saved: Partial<WiaControlState>): WiaControlState {
       ? saved.communications
       : initial.communications,
     employees: initial.employees,
+    services: Array.isArray(saved.services) ? saved.services : initial.services,
     companyTimezone:
       typeof saved.companyTimezone === "string" ? saved.companyTimezone : initial.companyTimezone,
   };
@@ -435,6 +446,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         coverageDecisions: [],
         communications: [],
         employees: [],
+        services: [],
         companyTimezone: "UTC",
       }
   );
@@ -474,13 +486,14 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
     setLoadError(undefined);
     try {
       const date = new Date().toISOString().slice(0, 10);
-      const [dayResponse, worksitesResponse, employeesResponse, correctionsResponse, communicationsResponse] =
+      const [dayResponse, worksitesResponse, employeesResponse, correctionsResponse, communicationsResponse, servicesResponse] =
         await Promise.all([
           fetch(`/api/control/day?date=${date}`, { cache: "no-store" }),
           fetch("/api/control/worksites", { cache: "no-store" }),
           fetch("/api/control/employees", { cache: "no-store" }),
           fetch("/api/control/corrections", { cache: "no-store" }),
           fetch("/api/control/communications", { cache: "no-store" }),
+          fetch("/api/control/services", { cache: "no-store" }),
         ]);
       const day = await readJson<{
         shifts: Array<{
@@ -490,6 +503,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           startsAt: string;
           endsAt: string;
           requiredSkills: string[];
+          serviceId?: string;
           employee: { id: string; name: string } | null;
           worksite: { id: string };
           clockEvents: Array<{
@@ -525,7 +539,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           verificationMode: string;
           radiusMeters: number;
           isActive: boolean;
-          customer?: { name: string } | null;
+          customer?: { id: string; name: string } | null;
         }>;
       }>(worksitesResponse);
       const employeesData = await readJson<{
@@ -569,10 +583,20 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           createdAt: string;
         }>;
       }>(communicationsResponse);
+      const servicesData = await readJson<{
+        services: Array<{
+          id: string;
+          title: string;
+          recurrence: OperationalService["recurrence"];
+          status: OperationalService["status"];
+          customer: { id: string; name: string };
+        }>;
+      }>(servicesResponse);
 
       const mappedShifts: PlannedShift[] = day.shifts.map((shift) => ({
         id: shift.id,
         worksiteId: shift.worksite.id,
+        serviceId: shift.serviceId,
         title: shift.title,
         employeeName: shift.employee?.name,
         startsAt: shift.startsAt,
@@ -583,6 +607,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       setState({
         worksites: worksitesData.worksites.map((worksite) => ({
           id: worksite.id,
+          customerId: worksite.customer?.id,
           name: worksite.name,
           customer: worksite.customer?.name ?? "No linked customer",
           address: worksite.address,
@@ -654,6 +679,14 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           skills: employee.skills,
           zones: employee.zones,
           performanceScore: employee.performanceScore,
+        })),
+        services: servicesData.services.map((service) => ({
+          id: service.id,
+          title: service.title,
+          customerId: service.customer.id,
+          customerName: service.customer.name,
+          recurrence: service.recurrence,
+          status: service.status,
         })),
       });
       setHydrated(true);
@@ -770,7 +803,8 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       employeeName?: string;
       startsAt: string;
       endsAt: string;
-      requiredSkills: string[];
+    requiredSkills: string[];
+    serviceId?: string;
     }) => {
       const employee = input.employeeName
         ? employeeOptions.find((item) => item.name === input.employeeName)
@@ -809,6 +843,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           body: JSON.stringify({
             worksiteId: input.worksiteId,
             employeeId: employee?.id,
+            serviceId: input.serviceId,
             title: input.title,
             scheduledStart: input.startsAt,
             scheduledEnd: input.endsAt,
@@ -823,6 +858,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       const shift: PlannedShift = {
         id: shiftId,
         worksiteId: input.worksiteId,
+        serviceId: input.serviceId,
         title: input.title,
         employeeName: input.employeeName,
         startsAt: input.startsAt,

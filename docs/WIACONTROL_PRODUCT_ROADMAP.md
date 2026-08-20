@@ -1,312 +1,212 @@
-# WIAControl Product Roadmap
+# WIAControl Commercial Pilot Roadmap
 
 **Audience:** Product owner and implementation partner
-**Status:** Proposed implementation roadmap
-**Product:** WIAControl — intelligent time tracking and operational coverage for service businesses
+**Product:** WIAControl — operational coverage assurance for recurring field services
+**Last reviewed:** 20 August 2026
 
-## 1. Product direction
+## 1. Product decision
 
-WIAControl is a multi-tenant operational platform for field-service companies.
-It helps a company plan work, record time reliably, identify exceptions, and
-resolve staffing gaps with an explainable recommendation. The product is not a
-surveillance tool: location is checked only at a clock event when enabled by a
-company policy; it does not continuously track employees.
+WIAControl will not compete as a generic time-clock, HR suite, ERP, or full
+field-service-management system. It will begin with recurring, distributed
+field services: cleaning, facility services, and later security.
 
-The product should become the daily operational system of record for three
-people:
+> WIAControl verifies attendance, detects coverage risk, and helps a
+> coordinator recover a client service before it becomes a customer problem.
 
-- **Employee:** sees today’s work, clocks in and out, requests corrections, and
-  understands the status of their own records.
-- **Coordinator:** plans shifts, reacts to absence or timing incidents, and
-  confirms a replacement with an auditable reason.
-- **Administrator:** manages company settings, employees, worksites, retention,
-  exports, subscriptions, and optional commercial modules.
+The primary buyer is an operations manager. Coordinators and field employees
+are the daily users. HR and finance are supporting stakeholders.
 
-## 2. What already exists
+## 2. The workflow to complete
 
-The repository already contains a strong MVP foundation:
+```text
+Customer → Worksite → Service commitment → Planned shift → Verified attendance
+         → Incident → Human coverage decision → Employee acknowledgement
+         → Service evidence → Customer/operational report
+```
 
-- Next.js 15 and TypeScript application with responsive dashboard and employee
-  experiences.
-- PostgreSQL/Prisma schema for companies, roles, worksites, planned shifts,
-  append-only clock events, incidents, corrections, coverage decisions, audit
-  records, communication outbox, customers, billing, and subscriptions.
-- Supabase-based authentication, role checks, and protected routes.
-- Domain validation for clock-event sequence, shift overlap, coverage, and
-  permissions.
-- Real API routes plus a local demo adapter for product demonstrations.
-- Stripe Checkout, Billing Portal, webhooks, health checks, migrations, seeds,
-  unit tests, and lint/type-check scripts.
+Every roadmap item must strengthen this workflow. Do not add broad CRM,
+invoicing, inventory, asset-management, or payroll features unless a validated
+pilot requires an integration with one of them.
 
-The next phase is not to redesign the foundation. It is to make the operational
-workflow production-ready, measurable, and easy to adopt.
+## 3. Current verified foundation
 
-## 3. Product principles and guardrails
+Delivered on `main`:
 
-1. **Evidence first.** A clock event is appended; it is never silently edited.
-   Corrections are separate requests linked to the original event.
-2. **Every alert leads to a decision.** Incidents must be acknowledged,
-   resolved, dismissed, or escalated. The outcome is recorded.
-3. **Recommendations are explainable.** WIAControl can rank candidates, but a
-   coordinator can override it and must provide a reason where appropriate.
-4. **Privacy by design.** Do not introduce biometric data or continuous GPS
-   tracking without a separate product, legal, and security decision.
-5. **Tenant isolation is non-negotiable.** Every real read and mutation is
-   scoped to the active company and authorised role.
-6. **Demo and production share business rules.** The demo may use local data,
-   but it must not invent a different workflow.
-7. **English-first user experience.** The app will be completed in English;
-   strings should then move to a central translation layer before a second
-   language is introduced.
+- Multi-tenant roles, server-side authorisation, account-status enforcement,
+  and audit logging.
+- Worksites with customer relationship, verification method, timezone, and
+  geofence settings.
+- Employees, skills, zones, availability, daily limits, shifts, and server-side
+  overlap checks.
+- Mobile clocking, point-in-time location verification, append-only events,
+  idempotency, corrections, and offline retry queue.
+- Incident detection, severity, ownership, deterministic replacement
+  recommendations, human override, and communication outbox.
+- Operational services can be created for a customer and linked to shifts. The
+  server rejects a cross-customer service/worksite relationship.
 
-## 4. Delivery sequence
+This is not yet a production-ready product. Staging configuration, external
+delivery configuration, pilot evidence, legal/privacy review, backups, and
+support operation remain required.
 
-### Phase 0 — Product baseline and release discipline
+## 4. Delivery roadmap
 
-**Goal:** establish a reliable starting point before adding integrations or
-advanced intelligence.
+### Stage A — Commercial service coverage
 
-**Work items**
+**Outcome:** A coordinator connects each customer commitment to the people and
+shifts that fulfil it.
 
-- Freeze a short list of pilot-company workflows: normal shift, late arrival,
-  missing clock-in, absence, replacement, correction, and export.
-- Define a staging environment with separate Supabase, PostgreSQL, Stripe test
-  mode, and environment variables.
-- Add CI checks for install, lint, typecheck, tests, Prisma validation, build,
-  and dependency audit.
-- Document release, rollback, migration, seed, and support procedures.
-- Capture baseline product metrics: activation, successful clock events,
-  unresolved incidents, and time-to-coverage.
+**Delivered**
+
+- Service register with customer, type, recurrence, schedule, and linked shifts.
+- Shift planner service selector filtered to the selected worksite customer.
+- Server-side company ownership and customer/worksite validation.
+
+**Remaining**
+
+1. Show linked service and customer consistently in shift, coverage, incident,
+   employee, and export views.
+2. Add a service detail view grouping shifts, clocks, incidents, decisions, and
+   communications.
+3. Mark a service at risk when a current shift is uncovered or carries an open
+   high/critical incident; never overwrite the service status silently.
+4. Allow an assigned coordinator to acknowledge risk and add a resolution note.
 
 **Acceptance criteria**
 
-- A new developer can start the application from documentation.
-- A pull request cannot be merged with failing quality checks.
-- Staging uses no production secrets or customer data.
+- A coordinator can create a service, link a compatible shift, and see whether
+  it is covered.
+- A shift cannot link to another company, a cancelled service, or a service for
+  another worksite customer.
+- An employee sees only their own assignment, never the company service register.
 
-### Phase 1 — Complete the English product surface
+### Stage B — Evidence of service delivery
 
-**Goal:** deliver one coherent English product rather than a partly translated
-demo.
+**Outcome:** WIAControl explains what happened to a customer service, not only
+whether a person clocked in.
 
-**Work items**
-
-- Inventory all customer-visible strings in pages, components, status labels,
-  notifications, validation messages, empty states, exports, and demo data.
-- Extract UI copy into a typed `en` translation catalogue. Avoid translating
-  status values used in business logic; map those values to display labels.
-- Replace remaining Spanish display text, including employee clocking,
-  coordinator coverage, CRM, customer portal, modal dialogs, and CSV headers.
-- Set document language and all date/number/currency formatting to the intended
-  English locale (`en-GB` is appropriate while retaining EUR).
-- Add a smoke test that rejects Spanish user-facing strings on core routes.
-
-**Acceptance criteria**
-
-- All supported routes render English content, controls, errors, and empty
-  states.
-- Domain constants and database enum values remain stable.
-- A future `es` locale can be added without duplicating page components.
-
-### Phase 2 — Production time-tracking hardening
-
-**Goal:** make clocking trustworthy under real mobile conditions.
-
-**Work items**
-
-- Validate server time, client-declared time, time zone, device metadata, and
-  idempotency key for each submitted event.
-- Define practical offline behaviour: queue an event locally, display its
-  pending state, retry safely, and never create a duplicate on reconnect.
-- Add user-facing feedback for permission denial, unavailable location, weak
-  network, expired shift, and repeated submission.
-- Review append-only database triggers, hash-chain verification, and export
-  integrity with representative data.
-- Add audit views for an administrator: event timeline, correction timeline,
-  actor, method, verification result, and export generation.
+1. Add one completion record per shift: outcome, optional checklist, note, and
+   timestamp.
+2. Add controlled evidence attachments through private storage. Never use public
+   URLs or put sensitive files directly in the database.
+3. Create cleaning templates first: opening check, common-area check, incident
+   note, and completion confirmation.
+4. Present an immutable timeline of shift, clocks, corrections, incident,
+   coverage decision, communication, and completion.
+5. Export a customer-period evidence pack in CSV first. Add branded PDF only
+   after pilots validate the data.
 
 **Acceptance criteria**
 
-- Repeated requests with the same idempotency key produce one event.
-- Employees cannot clock for a different employee or company.
-- A correction never changes the original event.
-- A coordinator can understand why an event is flagged without database access.
+- A completed service has an attributable, timestamped trail.
+- Evidence is tenant-scoped and follows a documented retention policy.
+- Corrections never overwrite original clock or completion records.
 
-### Phase 3 — Intelligent incident detection
+### Stage C — Risk and recovery cockpit
 
-**Goal:** turn raw events into useful operational attention, not notification
-noise.
+**Outcome:** A coordinator finds the next action in seconds.
 
-**Work items**
-
-- Define incident policies per company: grace period, late threshold, missing
-  clock-in threshold, incomplete shift threshold, and location policy.
-- Make incident detection idempotent and safe to run from an API route, cron,
-  or queue worker.
-- Introduce severity, owner, due time, and resolution categories.
-- Build an incident inbox for coordinators with filters by worksite, date,
-  severity, status, and employee.
-- Add digest notifications; do not notify repeatedly for the same unresolved
-  situation.
+1. Add a `Services at risk now` view ordered by severity and scheduled start.
+2. Group open incidents by service and expose owner, due time, and next action.
+3. Open the existing recommendation flow from the service context, confirm a
+   substitute, and queue a notification.
+4. Measure acknowledgement and detection-to-coverage time.
+5. Add explicit no-candidate and escalation states. Do not automatically assign
+   a worker during the pilot.
 
 **Acceptance criteria**
 
-- Detection can run more than once without duplicate incidents.
-- Every open incident has a clear owner and next action.
-- False-positive rate and resolution time are measurable.
+- Every at-risk service has a visible owner and next action.
+- A substitute is validated server-side for skills, availability, overlap, and
+  daily limits.
+- Recommendation and manual-override reasons remain visible and auditable.
 
-### Phase 4 — Explainable coverage recommendation
+### Stage D — Pilot onboarding and interoperability
 
-**Goal:** recommend the best available replacement while keeping the human in
-control.
+**Outcome:** A pilot starts without forcing an immediate system replacement.
 
-**Candidate scoring v1**
-
-Use deterministic, inspectable rules before any machine-learning work:
-
-| Signal | Example use |
-| --- | --- |
-| Availability | Candidate is free for the full shift window. |
-| Overlap risk | Reject conflicting shifts and mandatory rest conflicts. |
-| Worksite fit | Prefer a matching zone or reasonable travel distance. |
-| Skills | Prefer required or relevant skills for the service. |
-| Workload | Prefer lower current workload using transparent schedule data only. |
-
-**Work items**
-
-- Store the server-generated score breakdown and rejection reasons with each recommendation.
-- Present the top candidates and the reason each is suitable or excluded.
-- Require an override reason when the coordinator selects a lower-ranked
-  candidate.
-- Confirm the selected replacement, resolve the incident, queue communication,
-  and write audit data in one transaction.
-- Create a feedback dataset from accepted and overridden recommendations, without using performance scores or incident history to rank people.
+1. Guided setup: timezone, customers, worksites, employees, skills, first
+   service, first shift, and first clock event.
+2. CSV import with preview, validation, duplicate handling, and reversible dry
+   run for employees, worksites, services, and shifts.
+3. Documented exports for attendance, incidents, coverage decisions, and service
+   evidence. Confirm payroll columns with each pilot.
+4. A pilot workspace with setup progress and support contact.
+5. Promise a third-party integration only when authentication, mapping, failure
+   handling, and a support owner have been implemented.
 
 **Acceptance criteria**
 
-- No candidate is recommended if they overlap, lack required availability, or
-  belong to another company.
-- A coordinator can override any recommendation.
-- The system records the final choice and the reason without exposing sensitive
-  employee data unnecessarily.
+- One to three worksites can run WIAControl beside the customer’s existing tool.
+- Import errors identify a row, field, and safe corrective action.
+- Exports are company-scoped, documented, and reproducible.
 
-### Phase 5 — Communications and employee adoption
+### Stage E — Production readiness
 
-**Goal:** make operational decisions reach the correct person reliably.
+**Outcome:** The product can safely serve a paying pilot.
 
-**Work items**
+1. Configure separate staging Supabase, PostgreSQL, storage, Stripe test mode,
+   and environment variables.
+2. CI runs install, lint, type-check, unit tests, Prisma validation, production
+   build, dependency audit, and protected staging end-to-end tests.
+3. Add privacy-safe logs, error monitoring, and alerts for failed clocks, crons,
+   outbox processing, and migrations.
+4. Rehearse database restore and rollback. Write support runbooks for failed
+   clocking, incorrect assignment, data export, access loss, and incident triage.
+5. Obtain qualified legal/privacy review of worker information, geolocation,
+   retention, terms, and data-processing agreement.
 
-- Implement the existing communication outbox with a worker and retry policy.
-- Start with in-app and email; add SMS or WhatsApp only after consent, provider
-  selection, cost controls, and delivery-failure handling are defined.
-- Build employee acknowledgement for a reassigned shift.
-- Add notification preferences and company-level message templates.
-- Surface delivery status and a manual resend action to coordinators.
+**Pilot exit criteria**
 
-**Acceptance criteria**
+- At least 95% of valid clock submissions finish without manual support.
+- No unresolved critical tenant-isolation, data-integrity, or authorisation
+  defect exists.
+- Coordinators resolve common no-show and late-arrival flows without engineering.
+- The pilot measures a meaningful improvement in detection or recovery time.
 
-- A coverage decision is not reported as communicated until the outbox confirms
-  delivery or a visible failure state.
-- Retries are bounded and observable.
-- Employees can see the assignment that affects them.
+## 5. Commercial rollout
 
-### Phase 6 — Pilot, observability, and support
+### Pilot offer
 
-**Goal:** validate WIAControl with a real operating team before broad release.
+- Target: cleaning/facility services first; select only one sector for the first
+  pilots.
+- Customer size: 20–250 field workers across several client worksites.
+- Scope: one to three worksites for 45–60 days alongside the existing product.
+- Success measures: at-risk services detected, median recovery time, recovered
+  coverage, and coordinator time saved.
 
-**Pilot scope**
+### Positioning
 
-- One to three service companies, a limited number of worksites, and defined
-  administrator/coordinator champions.
-- Use production-like but controlled schedules for four to six weeks.
-- Hold weekly reviews of incidents, corrections, recommendation overrides, and
-  employee feedback.
+Do not sell GPS clocking or AI scheduling. Sell the measurable outcome:
 
-**Work items**
+> Prove attendance, detect an uncovered service early, and record how your team
+> recovered it.
 
-- Add structured application logs with company-safe identifiers.
-- Track API latency, error rate, queue failures, failed clock submissions,
-  recommendation acceptance, and incident resolution time.
-- Create a support playbook for failed clocking, mistaken assignment, account
-  access, export request, and data correction.
-- Run backup/restore and migration rehearsal before pilot expansion.
+### Pricing hypothesis to validate after pilots
 
-**Exit criteria**
-
-- At least 95% of submitted clock events complete successfully without manual
-  support.
-- No unresolved critical tenant-isolation or data-integrity issue exists.
-- Pilot coordinators can resolve the common incident types without engineering
-  intervention.
-
-### Phase 7 — Commercial readiness
-
-**Goal:** safely sell and onboard WIAControl.
-
-**Work items**
-
-- Define plans, feature limits, trials, cancellation, failed-payment behaviour,
-  and upgrade/downgrade handling.
-- Complete onboarding: company, time zone, worksites, employees, policies,
-  first shift, and first successful clock event.
-- Add role-appropriate help content and in-product onboarding checklists.
-- Separate optional CRM features from core operational entitlement.
-- Prepare a data-processing, privacy, retention, and access-control review with
-  qualified legal/privacy professionals for target markets.
-
-**Acceptance criteria**
-
-- A company can self-onboard to its first working shift.
-- Subscription changes cannot expose data across tenants or leave ambiguous
-  access states.
-
-### Phase 8 — Intelligence v2 (only after pilot evidence)
-
-**Goal:** improve recommendations using evidence while preserving explainability.
-
-**Possible work items**
-
-- Calibrate deterministic weights from accepted/overridden recommendations.
-- Forecast likely coverage risks from schedule density and declared absence.
-- Suggest staffing changes before a shift becomes uncovered.
-- Evaluate models offline against historical decisions before any production use.
-- Keep rule-based fallback, score explanation, human override, and monitoring
-  for bias or degradation.
-
-**Do not start this phase until** Phase 6 has reliable data and clear evidence
-that deterministic recommendations are insufficient.
-
-## 5. Suggested ownership
-
-| Area | Primary owner | Review partner |
+| Offer | Indicative price | Purpose |
 | --- | --- | --- |
-| Product workflow and pilot feedback | Product owner | Coordinator champions |
-| Domain/API/database integrity | Backend developer | Security reviewer |
-| Employee and coordinator UX | Frontend developer | Pilot users |
-| Authentication and tenant isolation | Backend developer | Security reviewer |
-| CI, staging, monitoring, releases | Developer/DevOps | Product owner |
-| Privacy, employment, and retention policy | Product owner | Qualified legal/privacy adviser |
+| Controlled pilot | €0–€99/month | Remove migration risk and measure value. |
+| Coverage | €3.50–€4.50 per active field worker/month | Attendance, incidents, audit trail. |
+| Operations | €5–€6 per active field worker/month | Coverage workflow, reports, automation. |
+| Enterprise | Quote | Integration, onboarding, SLA, custom security. |
 
-## 6. Definition of done for every feature
+## 6. Definition of done
 
-A feature is complete only when it has:
+A feature is complete only with:
 
-1. A documented user outcome and role permissions.
+1. A documented user outcome and authorised roles.
 2. Server-side validation and tenant scoping.
-3. Loading, empty, error, and success states in English.
-4. Tests covering core rules and a realistic failure path.
-5. Audit data where the action changes time, coverage, or an employee record.
-6. Monitoring or logs sufficient to diagnose a production failure.
-7. Updated developer and operational documentation.
+3. English loading, empty, error, and success states.
+4. Tests for the core rule and a meaningful failure path.
+5. Audit data when it changes attendance, coverage, or service evidence.
+6. Logs or metrics sufficient to diagnose a production failure.
+7. An implementation-playbook update when the workflow changes.
 
-## 7. Immediate next sprint
+## 7. Explicit non-goals until pilot evidence exists
 
-1. Complete the English catalogue and remove remaining mixed-language UI.
-2. Write end-to-end tests for employee clock-in, correction request, incident,
-   recommendation, override, and coverage confirmation.
-3. Define offline clock-event behaviour and implement idempotent retry.
-4. Add incident severity, ownership, and coordinator inbox filters.
-5. Prepare staging and run the first controlled pilot workflow with test users.
-
-This order builds confidence in the core time-tracking experience before adding
-new sales features or more complex AI.
+- Continuous employee tracking or biometric clocking.
+- Fully automatic reassignment.
+- Full billing, accounting, inventory, route optimisation, or asset management.
+- Machine-learning staffing decisions without a separate safety, privacy, and
+  fairness review.
