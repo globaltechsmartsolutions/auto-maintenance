@@ -49,7 +49,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils";
+import { cn, toIsoWithTimezone } from "@/lib/utils";
 
 const statusConfig: Record<ShiftStatus, { label: string; className: string }> = {
   PLANNED: { label: "Planned", className: "border-info/30 bg-info/10 text-info" },
@@ -69,21 +69,21 @@ const employeeStatusLabels = {
   INACTIVE: "Inactive",
 } as const;
 
-function formatTime(value: string) {
+function formatTime(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Madrid",
+    timeZone: timezone,
   }).format(new Date(value));
 }
 
-function formatDay(value: string) {
+function formatDay(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
     weekday: "long",
-    timeZone: "Europe/Madrid",
-  }).format(new Date(`${value}T12:00:00+02:00`));
+    timeZone: timezone,
+  }).format(new Date(`${value}T12:00:00Z`));
 }
 
 function addDays(date: string, days: number) {
@@ -101,7 +101,7 @@ function ShiftDialog({
   onOpenChange: (open: boolean) => void;
   defaultDate: string;
 }) {
-  const { addShift, employees, worksites } = useWiaControl();
+  const { addShift, companyTimezone, employees, worksites } = useWiaControl();
   const activeWorksites = worksites.filter((worksite) => worksite.isActive !== false);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -113,8 +113,8 @@ function ShiftDialog({
       worksiteId: String(data.get("worksiteId") ?? ""),
       title: String(data.get("title") ?? "").trim(),
       employeeName,
-      startsAt: `${date}T${String(data.get("startsAt") ?? "09:00")}:00+02:00`,
-      endsAt: `${date}T${String(data.get("endsAt") ?? "11:00")}:00+02:00`,
+      startsAt: toIsoWithTimezone(date, String(data.get("startsAt") ?? "09:00"), companyTimezone),
+      endsAt: toIsoWithTimezone(date, String(data.get("endsAt") ?? "11:00"), companyTimezone),
       requiredSkills: String(data.get("requiredSkills") ?? "")
         .split(",")
         .map((skill) => skill.trim())
@@ -214,7 +214,7 @@ function ShiftDialog({
 }
 
 function ShiftRow({ shift }: { shift: PlannedShift }) {
-  const { assignShift, cancelShift, employees, worksites } = useWiaControl();
+  const { assignShift, cancelShift, companyTimezone, employees, worksites } = useWiaControl();
   const worksite = worksites.find((item) => item.id === shift.worksiteId);
   const status = statusConfig[shift.status];
 
@@ -228,7 +228,7 @@ function ShiftRow({ shift }: { shift: PlannedShift }) {
     >
       <div>
         <p className="text-lg font-semibold tabular-nums">
-          {formatTime(shift.startsAt)}–{formatTime(shift.endsAt)}
+          {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
         </p>
         <Badge variant="outline" className={cn("mt-1 rounded-md", status.className)}>
           {status.label}
@@ -303,7 +303,7 @@ function ShiftRow({ shift }: { shift: PlannedShift }) {
 }
 
 export function ShiftPlanner() {
-  const { shifts } = useWiaControl();
+  const { companyTimezone, shifts } = useWiaControl();
   const firstDate = shifts[0]?.startsAt.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDate] = React.useState(firstDate);
   const [view, setView] = React.useState<"day" | "week">("day");
@@ -439,7 +439,7 @@ export function ShiftPlanner() {
               <section key={date} className="space-y-3" aria-labelledby={`day-${date}`}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 id={`day-${date}`} className="text-sm font-semibold capitalize">
-                    {formatDay(date)}
+                    {formatDay(date, companyTimezone)}
                   </h2>
                   <Badge variant="secondary" className="rounded-md">{dayShifts.length} shifts</Badge>
                 </div>

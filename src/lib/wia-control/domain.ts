@@ -118,7 +118,7 @@ export const correctionAcknowledgementSchema = z
     }
   });
 
-export const incidentUpdateSchema = z
+const incidentStatusUpdateSchema = z
   .object({
     status: z.enum(["ACKNOWLEDGED", "RESOLVED", "DISMISSED"]),
     resolutionNotes: z.string().trim().min(5).max(1_000).optional(),
@@ -133,13 +133,33 @@ export const incidentUpdateSchema = z
     }
   });
 
+const incidentAssignSchema = z.object({
+  action: z.literal("ASSIGN"),
+  // Omitted means "assign to me" — the server resolves it from the caller's
+  // own identity rather than trusting a client-supplied id for that case.
+  ownerId: z.string().min(1).optional(),
+});
+
+const incidentEscalateSchema = z.object({
+  action: z.literal("ESCALATE"),
+  note: z.string().trim().min(5).max(1_000),
+});
+
+/**
+ * Stage 3: an incident update is either a status transition (unchanged
+ * shape, kept backward compatible with the existing caller) or one of the
+ * two new actions, assign and escalate.
+ */
+export const incidentUpdateSchema = z.union([
+  incidentStatusUpdateSchema,
+  incidentAssignSchema,
+  incidentEscalateSchema,
+]);
+
 export const coverageDecisionSchema = z.object({
   shiftId: identifier,
   incidentId: identifier,
   selectedEmployeeId: identifier,
-  recommendedEmployeeId: identifier.optional(),
-  score: z.number().int().min(0).max(100).optional(),
-  reasons: z.array(z.string().trim().min(1).max(240)).max(10).default([]),
   overrideReason: z.string().trim().min(5).max(1_000).optional(),
 });
 
@@ -151,6 +171,14 @@ export const companySettingsSchema = z.object({
   timezone: z.string().trim().min(3).max(80),
   clockRetentionYears: z.number().int().min(4).max(10),
   crmEnabled: z.boolean(),
+  // Stage 3 incident policy. Optional so the existing settings form, which
+  // does not send these, continues to work — omitted fields are left
+  // untouched rather than reset to a default.
+  lateSeverityThresholdMinutes: z.number().int().min(1).max(480).optional(),
+  incidentDueMinutesCritical: z.number().int().min(5).max(10_080).optional(),
+  incidentDueMinutesHigh: z.number().int().min(5).max(10_080).optional(),
+  incidentDueMinutesMedium: z.number().int().min(5).max(10_080).optional(),
+  incidentDueMinutesLow: z.number().int().min(5).max(10_080).optional(),
 });
 
 export type WorksiteInput = z.infer<typeof worksiteInputSchema>;

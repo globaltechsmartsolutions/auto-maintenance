@@ -38,8 +38,8 @@ real customer workflow has been validated in staging.
 | Worksites and shifts | Implemented foundation | CRUD routes, overlap checks, worksite archive protection, and audit records. | Validate real coordinator workflows, time zones, cancellation, and role permissions. |
 | Clock events | Implemented foundation | Append-only events, idempotency keys, transition validation, integrity hashes, and location/alternative-method verification. | Add device behaviour, offline queue, retry UX, and end-to-end mobile tests. |
 | Corrections | Implemented foundation | Separate correction requests linked to original clock events. | Test employee acknowledgement, review, disagreement, export, and permissions in staging. |
-| Incidents | Implemented foundation | Incident entities and core detection/resolution routes. | Add policy configuration, severity, ownership, due times, scheduled detection, and an operational inbox. |
-| Replacement recommendations | Implemented foundation | Deterministic candidate evaluation, score explanations, coverage decisions, and audit records. | Enforce all real availability/rest rules; validate decisions with coordinators. Never enable automatic assignment for the pilot. |
+| Incidents | Implemented foundation | Severity policy, ownership, due times, a filterable inbox, and scheduled detection are implemented. Database idempotency prevents duplicate detection under concurrent cron runs. | Apply the migration and verify the protected cron endpoint and coordinator workflow in staging. |
+| Replacement recommendations | Implemented foundation | Deterministic, explainable candidate evaluation, local-time daily limits, server-persisted recommendations, coverage decisions, and audit records. | Validate rest rules and coordinator decisions with pilot users. Never enable automatic assignment for the pilot. |
 | Communications | Data model only | `CommunicationOutbox` exists and operations create records. | Build and run a background worker with delivery providers, retries, visibility, and acknowledgement. |
 | Billing, CRM, bookings | Supporting modules | Pages, API routes, Stripe integration points, and demo data. | Keep out of the pilot critical path unless a customer explicitly needs them. |
 | Monitoring and support | Not pilot-ready | Health route and CI quality workflow. | Add structured logs, alerting, metrics, backup/restore rehearsal, and support runbooks. |
@@ -48,17 +48,17 @@ real customer workflow has been validated in staging.
 remains” column for the core operations workflow has been completed and tested
 with pilot users.
 
-### Developer-branch verification status
+### Current implementation verification status
 
-The `imtiaz-dev-WIA-Control` implementation now contains the Stage 1 and Stage
-2 code corrections, including the complete recovery-password screen,
-authorization-before-schema validation, real retry scheduling, flush
-concurrency protection, and expanded cross-tenant tests. Local linting,
-TypeScript, unit tests, Prisma validation, and the production dependency audit
-must pass before opening the pull request. The Playwright suite still requires
-the private staging accounts described by `e2e/README.md`; its final pass must
-be recorded in CI or by a reviewer with staging access before these stages are
-called externally verified.
+Stages 1–4 are implemented on the integration branch built from the current
+`main` baseline. It preserves the authorization-before-validation and offline
+queue fixes from Stages 1–2, and adds database-enforced incident idempotency,
+server-owned coverage recommendations, and company-timezone day boundaries.
+Run linting, TypeScript, unit tests, Prisma validation, and the production
+dependency audit before opening a pull request. The Playwright suite still
+requires the private staging accounts described by `e2e/README.md`; its final
+pass must be recorded in CI or by a reviewer with staging access before these
+stages are called externally verified.
 
 ## 3. Repository map
 

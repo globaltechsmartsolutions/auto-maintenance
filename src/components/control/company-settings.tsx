@@ -85,6 +85,14 @@ export function CompanySettings({ initialValue }: { initialValue: CompanySetting
               >
                 <option value="Europe/Madrid">Mainland Spain · Europe/Madrid</option>
                 <option value="Atlantic/Canary">Canary Islands · Atlantic/Canary</option>
+                <option value="Asia/Dubai">United Arab Emirates · Asia/Dubai</option>
+                <option value="Asia/Karachi">Pakistan · Asia/Karachi</option>
+                <option value="Asia/Riyadh">Saudi Arabia · Asia/Riyadh</option>
+                <option value="Asia/Kolkata">India · Asia/Kolkata</option>
+                <option value="Europe/London">United Kingdom · Europe/London</option>
+                <option value="America/New_York">US Eastern · America/New_York</option>
+                <option value="America/Los_Angeles">US Pacific · America/Los_Angeles</option>
+                <option value="UTC">UTC</option>
               </select>
             </div>
             <div className="space-y-2">

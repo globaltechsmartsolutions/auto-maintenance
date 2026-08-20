@@ -48,16 +48,16 @@ const eventLabels: Record<ClockEventType, string> = {
   CLOCK_OUT: "Clock-out",
 };
 
-function formatTime(value: string) {
+function formatTime(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Madrid",
+    timeZone: timezone,
   }).format(new Date(value));
 }
 
 function ShiftSummary({ shift }: { shift: PlannedShift }) {
-  const { worksites } = useWiaControl();
+  const { companyTimezone, worksites } = useWiaControl();
   const site = worksites.find((item) => item.id === shift.worksiteId);
   return (
     <div className="rounded-lg border border-border/70 bg-background/40 p-3">
@@ -67,7 +67,7 @@ function ShiftSummary({ shift }: { shift: PlannedShift }) {
           <p className="mt-1 text-sm text-muted-foreground">{site?.name}</p>
         </div>
         <Badge variant="secondary" className="rounded-md tabular-nums">
-          {formatTime(shift.startsAt)}–{formatTime(shift.endsAt)}
+          {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
         </Badge>
       </div>
     </div>
@@ -144,6 +144,7 @@ export function EmployeeClock() {
   const {
     acknowledgeTimeCorrection,
     clockQueueStatus,
+    companyTimezone,
     employees,
     shifts,
     worksites,
@@ -275,7 +276,7 @@ export function EmployeeClock() {
               <div className="grid gap-3 text-sm sm:grid-cols-2">
                 <p className="flex items-center gap-2 text-muted-foreground">
                   <Clock3 className="size-4 text-primary" />
-                  {activeShift ? `${formatTime(activeShift.startsAt)}–${formatTime(activeShift.endsAt)}` : "No shift"}
+                  {activeShift ? `${formatTime(activeShift.startsAt, companyTimezone)}–${formatTime(activeShift.endsAt, companyTimezone)}` : "No shift"}
                 </p>
                 <p className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="size-4 text-primary" />
@@ -390,7 +391,7 @@ export function EmployeeClock() {
                         <div>
                           <p className="text-sm font-medium">{eventLabels[event.type]}</p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
-                            {formatTime(event.occurredAt)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
+                            {formatTime(event.occurredAt, companyTimezone)} · {event.method === "MOBILE" ? "Mobile" : event.method} · Verified worksite
                           </p>
                         </div>
                         <Button
@@ -439,7 +440,7 @@ export function EmployeeClock() {
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">
-                            {formatTime(correction.originalTime)} → {formatTime(correction.correctedTime)}
+                            {formatTime(correction.originalTime, companyTimezone)} → {formatTime(correction.correctedTime, companyTimezone)}
                           </p>
                           <Badge variant="outline" className="rounded-md">
                             {{

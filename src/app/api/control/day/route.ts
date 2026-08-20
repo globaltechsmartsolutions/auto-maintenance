@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiRoute } from "@/lib/http/api-route";
 import { requireWiaApiContext } from "@/lib/wia-control/api-context";
-import { listControlDay } from "@/lib/wia-control/service";
+import { getCompanyTimezone, listControlDay } from "@/lib/wia-control/service";
 
 const querySchema = z.object({
   date: z.string().date(),
@@ -21,9 +21,17 @@ export const GET = apiRoute(async (request: Request) => {
   if (context.response) return context.response;
 
   if (context.demo) {
-    return Response.json({ mode: "demo", date: query.date, shifts: [] });
+    return Response.json({
+      mode: "demo",
+      date: query.date,
+      shifts: [],
+      companyTimezone: "Europe/Madrid",
+    });
   }
 
-  const shifts = await listControlDay(context.actor, new Date(`${query.date}T00:00:00.000Z`));
-  return Response.json({ mode: "database", date: query.date, shifts });
+  const [shifts, companyTimezone] = await Promise.all([
+    listControlDay(context.actor, query.date),
+    getCompanyTimezone(context.actor.companyId),
+  ]);
+  return Response.json({ mode: "database", date: query.date, shifts, companyTimezone });
 });

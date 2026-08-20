@@ -170,18 +170,17 @@ Use deterministic, inspectable rules before any machine-learning work:
 | Overlap risk | Reject conflicting shifts and mandatory rest conflicts. |
 | Worksite fit | Prefer a matching zone or reasonable travel distance. |
 | Skills | Prefer required or relevant skills for the service. |
-| Workload | Avoid candidates already near daily job/hour limits. |
-| Reliability | Use only transparent, reviewed signals; never opaque penalties. |
+| Workload | Prefer lower current workload using transparent schedule data only. |
 
 **Work items**
 
-- Store the score breakdown and rejection reasons with each recommendation.
+- Store the server-generated score breakdown and rejection reasons with each recommendation.
 - Present the top candidates and the reason each is suitable or excluded.
 - Require an override reason when the coordinator selects a lower-ranked
   candidate.
 - Confirm the selected replacement, resolve the incident, queue communication,
   and write audit data in one transaction.
-- Create a feedback dataset from accepted and overridden recommendations.
+- Create a feedback dataset from accepted and overridden recommendations, without using performance scores or incident history to rank people.
 
 **Acceptance criteria**
 

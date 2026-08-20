@@ -75,11 +75,11 @@ const statusConfig: Record<
   },
 };
 
-function formatTime(value: string) {
+function formatTime(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Madrid",
+    timeZone: timezone,
   }).format(new Date(value));
 }
 
@@ -132,13 +132,21 @@ function Metric({
 
 function ShiftCard({ shift }: { shift: PlannedShift }) {
   const {
+    companyTimezone,
     incidents,
     worksites,
     assignReplacement,
     employees,
-    recommendCoverage,
+    refreshControl,
   } = useWiaControl();
   const [decisionOpen, setDecisionOpen] = React.useState(false);
+  const [loadingRecommendation, setLoadingRecommendation] = React.useState(false);
+  const [recommendationError, setRecommendationError] = React.useState<string>();
+  const [recommendation, setRecommendation] = React.useState<{
+    candidates: Array<{ employeeId: string; employeeName: string; score: number; reasons: string[] }>;
+    excluded: Array<{ employeeId: string; employeeName: string; reason: string }>;
+  } | null>(null);
+  const [showExcluded, setShowExcluded] = React.useState(false);
   const site = worksites.find((item) => item.id === shift.worksiteId);
   const incident = incidents.find((item) => item.shiftId === shift.id);
   const [selectedEmployee, setSelectedEmployee] = React.useState(
@@ -153,10 +161,47 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
     incident?.recommendedEmployee && selectedEmployee !== incident.recommendedEmployee
   );
 
+  async function findReplacements() {
+    if (!incident) return;
+    setLoadingRecommendation(true);
+    setRecommendationError(undefined);
+    try {
+      const response = await fetch("/api/control/coverage/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ incidentId: incident.id }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setRecommendation({ candidates: body.candidates ?? [], excluded: body.excluded ?? [] });
+        if (!body.recommended) {
+          setRecommendationError("No eligible replacement was found for this shift.");
+        }
+      } else {
+        setRecommendation({ candidates: [], excluded: body.excluded ?? [] });
+        setRecommendationError(
+          body.error ?? "No eligible replacement could be found for this shift."
+        );
+      }
+      await refreshControl();
+    } catch {
+      setRecommendationError("Could not reach the server. Try again.");
+    } finally {
+      setLoadingRecommendation(false);
+    }
+  }
+
   function confirmDecision() {
     const confirmed = assignReplacement(shift.id, selectedEmployee, overrideReason);
     if (confirmed) setDecisionOpen(false);
   }
+
+  React.useEffect(() => {
+    if (decisionOpen && !recommendation && incident) {
+      void findReplacements();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decisionOpen]);
 
   return (
     <Card
@@ -169,7 +214,7 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
         <div className="grid gap-4 p-4 lg:grid-cols-[130px_1.2fr_1fr_auto] lg:items-center">
           <div>
             <p className="text-lg font-semibold tabular-nums">
-              {formatTime(shift.startsAt)}–{formatTime(shift.endsAt)}
+              {formatTime(shift.startsAt, companyTimezone)}–{formatTime(shift.endsAt, companyTimezone)}
             </p>
             <ShiftStatusBadge status={shift.status} />
           </div>
@@ -212,9 +257,9 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
                 Resolve coverage
               </Button>
             ) : uncovered && incident ? (
-              <Button type="button" onClick={() => recommendCoverage(incident.id)}>
+              <Button type="button" onClick={() => void findReplacements()} disabled={loadingRecommendation}>
                 <Sparkles className="size-4" />
-                Find replacements
+                {loadingRecommendation ? "Finding…" : "Find replacements"}
               </Button>
             ) : (
               <Button asChild variant="outline">
@@ -241,10 +286,39 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
                   </p>
                 </div>
               </div>
-              <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-                High fit · 94%
-              </Badge>
+              {(() => {
+                const topScore = recommendation?.candidates.find(
+                  (candidate) => candidate.employeeName === incident.recommendedEmployee
+                )?.score;
+                return topScore !== undefined ? (
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
+                    Fit score · {topScore}%
+                  </Badge>
+                ) : null;
+              })()}
             </div>
+            <ExcludedCandidatesList
+              excluded={recommendation?.excluded ?? []}
+              show={showExcluded}
+              onToggle={() => setShowExcluded((current) => !current)}
+            />
+          </div>
+        ) : uncovered && recommendationError ? (
+          <div className="border-t border-destructive/20 bg-destructive/[0.035] px-4 py-3">
+            <div className="flex gap-2.5">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <div>
+                <p className="text-sm font-medium text-destructive">{recommendationError}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add or update a person&apos;s skills, zone, or availability, then try again.
+                </p>
+              </div>
+            </div>
+            <ExcludedCandidatesList
+              excluded={recommendation?.excluded ?? []}
+              show={showExcluded}
+              onToggle={() => setShowExcluded((current) => !current)}
+            />
           </div>
         ) : null}
       </CardContent>
@@ -274,12 +348,24 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
                 onChange={(event) => setSelectedEmployee(event.target.value)}
                 className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                {eligibleEmployees.map((employee) => (
-                  <option key={employee.id} value={employee.name}>
-                    {employee.name} · {{ AVAILABLE: "Available", ASSIGNED: "Assigned", VACATION: "Holiday", SICK_LEAVE: "Sick leave", INACTIVE: "Inactive" }[employee.status]}
-                  </option>
-                ))}
+                {recommendation
+                  ? recommendation.candidates.map((candidate) => (
+                    <option key={candidate.employeeId} value={candidate.employeeName}>
+                      {candidate.employeeName} · Fit {candidate.score}%
+                    </option>
+                  ))
+                  : eligibleEmployees.map((employee) => (
+                    <option key={employee.id} value={employee.name}>
+                      {employee.name} · {{ AVAILABLE: "Available", ASSIGNED: "Assigned", VACATION: "Holiday", SICK_LEAVE: "Sick leave", INACTIVE: "Inactive" }[employee.status]}
+                    </option>
+                  ))}
               </select>
+              {!recommendation ? (
+                <p className="text-xs text-muted-foreground">
+                  Loading eligible candidates only — the full list may include people who are
+                  not actually available for this shift.
+                </p>
+              ) : null}
             </div>
             {isOverride ? (
               <div className="space-y-2">
@@ -455,6 +541,45 @@ export function CoverageDashboard() {
             </div>
           </CardContent>
         </Card>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Stage 4, Task 2: shows every excluded candidate with the exact hard
+ * constraint that ruled them out, collapsed by default so the panel does
+ * not overwhelm the coordinator when there is a clear recommendation.
+ */
+function ExcludedCandidatesList({
+  excluded,
+  show,
+  onToggle,
+}: {
+  excluded: Array<{ employeeId: string; employeeName: string; reason: string }>;
+  show: boolean;
+  onToggle: () => void;
+}) {
+  if (excluded.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
+      >
+        {show ? "Hide" : "Show"} {excluded.length} ineligible {excluded.length === 1 ? "person" : "people"}
+      </button>
+      {show ? (
+        <ul className="mt-2 space-y-1">
+          {excluded.map((candidate) => (
+            <li key={candidate.employeeId} className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{candidate.employeeName}</span>
+              {" — "}
+              {candidate.reason}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );

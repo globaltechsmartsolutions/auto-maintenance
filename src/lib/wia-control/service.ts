@@ -3,19 +3,26 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
+import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
 import {
   assertClockTransition,
   clockCommandSchema,
   companySettingsSchema,
+  computeIncidentDueAt,
+  computeIncidentSeverity,
   correctionAcknowledgementSchema,
   correctionRequestSchema,
   correctionReviewSchema,
   coverageDecisionSchema,
   coverageRecommendationSchema,
+  DEFAULT_INCIDENT_POLICY,
+  escalateSeverity,
+  evaluateCoverageEligibility,
   getShiftStatusAfterClock,
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
+  parseEmployeeAvailability,
   plannedShiftInputSchema,
   plannedShiftUpdateSchema,
   rangesOverlap,
@@ -24,6 +31,7 @@ import {
   worksiteInputSchema,
   worksiteUpdateSchema,
   type ClockEventType,
+  type IncidentPolicy,
 } from "@/lib/wia-control/domain";
 
 export type WiaActor = {
@@ -43,12 +51,24 @@ function employeeDisplayName(employee: { user: { firstName: string; lastName: st
   return employee ? `${employee.user.firstName} ${employee.user.lastName}`.trim() : undefined;
 }
 
-export async function listControlDay(actor: WiaActor, date: Date) {
+/**
+ * Reads a company's configured timezone for display purposes. Falls back
+ * to UTC if, for any reason, it can't be read — never throws, since a
+ * missing timezone should degrade display, not break the page.
+ */
+export async function getCompanyTimezone(companyId: string): Promise<string> {
+  const company = await getPrisma().company.findUnique({
+    where: { id: companyId },
+    select: { timezone: true },
+  });
+  return company?.timezone ?? "UTC";
+}
+
+export async function listControlDay(actor: WiaActor, date: Date | string) {
   assertCompany(actor);
-  const dayStart = new Date(date);
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+  const timeZone = await getCompanyTimezone(actor.companyId);
+  const localDate = typeof date === "string" ? date : getZonedDateString(date, timeZone);
+  const { start: dayStart, end: dayEnd } = getZonedDayRange(localDate, timeZone);
 
   const shifts = await getPrisma().plannedShift.findMany({
     where: {
@@ -67,6 +87,7 @@ export async function listControlDay(actor: WiaActor, date: Date) {
           recommendedEmployee: {
             include: { user: { select: { firstName: true, lastName: true } } },
           },
+          owner: { select: { id: true, firstName: true, lastName: true } },
         },
       },
       coverageDecisions: { orderBy: { createdAt: "desc" }, take: 1 },
@@ -103,6 +124,12 @@ export async function listControlDay(actor: WiaActor, date: Date) {
       id: incident.id,
       type: incident.type,
       status: incident.status,
+      severity: incident.severity,
+      dueAt: incident.dueAt?.toISOString(),
+      ownerId: incident.ownerId ?? undefined,
+      ownerName: incident.owner
+        ? `${incident.owner.firstName} ${incident.owner.lastName}`.trim()
+        : undefined,
       title: incident.title,
       detail: incident.detail,
       detectedAt: incident.detectedAt.toISOString(),
@@ -110,10 +137,10 @@ export async function listControlDay(actor: WiaActor, date: Date) {
     })),
     latestCoverageDecision: shift.coverageDecisions[0]
       ? {
-          type: shift.coverageDecisions[0].type,
-          selectedEmployeeId: shift.coverageDecisions[0].selectedEmployeeId,
-          createdAt: shift.coverageDecisions[0].createdAt.toISOString(),
-        }
+        type: shift.coverageDecisions[0].type,
+        selectedEmployeeId: shift.coverageDecisions[0].selectedEmployeeId,
+        createdAt: shift.coverageDecisions[0].createdAt.toISOString(),
+      }
       : null,
   }));
 }
@@ -126,6 +153,63 @@ export async function listWorksites(actor: WiaActor) {
     include: {
       customer: { select: { id: true, name: true } },
       _count: { select: { shifts: true, incidents: true } },
+    },
+  });
+}
+
+export type IncidentListFilters = {
+  dateFrom?: Date;
+  dateTo?: Date;
+  worksiteId?: string;
+  employeeId?: string;
+  severity?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  /** A specific user id, "UNASSIGNED" for no owner, or omitted for any. */
+  ownerId?: string;
+  status?: "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED";
+};
+
+/**
+ * The Stage 3 incident inbox query: every field a coordinator needs to
+ * filter by (date, worksite, employee, severity, owner, status), scoped to
+ * the caller's company. Deliberately not bound to "today" like the
+ * day-view — an incident from three days ago that is still open should
+ * remain visible until someone resolves it.
+ */
+export async function listIncidents(actor: WiaActor, filters: IncidentListFilters = {}) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot view the incident inbox.");
+  }
+
+  return getPrisma().attendanceIncident.findMany({
+    where: {
+      companyId: actor.companyId,
+      ...(filters.dateFrom || filters.dateTo
+        ? {
+          detectedAt: {
+            ...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+            ...(filters.dateTo ? { lt: filters.dateTo } : {}),
+          },
+        }
+        : {}),
+      ...(filters.worksiteId ? { worksiteId: filters.worksiteId } : {}),
+      ...(filters.employeeId ? { employeeId: filters.employeeId } : {}),
+      ...(filters.severity ? { severity: filters.severity } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.ownerId === "UNASSIGNED"
+        ? { ownerId: null }
+        : filters.ownerId
+          ? { ownerId: filters.ownerId }
+          : {}),
+    },
+    // Enum declaration order is LOW < MEDIUM < HIGH < CRITICAL, so a
+    // descending sort surfaces the most severe incidents first.
+    orderBy: [{ severity: "desc" }, { detectedAt: "desc" }],
+    include: {
+      shift: { select: { id: true, title: true } },
+      employee: { include: { user: { select: { firstName: true, lastName: true } } } },
+      worksite: { select: { id: true, name: true } },
+      owner: { select: { id: true, firstName: true, lastName: true } },
     },
   });
 }
@@ -466,6 +550,28 @@ function clockIntegrityHash(input: {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
+/**
+ * Loads a company's incident-policy thresholds (Stage 3). Falls back to
+ * the documented defaults if, for any reason, the row can't be read —
+ * detection must never fail just because a policy lookup failed.
+ */
+async function getIncidentPolicy(
+  transaction: Prisma.TransactionClient,
+  companyId: string
+): Promise<IncidentPolicy> {
+  const company = await transaction.company.findUnique({
+    where: { id: companyId },
+    select: {
+      lateSeverityThresholdMinutes: true,
+      incidentDueMinutesCritical: true,
+      incidentDueMinutesHigh: true,
+      incidentDueMinutesMedium: true,
+      incidentDueMinutesLow: true,
+    },
+  });
+  return company ?? DEFAULT_INCIDENT_POLICY;
+}
+
 export async function recordClockEvent(actor: WiaActor, input: unknown) {
   assertCompany(actor);
   const payload = clockCommandSchema.parse(input);
@@ -507,17 +613,17 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
     const hasWorksiteCoordinates = shift.worksite.latitude !== null && shift.worksite.longitude !== null;
     const locationVerified = hasWorksiteCoordinates
       ? isLocationWithinWorksite(
-          {
-            latitude: payload.latitude,
-            longitude: payload.longitude,
-            accuracyMeters: payload.accuracyMeters,
-          },
-          {
-            latitude: Number(shift.worksite.latitude),
-            longitude: Number(shift.worksite.longitude),
-            radiusMeters: shift.worksite.radiusMeters,
-          }
-        )
+        {
+          latitude: payload.latitude,
+          longitude: payload.longitude,
+          accuracyMeters: payload.accuracyMeters,
+        },
+        {
+          latitude: Number(shift.worksite.latitude),
+          longitude: Number(shift.worksite.longitude),
+          radiusMeters: shift.worksite.radiusMeters,
+        }
+      )
       : ["QR", "PIN", "NFC", "KIOSK"].includes(payload.method);
     const integrityHash = clockIntegrityHash({
       companyId: actor.companyId,
@@ -562,6 +668,9 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
         shift.gracePeriodMinutes
       );
       if (minutes > 0) {
+        const policy = await getIncidentPolicy(transaction, actor.companyId);
+        const severity = computeIncidentSeverity("LATE", { lateMinutes: minutes, policy });
+        const detectedAt = new Date(payload.occurredAt);
         await transaction.attendanceIncident.create({
           data: {
             companyId: actor.companyId,
@@ -570,15 +679,20 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
             worksiteId: shift.worksiteId,
             type: "LATE",
             status: "OPEN",
+            severity,
+            dueAt: computeIncidentDueAt(severity, detectedAt, policy),
             title: `Clock-in ${minutes} minutes late`,
             detail: "The clock event is valid and remains pending review.",
-            detectedAt: new Date(payload.occurredAt),
+            detectedAt,
           },
         });
       }
     }
 
     if (hasWorksiteCoordinates && !locationVerified) {
+      const policy = await getIncidentPolicy(transaction, actor.companyId);
+      const severity = computeIncidentSeverity("OUTSIDE_LOCATION", { policy });
+      const detectedAt = new Date(payload.occurredAt);
       await transaction.attendanceIncident.create({
         data: {
           companyId: actor.companyId,
@@ -587,9 +701,11 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
           worksiteId: shift.worksiteId,
           type: "OUTSIDE_LOCATION",
           status: "OPEN",
+          severity,
+          dueAt: computeIncidentDueAt(severity, detectedAt, policy),
           title: "Clock event outside the worksite",
           detail: "The reported position is outside the configured radius.",
-          detectedAt: new Date(payload.occurredAt),
+          detectedAt,
         },
       });
     }
@@ -782,6 +898,67 @@ export async function updateAttendanceIncident(
       throw new WiaDomainError("INCIDENT_CLOSED", "The incident is already closed.");
     }
 
+    if ("action" in payload && payload.action === "ASSIGN") {
+      const targetOwnerId = payload.ownerId ?? actor.userId;
+      if (!targetOwnerId) {
+        throw new WiaDomainError(
+          "OWNER_NOT_FOUND",
+          "No owner could be determined for this assignment."
+        );
+      }
+      const owner = await transaction.user.findFirst({
+        where: {
+          id: targetOwnerId,
+          companyId: actor.companyId,
+          role: { in: ["SUPER_ADMIN", "ADMIN", "MANAGER"] },
+        },
+      });
+      if (!owner) {
+        throw new WiaDomainError(
+          "OWNER_NOT_FOUND",
+          "The selected owner is not a coordinator in this company."
+        );
+      }
+      const updated = await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { ownerId: owner.id },
+      });
+      await transaction.auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: "attendance_incident.assigned",
+          entity: "AttendanceIncident",
+          entityId: incident.id,
+          metadata: { ownerId: owner.id },
+        },
+      });
+      return updated;
+    }
+
+    if ("action" in payload && payload.action === "ESCALATE") {
+      const nextSeverity = escalateSeverity(incident.severity);
+      const updated = await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { severity: nextSeverity },
+      });
+      await transaction.auditLog.create({
+        data: {
+          companyId: actor.companyId,
+          userId: actor.userId,
+          action: "attendance_incident.escalated",
+          entity: "AttendanceIncident",
+          entityId: incident.id,
+          metadata: {
+            note: payload.note,
+            fromSeverity: incident.severity,
+            toSeverity: nextSeverity,
+          },
+        },
+      });
+      return updated;
+    }
+
     const closed = ["RESOLVED", "DISMISSED"].includes(payload.status);
     const updated = await transaction.attendanceIncident.update({
       where: { id: incident.id },
@@ -825,6 +1002,7 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
       },
     });
     const created: string[] = [];
+    const policy = await getIncidentPolicy(transaction, actor.companyId);
 
     for (const shift of candidates) {
       const eventTypes = new Set(shift.clockEvents.map((event) => event.type));
@@ -835,20 +1013,31 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
         : "MISSING_CLOCK_IN";
       if (!incidentType || shift.incidents.some((incident) => incident.type === incidentType)) continue;
 
-      const incident = await transaction.attendanceIncident.create({
-        data: {
-          companyId: actor.companyId,
-          shiftId: shift.id,
-          employeeId: shift.employeeId,
-          worksiteId: shift.worksiteId,
-          type: incidentType,
-          status: "OPEN",
-          title: incidentType === "INCOMPLETE_CLOCK" ? "Shift missing clock-out" : "Shift missing clock-in",
-          detail: "The shift has passed its end time and requires review.",
-          detectedAt: now,
-        },
-      });
-      created.push(incident.id);
+      const severity = computeIncidentSeverity(incidentType, { policy });
+      try {
+        const incident = await transaction.attendanceIncident.create({
+          data: {
+            companyId: actor.companyId,
+            shiftId: shift.id,
+            employeeId: shift.employeeId,
+            worksiteId: shift.worksiteId,
+            type: incidentType,
+            status: "OPEN",
+            severity,
+            dueAt: computeIncidentDueAt(severity, now, policy),
+            title: incidentType === "INCOMPLETE_CLOCK" ? "Shift missing clock-out" : "Shift missing clock-in",
+            detail: "The shift has passed its end time and requires review.",
+            detectedAt: now,
+          },
+        });
+        created.push(incident.id);
+      } catch (error) {
+        // The database unique key is the source of truth when two cron runs
+        // inspect the same shift concurrently. The other run created it first.
+        if (!(typeof error === "object" && error !== null && "code" in error && error.code === "P2002")) {
+          throw error;
+        }
+      }
     }
 
     await transaction.auditLog.create({
@@ -863,6 +1052,35 @@ export async function detectIncompleteAttendance(actor: WiaActor, now = new Date
     });
     return { inspected: candidates.length, created: created.length, incidentIds: created };
   });
+}
+
+/**
+ * Stage 3, Task 5: runs detection for every company, one at a time. This
+ * is what the scheduled cron job calls — a human coordinator never needs
+ * to remember to click "detect" manually. Each company's run is
+ * independent and duplicate-safe (see `detectIncompleteAttendance`), so a
+ * failure in one company does not stop the others.
+ */
+export async function detectIncompleteAttendanceForAllCompanies(now = new Date()) {
+  const companies = await getPrisma().company.findMany({ select: { id: true } });
+  const results: Array<{ companyId: string; inspected: number; created: number; error?: string }> = [];
+
+  for (const company of companies) {
+    const systemActor: WiaActor = { companyId: company.id, role: "SUPER_ADMIN" };
+    try {
+      const result = await detectIncompleteAttendance(systemActor, now);
+      results.push({ companyId: company.id, inspected: result.inspected, created: result.created });
+    } catch (error) {
+      results.push({
+        companyId: company.id,
+        inspected: 0,
+        created: 0,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+
+  return results;
 }
 
 export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
@@ -910,40 +1128,76 @@ export async function confirmCoverage(actor: WiaActor, input: unknown) {
         companyId: actor.companyId,
         status: { in: ["OPEN", "ACKNOWLEDGED"] },
       },
-      include: { shift: true },
+      include: { shift: { include: { worksite: { select: { city: true } } } } },
     });
     if (!incident) {
       throw new WiaDomainError("INCIDENT_NOT_FOUND", "The incident is no longer open.");
     }
 
     const selectedEmployee = await transaction.employee.findFirst({
-      where: {
-        id: payload.selectedEmployeeId,
-        companyId: actor.companyId,
-        fieldStatus: { in: ["AVAILABLE", "ASSIGNED"] },
-      },
-      select: { id: true },
+      where: { id: payload.selectedEmployeeId, companyId: actor.companyId },
     });
     if (!selectedEmployee) {
       throw new WiaDomainError("EMPLOYEE_UNAVAILABLE", "The selected person is unavailable.");
     }
 
-    const conflicts = await transaction.plannedShift.findMany({
+    const company = await transaction.company.findUnique({
+      where: { id: actor.companyId },
+      select: { timezone: true },
+    });
+    const timeZone = company?.timezone ?? "UTC";
+    const { start: dayStart, end: dayEnd } = getZonedDayRange(
+      getZonedDateString(incident.shift.scheduledStart, timeZone),
+      timeZone
+    );
+    const dayShifts = await transaction.plannedShift.findMany({
       where: {
         companyId: actor.companyId,
         employeeId: selectedEmployee.id,
         id: { not: incident.shiftId },
         status: { notIn: ["CANCELLED", "COMPLETED"] },
-        scheduledStart: { lt: incident.shift.scheduledEnd },
-        scheduledEnd: { gt: incident.shift.scheduledStart },
+        scheduledStart: { lt: dayEnd },
+        scheduledEnd: { gt: dayStart },
       },
-      select: { id: true },
+      select: { scheduledStart: true, scheduledEnd: true },
     });
-    if (conflicts.length > 0) {
-      throw new WiaDomainError("SHIFT_OVERLAP", "The selected person has another overlapping shift.");
+    const hasOverlap = dayShifts.some((shift) =>
+      rangesOverlap(
+        incident.shift.scheduledStart,
+        incident.shift.scheduledEnd,
+        shift.scheduledStart,
+        shift.scheduledEnd
+      )
+    );
+    const existingDailyMinutes = dayShifts.reduce(
+      (total, shift) => total + (shift.scheduledEnd.getTime() - shift.scheduledStart.getTime()) / 60_000,
+      0
+    );
+
+    const eligibility = evaluateCoverageEligibility({
+      fieldStatus: selectedEmployee.fieldStatus,
+      hasOverlap,
+      requiredSkills: incident.shift.requiredSkills,
+      employeeSkills: selectedEmployee.skills,
+      worksiteCity: incident.shift.worksite.city,
+      employeeZones: selectedEmployee.zones,
+      availability: parseEmployeeAvailability(selectedEmployee.availability),
+      shiftStart: incident.shift.scheduledStart,
+      shiftEnd: incident.shift.scheduledEnd,
+      existingDailyMinutes,
+      existingDailyJobs: dayShifts.length,
+      maxHoursPerDay: selectedEmployee.maxHoursPerDay,
+      maxJobsPerDay: selectedEmployee.maxJobsPerDay,
+      timeZone,
+    });
+    if (!eligibility.eligible) {
+      throw new WiaDomainError(
+        hasOverlap ? "SHIFT_OVERLAP" : "EMPLOYEE_UNAVAILABLE",
+        eligibility.reason
+      );
     }
 
-    const acceptedRecommendation = payload.recommendedEmployeeId === payload.selectedEmployeeId;
+    const acceptedRecommendation = incident.recommendedEmployeeId === selectedEmployee.id;
     if (!acceptedRecommendation && !payload.overrideReason) {
       throw new WiaDomainError(
         "OVERRIDE_REASON_REQUIRED",
@@ -956,12 +1210,12 @@ export async function confirmCoverage(actor: WiaActor, input: unknown) {
         companyId: actor.companyId,
         shiftId: incident.shiftId,
         incidentId: incident.id,
-        recommendedEmployeeId: payload.recommendedEmployeeId,
+        recommendedEmployeeId: incident.recommendedEmployeeId,
         selectedEmployeeId: selectedEmployee.id,
         actorUserId: actor.userId,
         type: acceptedRecommendation ? "RECOMMENDATION_ACCEPTED" : "MANUAL_OVERRIDE",
-        score: payload.score,
-        reasons: payload.reasons,
+        score: null,
+        reasons: [],
         overrideReason: payload.overrideReason,
       },
     });
@@ -1034,15 +1288,23 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
       throw new WiaDomainError("INCIDENT_NOT_FOUND", "The incident is no longer open.");
     }
 
-    const dayStart = new Date(incident.shift.scheduledStart);
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart);
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+    const company = await transaction.company.findUnique({
+      where: { id: actor.companyId },
+      select: { timezone: true },
+    });
+    const timeZone = company?.timezone ?? "UTC";
+    const { start: dayStart, end: dayEnd } = getZonedDayRange(
+      getZonedDateString(incident.shift.scheduledStart, timeZone),
+      timeZone
+    );
+    // Every employee in the company is considered here, not just those
+    // already marked AVAILABLE/ASSIGNED — fieldStatus is one of several
+    // hard constraints evaluated below, and an excluded employee still
+    // needs a reason shown, not a silent drop before scoring even starts.
     const employees = await transaction.employee.findMany({
       where: {
         companyId: actor.companyId,
         id: incident.employeeId ? { not: incident.employeeId } : undefined,
-        fieldStatus: { in: ["AVAILABLE", "ASSIGNED"] },
       },
       include: {
         user: { select: { firstName: true, lastName: true } },
@@ -1057,49 +1319,70 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
       },
     });
 
-    const candidates = employees
-      .filter((employee) =>
-        employee.plannedShifts.every(
-          (shift) =>
-            !rangesOverlap(
-              incident.shift.scheduledStart,
-              incident.shift.scheduledEnd,
-              shift.scheduledStart,
-              shift.scheduledEnd
-            )
-        )
-      )
-      .map((employee) => {
-        const result = scoreCoverageCandidate({
-          requiredSkills: incident.shift.requiredSkills,
-          worksiteCity: incident.shift.worksite.city,
-          employeeSkills: employee.skills,
-          employeeZones: employee.zones,
-          performanceScore: employee.performanceScore,
-          incidentRate: Number(employee.incidentRate),
-          dailyJobs: employee.plannedShifts.length,
-        });
-        return {
-          employeeId: employee.id,
-          employeeName: `${employee.user.firstName} ${employee.user.lastName}`.trim(),
-          score: result.score,
-          reasons: result.reasons,
-        };
-      })
-      .sort((first, second) => second.score - first.score)
-      .slice(0, 5);
+    const eligible: Array<{ employeeId: string; employeeName: string; score: number; reasons: string[] }> = [];
+    const excluded: Array<{ employeeId: string; employeeName: string; reason: string }> = [];
 
-    const recommended = candidates[0];
-    if (!recommended) {
-      throw new WiaDomainError(
-        "NO_COVERAGE_CANDIDATE",
-        "No people are available without overlaps for this shift."
+    for (const employee of employees) {
+      const employeeName = `${employee.user.firstName} ${employee.user.lastName}`.trim();
+      const hasOverlap = employee.plannedShifts.some((shift) =>
+        rangesOverlap(
+          incident.shift.scheduledStart,
+          incident.shift.scheduledEnd,
+          shift.scheduledStart,
+          shift.scheduledEnd
+        )
       );
+      const existingDailyMinutes = employee.plannedShifts.reduce(
+        (total, shift) => total + (shift.scheduledEnd.getTime() - shift.scheduledStart.getTime()) / 60_000,
+        0
+      );
+
+      const eligibility = evaluateCoverageEligibility({
+        fieldStatus: employee.fieldStatus,
+        hasOverlap,
+        requiredSkills: incident.shift.requiredSkills,
+        employeeSkills: employee.skills,
+        worksiteCity: incident.shift.worksite.city,
+        employeeZones: employee.zones,
+        availability: parseEmployeeAvailability(employee.availability),
+        shiftStart: incident.shift.scheduledStart,
+        shiftEnd: incident.shift.scheduledEnd,
+        existingDailyMinutes,
+        existingDailyJobs: employee.plannedShifts.length,
+        maxHoursPerDay: employee.maxHoursPerDay,
+        maxJobsPerDay: employee.maxJobsPerDay,
+        timeZone,
+      });
+
+      if (!eligibility.eligible) {
+        excluded.push({ employeeId: employee.id, employeeName, reason: eligibility.reason });
+        continue;
+      }
+
+      const result = scoreCoverageCandidate({
+        requiredSkills: incident.shift.requiredSkills,
+        worksiteCity: incident.shift.worksite.city,
+        employeeSkills: employee.skills,
+        employeeZones: employee.zones,
+        dailyJobs: employee.plannedShifts.length,
+      });
+      eligible.push({
+        employeeId: employee.id,
+        employeeName,
+        score: result.score,
+        reasons: result.reasons,
+      });
     }
-    await transaction.attendanceIncident.update({
-      where: { id: incident.id },
-      data: { recommendedEmployeeId: recommended.employeeId, status: "ACKNOWLEDGED", acknowledgedAt: new Date() },
-    });
+
+    const candidates = [...eligible].sort((first, second) => second.score - first.score).slice(0, 5);
+
+    const recommended = candidates[0] ?? null;
+    if (recommended) {
+      await transaction.attendanceIncident.update({
+        where: { id: incident.id },
+        data: { recommendedEmployeeId: recommended.employeeId, status: "ACKNOWLEDGED", acknowledgedAt: new Date() },
+      });
+    }
     await transaction.auditLog.create({
       data: {
         companyId: actor.companyId,
@@ -1107,15 +1390,18 @@ export async function recommendCoverageCandidates(actor: WiaActor, input: unknow
         action: "coverage.recommended",
         entity: "AttendanceIncident",
         entityId: incident.id,
-        metadata: {
-          recommendedEmployeeId: recommended.employeeId,
-          score: recommended.score,
-          reasons: recommended.reasons,
-          candidateCount: candidates.length,
-        },
+        metadata: recommended
+          ? {
+            recommendedEmployeeId: recommended.employeeId,
+            score: recommended.score,
+            reasons: recommended.reasons,
+            candidateCount: candidates.length,
+            excludedCount: excluded.length,
+          }
+          : { recommendedEmployeeId: null, candidateCount: 0, excludedCount: excluded.length },
       },
     });
-    return { incidentId: incident.id, shiftId: incident.shiftId, recommended, candidates };
+    return { incidentId: incident.id, shiftId: incident.shiftId, recommended, candidates, excluded };
   });
 }
 
@@ -1174,6 +1460,11 @@ export async function updateCompanySettings(actor: WiaActor, input: unknown) {
         timezone: true,
         clockRetentionYears: true,
         crmEnabled: true,
+        lateSeverityThresholdMinutes: true,
+        incidentDueMinutesCritical: true,
+        incidentDueMinutesHigh: true,
+        incidentDueMinutesMedium: true,
+        incidentDueMinutesLow: true,
       },
     });
     await transaction.auditLog.create({

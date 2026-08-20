@@ -15,9 +15,9 @@ import {
   Smartphone,
   UserRound,
 } from "lucide-react";
+import { IncidentInbox } from "@/components/control/incident-inbox";
 import {
   useWiaControl,
-  type AttendanceIncident,
   type ClockEventType,
 } from "@/components/control/wia-control-provider";
 import { Badge } from "@/components/ui/badge";
@@ -41,20 +41,13 @@ const eventLabels: Record<ClockEventType, string> = {
   CLOCK_OUT: "Clock-out",
 };
 
-const incidentLabels: Record<AttendanceIncident["status"], string> = {
-  OPEN: "Open",
-  ACKNOWLEDGED: "Under review",
-  RESOLVED: "Resuelta",
-  DISMISSED: "Descartada",
-};
-
-function formatDateTime(value: string) {
+function formatDateTime(value: string, timezone: string = "Europe/Madrid") {
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "Europe/Madrid",
+    timeZone: timezone,
   }).format(new Date(value));
 }
 
@@ -65,10 +58,10 @@ export function TimeTrackingDashboard() {
     clockEvents,
     incidents,
     corrections,
+    companyTimezone,
     exportClockReport,
     reviewTimeCorrection,
     runIncidentDetection,
-    updateIncident,
   } = useWiaControl();
 
   const sortedEvents = React.useMemo(
@@ -253,7 +246,7 @@ export function TimeTrackingDashboard() {
                             {eventLabels[event.type]}
                           </Badge>
                         </TableCell>
-                        <TableCell className="tabular-nums">{formatDateTime(event.occurredAt)}</TableCell>
+                        <TableCell className="tabular-nums">{formatDateTime(event.occurredAt, companyTimezone)}</TableCell>
                         <TableCell>{site?.name ?? "Worksite"}</TableCell>
                         <TableCell>{event.method === "MOBILE" ? "Mobile" : event.method}</TableCell>
                         <TableCell>
@@ -285,84 +278,7 @@ export function TimeTrackingDashboard() {
         </TabsContent>
 
         <TabsContent value="incidents">
-          <div className="grid gap-3">
-            {incidents.map((incident) => {
-              const shift = shifts.find((item) => item.id === incident.shiftId);
-              const site = worksites.find((item) => item.id === shift?.worksiteId);
-              return (
-                <Card key={incident.id} className="border-border/70 bg-card/85 shadow-sm">
-                  <CardContent className="flex flex-col gap-4 p-4 md:flex-row md:items-start">
-                    <span
-                      className={cn(
-                        "flex size-9 shrink-0 items-center justify-center rounded-lg",
-                        incident.status === "RESOLVED"
-                          ? "bg-success/10 text-success"
-                          : "bg-warning/10 text-warning"
-                      )}
-                    >
-                      {incident.status === "RESOLVED" ? (
-                        <CheckCircle2 className="size-4" />
-                      ) : (
-                        <AlertTriangle className="size-4" />
-                      )}
-                    </span>
-                    <div className="flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{incident.title}</p>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            incident.status === "RESOLVED"
-                              ? "border-success/30 text-success"
-                              : "border-warning/30 text-warning"
-                          )}
-                        >
-                          {incidentLabels[incident.status]}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{incident.detail}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {incident.employeeName} · {site?.name} · {formatDateTime(incident.detectedAt)}
-                      </p>
-                      {incident.resolutionNotes ? (
-                        <p className="mt-2 rounded-md bg-muted/45 px-2.5 py-2 text-xs text-muted-foreground">
-                          Resolution: {incident.resolutionNotes}
-                        </p>
-                      ) : null}
-                    </div>
-                    {["OPEN", "ACKNOWLEDGED"].includes(incident.status) ? (
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        {incident.status === "OPEN" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateIncident(incident.id, "ACKNOWLEDGED")}
-                          >
-                            Review
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() =>
-                            updateIncident(
-                              incident.id,
-                              "RESOLVED",
-                              "Verified and resolved by the coordinator."
-                            )
-                          }
-                        >
-                          <CheckCircle2 className="size-4" />
-                          Resolve
-                        </Button>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          <IncidentInbox />
         </TabsContent>
 
         <TabsContent value="corrections">
@@ -389,8 +305,8 @@ export function TimeTrackingDashboard() {
                   {corrections.map((correction) => (
                     <TableRow key={correction.id}>
                       <TableCell className="font-medium">{correction.employeeName}</TableCell>
-                      <TableCell>{formatDateTime(correction.originalTime)}</TableCell>
-                      <TableCell>{formatDateTime(correction.correctedTime)}</TableCell>
+                      <TableCell>{formatDateTime(correction.originalTime, companyTimezone)}</TableCell>
+                      <TableCell>{formatDateTime(correction.correctedTime, companyTimezone)}</TableCell>
                       <TableCell>{correction.reason}</TableCell>
                       <TableCell>
                         <Badge

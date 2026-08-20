@@ -57,6 +57,10 @@ export type AttendanceIncidentDto = {
   title: string;
   detail: string;
   status: IncidentStatus;
+  severity: IncidentSeverityLevel;
+  dueAt?: string;
+  ownerId?: string;
+  ownerName?: string;
   detectedAt: string;
   recommendedEmployee?: string;
   recommendationReasons?: string[];
@@ -82,8 +86,6 @@ export type CoverageCandidateInput = {
   worksiteCity: string;
   employeeSkills: string[];
   employeeZones: string[];
-  performanceScore: number;
-  incidentRate: number;
   dailyJobs: number;
 };
 
@@ -147,15 +149,185 @@ export function scoreCoverageCandidate(input: CoverageCandidateInput) {
     score += 15;
     reasons.push(`Usually works in ${input.worksiteCity}.`);
   }
-  score += Math.round(Math.min(Math.max(input.performanceScore, 0), 100) / 10);
-  if (input.incidentRate <= 0.02) {
-    score += 5;
-    reasons.push("Has a low incident rate.");
+  if (input.dailyJobs === 0) {
+    score += 15;
+    reasons.push("Has no other shifts that day.");
+  } else if (input.dailyJobs === 1) {
+    score += 8;
+    reasons.push("Has one other shift that day.");
+  } else if (input.dailyJobs >= 3) {
+    score -= 8;
+    reasons.push("Already has several shifts that day.");
   }
-  if (input.dailyJobs === 0) reasons.push("Has no other shifts that day.");
-  if (input.dailyJobs >= 3) score -= 8;
 
   return { score: Math.max(0, Math.min(100, score)), reasons };
+}
+
+function normalizeText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en").trim();
+}
+
+/**
+ * An employee's declared working availability (Stage 4 hard constraint).
+ * Stored as JSON on `Employee.availability`. Missing/malformed data is
+ * treated as "no restriction" — an employee is never silently excluded
+ * because of a data-entry gap, only because of an explicit restriction
+ * that conflicts with the shift.
+ */
+export type EmployeeAvailability = {
+  /** 0=Sunday..6=Saturday. Omitted or empty means every day. */
+  daysOfWeek?: number[];
+  /** Minutes since midnight (shift's own clock). Both omitted means any time of day. */
+  startMinute?: number;
+  endMinute?: number;
+};
+
+export function parseEmployeeAvailability(value: unknown): EmployeeAvailability | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const result: EmployeeAvailability = {};
+  if (Array.isArray(record.daysOfWeek)) {
+    const days = record.daysOfWeek.filter(
+      (day): day is number => typeof day === "number" && day >= 0 && day <= 6
+    );
+    if (days.length > 0) result.daysOfWeek = days;
+  }
+  if (typeof record.startMinute === "number") result.startMinute = record.startMinute;
+  if (typeof record.endMinute === "number") result.endMinute = record.endMinute;
+  return result;
+}
+
+export function isEmployeeAvailableForShift(
+  availability: EmployeeAvailability | null | undefined,
+  shiftStart: Date,
+  shiftEnd: Date,
+  timeZone = "UTC"
+): boolean {
+  if (!availability) return true;
+  const start = getZonedWeekdayAndMinutes(shiftStart, timeZone);
+  const end = getZonedWeekdayAndMinutes(shiftEnd, timeZone);
+  if (availability.daysOfWeek && availability.daysOfWeek.length > 0) {
+    if (!availability.daysOfWeek.includes(start.weekday)) return false;
+  }
+  if (availability.startMinute !== undefined && availability.endMinute !== undefined) {
+    if (start.minutes < availability.startMinute || end.minutes > availability.endMinute) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Hard constraint: the shift's required skills must all be present. */
+export function employeeMeetsRequiredSkills(requiredSkills: string[], employeeSkills: string[]) {
+  if (requiredSkills.length === 0) return true;
+  const skillSet = new Set(employeeSkills.map(normalizeText));
+  return requiredSkills.map(normalizeText).every((skill) => skillSet.has(skill));
+}
+
+/**
+ * Hard constraint: the employee's declared work zones must include the
+ * worksite's city. An employee with no declared zones is treated as
+ * having no zone restriction (works anywhere), not as ineligible.
+ */
+export function employeeMeetsWorkZone(worksiteCity: string, employeeZones: string[]) {
+  if (employeeZones.length === 0) return true;
+  const city = normalizeText(worksiteCity);
+  return employeeZones.map(normalizeText).some((zone) => zone.includes(city) || city.includes(zone));
+}
+
+/** Hard constraint: adding this shift must not exceed the employee's daily limits. */
+export function employeeMeetsWorkingTimeLimits(input: {
+  shiftMinutes: number;
+  existingDailyMinutes: number;
+  existingDailyJobs: number;
+  maxHoursPerDay?: number | null;
+  maxJobsPerDay?: number | null;
+  timeZone?: string;
+}) {
+  if (input.maxHoursPerDay != null) {
+    const totalHours = (input.existingDailyMinutes + input.shiftMinutes) / 60;
+    if (totalHours > input.maxHoursPerDay) return false;
+  }
+  if (input.maxJobsPerDay != null) {
+    if (input.existingDailyJobs + 1 > input.maxJobsPerDay) return false;
+  }
+  return true;
+}
+
+function fieldStatusExclusionReason(status: string): string {
+  switch (status) {
+    case "VACATION":
+      return "Currently on vacation.";
+    case "SICK_LEAVE":
+      return "Currently on sick leave.";
+    case "INACTIVE":
+      return "No longer an active employee.";
+    default:
+      return "Not currently available for work.";
+  }
+}
+
+export type CoverageEligibilityInput = {
+  fieldStatus: "AVAILABLE" | "ASSIGNED" | "VACATION" | "SICK_LEAVE" | "INACTIVE";
+  hasOverlap: boolean;
+  requiredSkills: string[];
+  employeeSkills: string[];
+  worksiteCity: string;
+  employeeZones: string[];
+  availability?: EmployeeAvailability | null;
+  shiftStart: Date;
+  shiftEnd: Date;
+  existingDailyMinutes: number;
+  existingDailyJobs: number;
+  maxHoursPerDay?: number | null;
+  maxJobsPerDay?: number | null;
+  timeZone?: string;
+};
+
+export type CoverageEligibilityResult =
+  | { eligible: true }
+  | { eligible: false; reason: string };
+
+/**
+ * The single, deterministic Stage 4 eligibility check. Both the candidate
+ * recommendation list and the final confirmation call this same function,
+ * so the rules can never drift apart between "who gets shown" and "who is
+ * actually allowed to be confirmed" — every hard constraint the playbook
+ * lists (company scope is enforced by the caller's query, active status,
+ * availability, absence, overlapping shifts, required skills, work zone,
+ * working-time limits) is evaluated here in one place.
+ */
+export function evaluateCoverageEligibility(
+  input: CoverageEligibilityInput
+): CoverageEligibilityResult {
+  if (!["AVAILABLE", "ASSIGNED"].includes(input.fieldStatus)) {
+    return { eligible: false, reason: fieldStatusExclusionReason(input.fieldStatus) };
+  }
+  if (input.hasOverlap) {
+    return { eligible: false, reason: "Already assigned to an overlapping shift." };
+  }
+  if (!employeeMeetsRequiredSkills(input.requiredSkills, input.employeeSkills)) {
+    return { eligible: false, reason: "Does not have all the required skills." };
+  }
+  if (!employeeMeetsWorkZone(input.worksiteCity, input.employeeZones)) {
+    return { eligible: false, reason: "Does not usually work in this zone." };
+  }
+  if (!isEmployeeAvailableForShift(input.availability, input.shiftStart, input.shiftEnd, input.timeZone)) {
+    return { eligible: false, reason: "Not available at this day or time." };
+  }
+  const shiftMinutes = (input.shiftEnd.getTime() - input.shiftStart.getTime()) / 60_000;
+  if (
+    !employeeMeetsWorkingTimeLimits({
+      shiftMinutes,
+      existingDailyMinutes: input.existingDailyMinutes,
+      existingDailyJobs: input.existingDailyJobs,
+      maxHoursPerDay: input.maxHoursPerDay,
+      maxJobsPerDay: input.maxJobsPerDay,
+    })
+  ) {
+    return { eligible: false, reason: "Would exceed the daily working-time limit." };
+  }
+  return { eligible: true };
 }
 
 export class WiaDomainError extends Error {
@@ -209,6 +381,86 @@ export function lateMinutes(scheduledStart: Date, occurredAt: Date, gracePeriodM
   return Math.max(0, difference - gracePeriodMinutes);
 }
 
+/**
+ * Company-configurable incident policy (Stage 3, playbook Section 7):
+ * how many minutes late counts as severe, and how long each severity is
+ * allowed to stay open before it is due. Defaults are a starting point —
+ * the product owner should confirm them before pilot, same as the
+ * offline-queue expiry window in Stage 2.
+ */
+export type IncidentPolicy = {
+  lateSeverityThresholdMinutes: number;
+  incidentDueMinutesCritical: number;
+  incidentDueMinutesHigh: number;
+  incidentDueMinutesMedium: number;
+  incidentDueMinutesLow: number;
+};
+
+export const DEFAULT_INCIDENT_POLICY: IncidentPolicy = {
+  lateSeverityThresholdMinutes: 30,
+  incidentDueMinutesCritical: 60,
+  incidentDueMinutesHigh: 240,
+  incidentDueMinutesMedium: 1_440,
+  incidentDueMinutesLow: 4_320,
+};
+
+export type IncidentSeverityLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type IncidentTypeForSeverity =
+  | "MISSING_CLOCK_IN"
+  | "LATE"
+  | "INCOMPLETE_CLOCK"
+  | "OUTSIDE_LOCATION";
+
+/**
+ * Deterministic severity rule per incident type. Kept as a pure function
+ * (no database access) so it is unit-testable and identical whether an
+ * incident is created from a live clock event or from batch detection.
+ */
+export function computeIncidentSeverity(
+  type: IncidentTypeForSeverity,
+  context: { lateMinutes?: number; policy?: IncidentPolicy } = {}
+): IncidentSeverityLevel {
+  const policy = context.policy ?? DEFAULT_INCIDENT_POLICY;
+  switch (type) {
+    case "MISSING_CLOCK_IN":
+      // Nobody has shown up for a shift that should already be running.
+      return "HIGH";
+    case "LATE":
+      return (context.lateMinutes ?? 0) >= policy.lateSeverityThresholdMinutes ? "HIGH" : "LOW";
+    case "INCOMPLETE_CLOCK":
+      // The shift happened; only the clock-out is missing.
+      return "MEDIUM";
+    case "OUTSIDE_LOCATION":
+      // Needs verification, but the employee did attempt to work.
+      return "MEDIUM";
+    default:
+      return "MEDIUM";
+  }
+}
+
+/** How long a severity level is allowed to stay open before it is "due". */
+export function computeIncidentDueAt(
+  severity: IncidentSeverityLevel,
+  detectedAt: Date,
+  policy: IncidentPolicy = DEFAULT_INCIDENT_POLICY
+): Date {
+  const minutesBySeverity: Record<IncidentSeverityLevel, number> = {
+    CRITICAL: policy.incidentDueMinutesCritical,
+    HIGH: policy.incidentDueMinutesHigh,
+    MEDIUM: policy.incidentDueMinutesMedium,
+    LOW: policy.incidentDueMinutesLow,
+  };
+  return new Date(detectedAt.getTime() + minutesBySeverity[severity] * 60_000);
+}
+
+/** Moves severity up one level. CRITICAL is already the top and stays put. */
+export function escalateSeverity(current: IncidentSeverityLevel): IncidentSeverityLevel {
+  const order: IncidentSeverityLevel[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+  const index = order.indexOf(current);
+  return order[Math.min(index + 1, order.length - 1)];
+}
+
 function degreesToRadians(value: number) {
   return (value * Math.PI) / 180;
 }
@@ -247,3 +499,4 @@ export function isLocationWithinWorksite(
   );
   return distance <= worksite.radiusMeters + (location.accuracyMeters ?? 0);
 }
+import { getZonedWeekdayAndMinutes } from "@/lib/utils";
