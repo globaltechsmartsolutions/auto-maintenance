@@ -25,9 +25,19 @@ npm run preprod:verify
 | Integration tests, real PostgreSQL | **74 passing**, 3 files |
 | Coverage | 86.11 % statements · 74.56 % branches · 88.59 % functions |
 | Lint · type check · production build | clean |
-| Checklist rows evidenced automatically | **48 of 114** |
-| Rows evidenced by the developer's manual round | 13 still valid |
-| Rows not yet evidenced | 53 |
+| Rows evidenced automatically | 48 |
+| Rows also clicked through in a browser | 14 |
+| Rows still valid from the developer's manual round | 13 |
+| **Distinct rows covered by at least one method** | **54 of 114** |
+| Rows not covered by anything | **60** |
+
+The 60 uncovered rows are listed with their reason further down. Most need
+something nobody has yet configured — a communications provider, the AI
+gateway, the evidence bucket's size limit, `CRON_SECRET` — and fifteen need a
+signed-in session.
+
+Rows covered: 1–10, 12, 14–27, 29–38, 43–45, 47, 48, 91, 94, 96, 97, 99,
+102, 103, 105, 108–113.
 
 ---
 
@@ -194,6 +204,64 @@ issue 7 and must be seen in a browser.
 The honest summary of that column: the rules are proved, the screens are not.
 Every fix from this round is backed by a test that runs on every pull request,
 but nobody has yet clicked through the six screens that changed.
+
+---
+
+## Manual walkthrough, 21 August 2026
+
+Clicked through the running application, screen by screen, the way a tester
+would. Every line below is something observed in a browser, not inferred.
+
+**How it was run, and what that limits.** The application was started in demo
+mode, because reaching an authenticated screen requires signing in and I cannot
+enter a password into a login form. In demo mode the screens, components, form
+validation and client-side rules are the real ones; the writes are answered by
+demo handlers rather than reaching PostgreSQL. So this section evidences **the
+screen**, and the 74 integration tests above evidence **the database**. Neither
+covers the other, and both were needed.
+
+### What was observed
+
+| Check | What was done | What happened |
+| ---: | --- | --- |
+| 112 | Services → **New client** → typed `Redwood Offices Ltd.` → **Record client** | Dialog opened with name, type (Business / Community of owners / Residential / Industrial) and five optional fields. `POST /api/control/customers` → **201 Created**. Dialog closed. |
+| 10 | Worksites → **New worksite**, inspected the client field | Now a `<select name="customerId">`, **not required**. The old free-text `name="customer"` field is gone. The form submits `customerId`. Helper reads "No clients recorded yet. Add one from Services to link this worksite." |
+| 108 | Team → **Invite coordinator** → filled name, surname, email → **Send invitation** | Dialog has firstName, lastName, email, role. **No password field.** Role offers only Manager and Administrator. `POST /api/control/team` → 200, list reloaded, banner: "Invitation sent to … They set their own password from the link in that email — nobody else ever sees it." |
+| 109 | Same dialog, role selector | Administrator is offered; `SUPER_ADMIN` is not present at all. |
+| 15 | Shifts → **New shift**, valid window, available worker | Shift created and **the dialog closed**. |
+| 16 | Shifts → **New shift**, no assignee | Created and listed with assignee "Unassigned". |
+| 17 | Shifts → **New shift**, 10:00 → 08:00 | "Invalid schedule — The end time must be later than the start time." appeared **immediately**; no shift created; dialog stayed open. |
+| 18 | Shifts → **New shift** for a worker who already has one in that interval | "Overlap detected — Miguel Prieto already has a shift in that interval." appeared immediately; no shift created; dialog stayed open. |
+| 19 | Shifts → **New shift** assigned to a worker on holiday | "Employee unavailable — Hugo Vega is not listed as available."; no shift created. |
+| 6 | Opened `/reset-password?error=access_denied&error_code=user_banned&error_description=User+is+banned` — the exact URL from the QA screenshot | Screen reads **"This account is suspended, so its password cannot be reset. An administrator has to restore access first."** The raw `access_denied` is gone. |
+| 96 | Coverage — recovery queue | Renders with its service and owner filters, and an empty state that explains itself. |
+| 97 | Coverage — recovery metrics | Renders; "Services at risk" lists entries ordered by severity with the reason, assignee and worksite. |
+| 99 | `GET /api/health` | 200, `{status, mode, database, checks}`, `status: "ok"`, no secret in the payload. |
+| — | Pilot setup → **Add a customer** | Lands on **/services** with the New client button. Previously this redirected to Coverage. |
+| — | Employee screen | **Sign out** button present in the header, inside a form posting the server action. |
+
+### Two things worth recording that were not defects
+
+**The client dialog looked stuck open after a successful save.** It was not:
+`data-state` read `closed`; the accessibility tree was still listing the node
+while it unmounted. Worth knowing before somebody reports it.
+
+**A rejection looked silent.** The notification is a toast that clears itself
+after 3.6 seconds, and the first reads happened later than that. Measured in
+the same instant as the click, every rejection message was present at 0 ms.
+Anybody testing this by hand needs to be watching when they click.
+
+### Where the walkthrough could not go
+
+Fifteen rows need a signed-in session against a real account: **1–5, 11, 28,
+95, 98, 100, 101, 114**, and the browser halves of **49–54**. Demo mode reaches
+the screens but answers writes locally, so nothing that depends on a real
+identity — role gating between two live accounts, a suspended account being
+refused at sign-in, cross-company access — can be shown this way.
+
+That boundary is fixed, not a matter of effort: **I do not enter passwords into
+login forms.** Those rows need a person, and they are the shortest part of the
+checklist to run — one session, under an hour.
 
 ---
 
