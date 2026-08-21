@@ -1,6 +1,6 @@
 import { ZodError } from "zod";
 import { WiaDomainError } from "@/lib/wia-control/domain";
-import { logEvent } from "@/lib/observability";
+import { logEvent, scrubSecrets } from "@/lib/observability";
 
 type RouteHandler<TArguments extends unknown[]> = (
   ...arguments_: TArguments
@@ -32,8 +32,22 @@ export function apiRoute<TArguments extends unknown[]>(
       return respond(await handler(...arguments_));
     } catch (error) {
       if (error instanceof ApiRouteError) {
+        // Deliberate, caller-facing errors. Scrubbed anyway: the message is
+        // written by hand today, and a future one may quote a connection
+        // string or a token without meaning to.
+        if (error.status >= 500) {
+          logEvent({
+            level: "error",
+            event: "api.route_error",
+            requestId,
+            code: error.code,
+            status: error.status,
+            path: request ? new URL(request.url).pathname : undefined,
+            errorDetail: error.message,
+          });
+        }
         return respond(Response.json(
-          { error: error.message, code: error.code },
+          { error: scrubSecrets(error.message), code: error.code },
           { status: error.status }
         ));
       }
@@ -55,6 +69,16 @@ export function apiRoute<TArguments extends unknown[]>(
         // workspace that has not enabled a feature is simply not allowed.
         const unavailable = ["AI_NOT_CONFIGURED", "AI_KILL_SWITCH", "EVIDENCE_STORAGE_NOT_CONFIGURED", "EVIDENCE_STORAGE_UNAVAILABLE"].includes(error.code);
         if (unavailable) {
+          // A 503 is an outage. It was visible to the caller and to nobody
+          // else, so it never reached whoever watches the logs.
+          logEvent({
+            level: "error",
+            event: "api.dependency_unavailable",
+            requestId,
+            code: error.code,
+            path: request ? new URL(request.url).pathname : undefined,
+            errorDetail: error.message,
+          });
           return respond(Response.json({ error: error.message, code: error.code }, { status: 503 }));
         }
         if (error.code === "AI_RATE_LIMITED") {

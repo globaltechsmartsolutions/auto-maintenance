@@ -65,7 +65,10 @@ const maxDepth = 4;
 export const REDACTED = "[redacted]";
 
 function isRedactedKey(key: string) {
-  const normalised = key.toLowerCase();
+  // Separators are stripped before matching: `x-api-key`, `api_key` and
+  // `apiKey` are the same field, and a redaction list that only catches one
+  // spelling is a redaction list somebody will get past by accident.
+  const normalised = key.toLowerCase().replace(/[^a-z0-9]/g, "");
   return redactedKeys.some((candidate) => normalised === candidate || normalised.endsWith(candidate));
 }
 

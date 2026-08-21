@@ -41,6 +41,22 @@ describe("log redaction", () => {
     ).toEqual({ detail: { cause: "postgres://[redacted]@db.internal/wia" } });
   });
 
+  it("redacts a credential field however it is spelled", () => {
+    expect(
+      redactLogFields({
+        "x-api-key": "live-secret",
+        api_key: "live-secret",
+        apiKey: "live-secret",
+        Authorization: "Bearer abc",
+      })
+    ).toEqual({
+      "x-api-key": REDACTED,
+      api_key: REDACTED,
+      apiKey: REDACTED,
+      Authorization: REDACTED,
+    });
+  });
+
   it("keeps operational identifiers, counts, and flags", () => {
     expect(
       redactLogFields({ requestId: "r-1", durationMs: 42, rows: 3, committed: true, status: "SENT" })

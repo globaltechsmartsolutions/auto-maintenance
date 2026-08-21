@@ -78,8 +78,15 @@ export const GET = apiRoute(async (request: Request) => {
   }
 
   const summary = summariseHealth(checks);
+  const operator = isOperator(request);
   return Response.json(
-    { status: summary.status, mode: "production", attention: summary.attention, checks: summary.checks },
+    {
+      status: summary.status,
+      mode: "production",
+      // An uptime monitor needs the status code. Which dependency is broken,
+      // and why, is operational detail like any other.
+      ...(operator ? { attention: summary.attention, checks: summary.checks } : {}),
+    },
     { status: summary.httpStatus, headers: { "Cache-Control": "no-store" } }
   );
 });

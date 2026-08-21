@@ -8,6 +8,7 @@ import {
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { leadPipeline } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { assertUserInCompany } from "@/lib/wia-control/tenant-guards";
 import { apiRoute } from "@/lib/http/api-route";
 
 const leadSchema = z.object({
@@ -83,6 +84,8 @@ export const POST = apiRoute(async (request: Request) => {
 
   const prisma = getPrisma();
   const companyId = resolveCompanyId(auth.profile, payload.companyId);
+
+  await assertUserInCompany(companyId, payload.assignedToId);
 
   const lead = await prisma.lead.create({
     data: {

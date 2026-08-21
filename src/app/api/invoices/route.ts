@@ -8,6 +8,7 @@ import {
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { invoices as demoInvoices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { assertCustomerInCompany, assertServicesInCompany } from "@/lib/wia-control/tenant-guards";
 import { apiRoute } from "@/lib/http/api-route";
 
 const invoiceItemSchema = z.object({
@@ -90,6 +91,9 @@ export const POST = apiRoute(async (request: Request) => {
 
   const prisma = getPrisma();
   const companyId = resolveCompanyId(auth.profile, payload.companyId);
+
+  await assertCustomerInCompany(companyId, payload.customerId);
+  await assertServicesInCompany(companyId, payload.items.map((item) => item.serviceId));
 
   const invoice = await prisma.invoice.create({
     data: {

@@ -33,9 +33,14 @@ export async function GET(request: Request) {
     const totalCreated = results.reduce((sum, result) => sum + result.created, 0);
     const failures = results.filter((result) => result.error);
 
-    return Response.json({
-        companiesProcessed: results.length,
-        incidentsCreated: totalCreated,
-        failures,
-    });
+    // A run where some companies failed is not a successful run. Answering 200
+    // lets the scheduler record it as one and nobody ever looks.
+    return Response.json(
+        {
+            companiesProcessed: results.length,
+            incidentsCreated: totalCreated,
+            failures,
+        },
+        { status: failures.length ? 207 : 200 }
+    );
 }

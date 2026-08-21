@@ -40,8 +40,8 @@ function call(headers: Record<string, string> = {}) {
 async function body(response: Response) {
   return (await response.json()) as {
     status: string;
-    attention: string[];
-    checks: Array<{ name: string }>;
+    attention?: string[];
+    checks?: Array<{ name: string }>;
   };
 }
 
@@ -65,16 +65,28 @@ afterEach(() => {
 });
 
 describe("public liveness", () => {
-  it("answers 200 with only the reachability checks, and queries nothing else", async () => {
+  it("answers 200 with a status and nothing else, and queries nothing extra", async () => {
     const response = await call();
+    const payload = await body(response);
 
     expect(response.status).toBe(200);
-    expect((await body(response)).checks.map((check) => check.name)).toEqual([
-      "database",
-      "authentication",
-    ]);
+    expect(payload.status).toBe("ok");
+    // Which dependency is broken, and why, is operational detail. An uptime
+    // monitor needs the status code, not the diagnosis.
+    expect(payload.checks).toBeUndefined();
+    expect(payload.attention).toBeUndefined();
     expect(mocks.communicationHealth).not.toHaveBeenCalled();
     expect(mocks.evidenceCount).not.toHaveBeenCalled();
+  });
+
+  it("does not tell an anonymous caller which dependency is misconfigured", async () => {
+    mocks.hasDatabaseConfig.mockReturnValue(false);
+
+    const response = await call();
+    const payload = JSON.stringify(await response.json());
+
+    expect(response.status).toBe(503);
+    expect(payload).not.toContain("DATABASE_URL");
   });
 
   it("never reveals operational counts to a caller with a wrong or missing secret", async () => {
@@ -114,7 +126,7 @@ describe("operator detail", () => {
     const response = await call({ authorization: "Bearer operator-secret" });
 
     expect(response.status).toBe(200);
-    expect((await body(response)).checks.map((check) => check.name)).toEqual([
+    expect((await body(response)).checks?.map((check) => check.name)).toEqual([
       "database",
       "authentication",
       "communications",

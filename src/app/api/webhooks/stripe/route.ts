@@ -27,6 +27,18 @@ export async function POST(request: Request) {
 
   const prisma = getPrisma();
 
+  // The insert is the deduplication: the primary key is Stripe's own event id,
+  // so a replayed delivery collides here and is acknowledged without being
+  // acted on a second time. Without it, an older but valid checkout event
+  // replayed after a cancellation revives paid access.
+  try {
+    await prisma.processedWebhookEvent.create({
+      data: { id: event.id, provider: "stripe", type: event.type },
+    });
+  } catch {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;

@@ -8,6 +8,7 @@ import {
 import { hasDatabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { services as demoServices } from "@/lib/mock-data";
 import { getPrisma } from "@/lib/prisma";
+import { assertCustomerInCompany, assertEmployeesInCompany } from "@/lib/wia-control/tenant-guards";
 import { apiRoute } from "@/lib/http/api-route";
 
 const serviceSchema = z.object({
@@ -94,6 +95,12 @@ export const POST = apiRoute(async (request: Request) => {
 
   const prisma = getPrisma();
   const companyId = resolveCompanyId(auth.profile, payload.companyId);
+
+  // A customer id in a request body is just a string. Without this, a service
+  // owned by one company can point at another company's customer, and the next
+  // read returns that customer's data to the wrong workspace.
+  await assertCustomerInCompany(companyId, payload.customerId);
+  await assertEmployeesInCompany(companyId, payload.employeeIds);
 
   const service = await prisma.service.create({
     data: {

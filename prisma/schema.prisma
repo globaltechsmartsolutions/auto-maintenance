@@ -964,6 +964,22 @@ model AiCommunicationDraft {
   @@index([incidentId, createdAt])
 }
 
+/// One row per Stripe event we have already acted on.
+///
+/// Stripe retries, and a delivered event can be replayed. Without this, an
+/// older but perfectly valid checkout event replayed after a cancellation puts
+/// the company back to ACTIVE - reviving paid access from a subscription that
+/// no longer exists.
+model ProcessedWebhookEvent {
+  /// The provider's own event id.
+  id          String   @id
+  provider    String
+  type        String
+  processedAt DateTime @default(now())
+
+  @@index([provider, processedAt])
+}
+
 model InspectionAccessGrant {
   id         String    @id @default(uuid())
   companyId  String
