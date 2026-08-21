@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { signOutAction } from "@/app/actions/auth";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -232,12 +233,29 @@ export function EmployeeClock() {
               <span className="mt-1 block text-xs text-muted-foreground">Employee area</span>
             </span>
           </Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/control">
-              <ArrowLeft className="size-4" />
-              Back to operations
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/control">
+                <ArrowLeft className="size-4" />
+                Back to operations
+              </Link>
+            </Button>
+            {/*
+              A field device is usually shared. Without a way to end the
+              session, the next person to pick up the phone clocks in as
+              whoever used it last — and the attendance record then names the
+              wrong person, which is the one thing this record exists to get
+              right. Deliberately a plain button in the header rather than a
+              menu item: it has to be findable by someone standing in a
+              doorway holding a mop.
+            */}
+            <form action={signOutAction}>
+              <Button type="submit" variant="outline" size="sm">
+                <LogOut className="size-4" />
+                Sign out
+              </Button>
+            </form>
+          </div>
         </header>
 
         <section className="grid gap-4 md:grid-cols-[0.8fr_1.2fr]">

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
   const prisma = {
     $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction)),
     employee: { findMany: vi.fn() },
+    user: { findMany: vi.fn() },
   };
   return { prisma, transaction };
 });
@@ -18,7 +19,9 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ getPrisma: () => mocks.prisma }));
 
 import {
+  createTeammateProfile,
   deleteEmployeeProfile,
+  listTeammates,
   listEmployees,
   updateEmployeeProfile,
   type WiaActor,
@@ -179,5 +182,96 @@ describe("taking somebody out of the field team", () => {
     await expect(updateEmployeeProfile(worker, "employee-2", { skills: ["x"] })).rejects.toThrow(
       /cannot edit employee profiles/
     );
+  });
+});
+
+/**
+ * Coordinators. Before this existed the only account the product could create
+ * was a field worker, so a manager had to be inserted into the database by
+ * hand — which is how a connection string ends up in a shared document.
+ */
+describe("inviting a coordinator", () => {
+  const admin: WiaActor = { companyId: "company-1", userId: "user-admin", role: "ADMIN" };
+  const invite = {
+    supabaseUserId: "supabase-1",
+    email: "qa.manager@northstar.example",
+    firstName: "QA",
+    lastName: "Manager",
+    role: "MANAGER" as const,
+  };
+
+  beforeEach(() => {
+    mocks.transaction.user.create.mockResolvedValue({
+      id: "user-new",
+      email: invite.email,
+      firstName: "QA",
+      lastName: "Manager",
+      role: "MANAGER",
+      status: "ACTIVE",
+    });
+    mocks.prisma.user.findMany.mockResolvedValue([]);
+  });
+
+  it("creates the profile with the requested role, in the acting company", async () => {
+    await createTeammateProfile(admin, invite);
+    expect(mocks.transaction.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          companyId: "company-1",
+          role: "MANAGER",
+          supabaseUserId: "supabase-1",
+          status: "ACTIVE",
+        }),
+      })
+    );
+  });
+
+  it("creates no employee row, because a coordinator is not assignable to a shift", async () => {
+    await createTeammateProfile(admin, invite);
+    expect(mocks.transaction.employee.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a manager inviting anybody, so the two roles stay distinct", async () => {
+    await expect(createTeammateProfile(manager, invite)).rejects.toThrow(/Only an administrator/);
+    expect(mocks.transaction.user.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a field worker outright", async () => {
+    await expect(createTeammateProfile(worker, invite)).rejects.toThrow(/Only an administrator/);
+    expect(mocks.transaction.user.create).not.toHaveBeenCalled();
+  });
+
+  it("lets an administrator create another administrator", async () => {
+    await expect(
+      createTeammateProfile(admin, { ...invite, role: "ADMIN" })
+    ).resolves.toBeDefined();
+  });
+
+  it("records the invitation, with the role granted, in the audit trail", async () => {
+    await createTeammateProfile(admin, invite);
+    expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "teammate.invited",
+          entity: "User",
+          entityId: "user-new",
+          metadata: expect.objectContaining({ role: "MANAGER" }),
+        }),
+      })
+    );
+  });
+
+  it("lists coordinators for an administrator, scoped to their company", async () => {
+    await listTeammates(admin);
+    expect(mocks.prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { companyId: "company-1", role: { in: ["ADMIN", "MANAGER"] } },
+      })
+    );
+  });
+
+  it("does not show the coordinator list to a manager", async () => {
+    await expect(listTeammates(manager)).rejects.toThrow(/Only an administrator/);
+    expect(mocks.prisma.user.findMany).not.toHaveBeenCalled();
   });
 });

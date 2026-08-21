@@ -301,6 +301,19 @@ export const employeeCreateSchema = z.object({
   zones: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
 });
 
+/**
+ * Inviting somebody who coordinates rather than works a shift.
+ *
+ * SUPER_ADMIN is absent on purpose: it is a platform role that reaches across
+ * companies, so it cannot be granted from inside one of them.
+ */
+export const teammateInviteSchema = z.object({
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().min(1).max(80),
+  email: z.string().trim().email().max(160),
+  role: z.enum(["ADMIN", "MANAGER"]),
+});
+
 export const coverageDecisionSchema = z.object({
   shiftId: identifier,
   incidentId: identifier,

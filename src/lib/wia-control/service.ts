@@ -1011,6 +1011,77 @@ export async function createEmployeeProfile(
 }
 
 /**
+ * Creates the company profile for somebody who coordinates work rather than
+ * performing it: an administrator or a manager. No Employee row, because they
+ * are not assignable to a shift.
+ *
+ * Until this existed the only account the product could create was a field
+ * worker, so every manager had to be written straight into the database by
+ * hand. That is how connection strings end up in shared documents.
+ *
+ * Only an administrator may do this. A manager coordinates work; letting one
+ * mint an administrator would make the distinction between the two roles
+ * decorative.
+ */
+/** The coordinators of a workspace: everybody who is not a field worker. */
+export async function listTeammates(actor: WiaActor) {
+  assertCompany(actor);
+  if (actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+    throw new WiaDomainError("FORBIDDEN", "Only an administrator can view the coordinator list.");
+  }
+  return getPrisma().user.findMany({
+    where: { companyId: actor.companyId, role: { in: ["ADMIN", "MANAGER"] } },
+    select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true },
+    orderBy: [{ role: "asc" }, { firstName: "asc" }],
+  });
+}
+
+export async function createTeammateProfile(
+  actor: WiaActor,
+  input: {
+    supabaseUserId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: "ADMIN" | "MANAGER";
+  }
+) {
+  assertCompany(actor);
+  if (actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+    throw new WiaDomainError(
+      "FORBIDDEN",
+      "Only an administrator can invite an administrator or a manager."
+    );
+  }
+
+  return getPrisma().$transaction(async (transaction) => {
+    const user = await transaction.user.create({
+      data: {
+        companyId: actor.companyId,
+        supabaseUserId: input.supabaseUserId,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        role: input.role,
+        status: "ACTIVE",
+      },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, status: true },
+    });
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "teammate.invited",
+        entity: "User",
+        entityId: user.id,
+        metadata: { email: input.email, role: input.role },
+      },
+    });
+    return user;
+  });
+}
+
+/**
  * Removes an employee from the active field team. Their historical
  * records (past shifts, clock events, incidents, audit entries) are
  * kept for the record and their Employee row is never deleted -- this

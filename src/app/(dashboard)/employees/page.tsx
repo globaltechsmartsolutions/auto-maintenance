@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { Smartphone } from "lucide-react";
+import { CoordinatorInvite } from "@/components/control/coordinator-invite";
 import { EmployeeDirectory } from "@/components/control/employee-directory";
 import { Button } from "@/components/ui/button";
+import { getDashboardViewer } from "@/lib/auth/viewer";
 
-export default function EmployeesPage() {
+export default async function EmployeesPage() {
+  const viewer = await getDashboardViewer();
+  // Only an administrator can invite one, so only an administrator is shown
+  // the list. A manager coordinating work has no reason to see it.
+  const canInviteCoordinators = ["SUPER_ADMIN", "ADMIN"].includes(viewer.role);
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -20,6 +26,8 @@ export default function EmployeesPage() {
           </Button>
         </div>
       </div>
+
+      {canInviteCoordinators ? <CoordinatorInvite /> : null}
 
       <EmployeeDirectory />
     </div>
