@@ -78,6 +78,10 @@ Internal routes:
 - `/time-tracking` — clock events, incidents, and corrections.
 - `/settings` — company policies and optional modules.
 
+Outstanding tasks that cannot be closed in code — configuration, the privacy
+window, the two legal documents, the restore rehearsal and the staging QA — are
+tracked in [`docs/WIACONTROL_OWNER_TASKS.md`](docs/WIACONTROL_OWNER_TASKS.md).
+
 The implementation roadmap is available in
 [`docs/WIACONTROL_PRODUCT_ROADMAP.md`](docs/WIACONTROL_PRODUCT_ROADMAP.md).
 The developer delivery guide, including the practical implementation sequence
