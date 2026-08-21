@@ -71,8 +71,19 @@ export async function submitDeliveryTemplate(actor: WiaActor, input: unknown) {
         "That submission id was already used for a different shift. Generate a new one."
       );
     }
-    const { employeeId: _ownership, ...submission } = existing;
-    return { submission, created: false };
+    // employeeId was fetched to check ownership above; it is not part of the
+    // submission shape callers receive.
+    return {
+      submission: {
+        id: existing.id,
+        shiftId: existing.shiftId,
+        templateKey: existing.templateKey,
+        templateVersion: existing.templateVersion,
+        answers: existing.answers,
+        submittedAt: existing.submittedAt,
+      },
+      created: false,
+    };
   }
 
   const shift = await prisma.plannedShift.findFirst({
