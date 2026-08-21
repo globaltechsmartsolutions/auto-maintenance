@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getPrisma } from "@/lib/prisma";
 import { logEvent } from "@/lib/observability";
 import { WiaDomainError } from "@/lib/wia-control/domain";
@@ -119,31 +119,40 @@ export async function requestEvidenceUpload(
     select: { clockRetentionYears: true },
   });
 
+  /**
+   * The identifier is generated here rather than by the database, so the
+   * storage key can be built before the row is written.
+   *
+   * This used to insert with an empty key and update it immediately after.
+   * That cannot work: the table carries a check constraint requiring the key
+   * to begin with this company's prefix, and an empty string fails it, so
+   * every upload request was refused by the database. Writing the row once,
+   * complete, removes both the failure and the window in which a row existed
+   * pointing at nothing.
+   */
+  const attachmentId = randomUUID();
+  const storageKey = buildEvidenceStorageKey({
+    companyId: actor.companyId,
+    shiftId: shift.id,
+    attachmentId,
+    safeFileName,
+  });
+
   const attachment = await prisma.evidenceAttachment.create({
     data: {
+      id: attachmentId,
       companyId: actor.companyId,
       shiftId: shift.id,
       employeeId: shift.employeeId,
       uploadedByUserId: actor.userId,
       submissionId: payload.submissionId,
-      storageKey: "",
+      storageKey,
       fileName: safeFileName,
       contentType,
       sizeBytes: payload.sizeBytes,
       retentionUntil: evidenceRetentionUntil(new Date(), company?.clockRetentionYears ?? 4),
     },
     select: { id: true, createdAt: true },
-  });
-
-  const storageKey = buildEvidenceStorageKey({
-    companyId: actor.companyId,
-    shiftId: shift.id,
-    attachmentId: attachment.id,
-    safeFileName,
-  });
-  await prisma.evidenceAttachment.update({
-    where: { id: attachment.id },
-    data: { storageKey },
   });
 
   const upload = await storage.createUploadUrl(storageKey, {

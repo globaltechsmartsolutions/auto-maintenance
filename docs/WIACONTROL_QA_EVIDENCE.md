@@ -22,22 +22,22 @@ npm run preprod:verify
 | | Result |
 | --- | --- |
 | Unit tests | **425 passing**, 33 files |
-| Integration tests, real PostgreSQL | **74 passing**, 3 files |
+| Integration tests, real PostgreSQL | **97 passing**, 4 files |
 | Coverage | 86.11 % statements · 74.56 % branches · 88.59 % functions |
 | Lint · type check · production build | clean |
-| Rows evidenced automatically | 48 |
+| Rows evidenced automatically | 66 |
 | Rows also clicked through in a browser | 14 |
 | Rows still valid from the developer's manual round | 13 |
-| **Distinct rows covered by at least one method** | **54 of 114** |
-| Rows not covered by anything | **60** |
+| **Distinct rows covered by at least one method** | **72 of 114** |
+| Rows not covered by anything | **42** |
 
 The 60 uncovered rows are listed with their reason further down. Most need
 something nobody has yet configured — a communications provider, the AI
 gateway, the evidence bucket's size limit, `CRON_SECRET` — and fifteen need a
 signed-in session.
 
-Rows covered: 1–10, 12, 14–27, 29–38, 43–45, 47, 48, 91, 94, 96, 97, 99,
-102, 103, 105, 108–113.
+Rows covered: 1–10, 12, 14–27, 29–40, 42–45, 47, 48, 50–53, 74–77, 80, 82,
+91, 94, 96–99, 102–113.
 
 ---
 
@@ -50,7 +50,7 @@ had been impossible since the day it was written — an append-only trigger
 refused every update it made — and 385 passing tests never noticed, because the
 mocked `updateMany` returned a count and the test asserted the intent.
 
-The 74 integration tests run **the real service functions against a real
+The 97 integration tests run **the real service functions against a real
 PostgreSQL** with all 19 migrations applied and every trigger, exclusion
 constraint and partial index live. A rule either holds there or it does not.
 
@@ -155,6 +155,58 @@ constraint and partial index live. A rule either holds there or it does not.
 | 110 | A manager can neither invite anybody nor see the coordinator list, and no user is written | `operations` · check 110 |
 | 6 | A suspended account is told an administrator must restore access, not shown `access_denied` | `recovery-errors` · 6 tests |
 | 6b | No recovery message reveals whether an address has an account | `recovery-errors` |
+
+### Bulk import, evidence, coverage, deactivation and the deleting jobs
+
+Added after a first pass wrote these off as "needs a browser". That was wrong:
+what needed a browser was the *file picker and the screens*, not the rules.
+
+| Check | What is proved | Test |
+| ---: | --- | --- |
+| 50 | A missing required header refuses the file and writes nothing | `operations-extended` |
+| 51 | A row that already exists is skipped, not duplicated | `operations-extended` |
+| 52 | Every accepted row arrives together | `operations-extended` |
+| 53 | One bad row rejects the whole file; a partial import never happens | `operations-extended` |
+| — | An import lands in the acting company, and a field worker cannot start one | `operations-extended` |
+| 74 | An upload request reserves a company-prefixed key and leaves the row pending | `operations-extended` |
+| 75 | A worker cannot reserve anything on somebody else's shift | `operations-extended` |
+| 76 | Confirming a real image records the checksum of what was stored | `operations-extended` |
+| 77 | A file whose bytes contradict its type is rejected, kept visible, and removed from storage | `operations-extended` |
+| 80 | A download link lasts 120 seconds and the read is audited | `operations-extended` |
+| 82 | Another company cannot reach the attachment | `operations-extended` |
+| 39 | Dismissing an incident keeps its note | `operations-extended` |
+| 40 | Coverage candidates are proposed and the recommendation is audited | `operations-extended` |
+| 42 | An override with no real reason is refused | `operations-extended` |
+| 98 | Deactivation keeps history, stops the sign-in, and frees future shifts | `operations-extended` |
+| 104 | A clock inside the precision window keeps its coordinates | `operations-extended` |
+| 105 | A clock past the window loses the coordinate and keeps time, distance, radius and verification | `operations-extended` |
+| 106 | Evidence still inside retention is left alone | `operations-extended` |
+| 107 | Evidence past retention goes, and the stored file goes with it | `operations-extended` |
+
+**Checks 104 to 107 are the ones worth the effort.** They are the two jobs that
+delete personal data on a schedule. Owner task 2 proves they run; only these
+prove they delete the right thing, and getting that wrong is silent and
+unrecoverable.
+
+---
+
+## A second fault of the same family, found here
+
+Writing check 74 turned up a bug with the same shape as the retention job.
+
+`requestEvidenceUpload` inserted the attachment row with an **empty storage
+key** and updated it immediately afterwards with the real one. The table
+carries a check constraint requiring the key to begin with `companies/<id>/`,
+and an empty string fails it — so **every evidence upload request was refused
+by the database**. The whole attachments feature could not work.
+
+Eighteen unit tests covered that function and none noticed, for the same reason
+as last time: Prisma is mocked there, so the create returned an id and the
+assertion checked the intent.
+
+Fixed by generating the identifier before the insert and writing the row once,
+complete. That also removes the window in which a row existed pointing at
+nothing. Code only — no migration, so staging needs nothing applied.
 
 ### Scheduled jobs and database guarantees
 

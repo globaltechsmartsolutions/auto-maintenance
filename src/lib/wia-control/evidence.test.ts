@@ -154,11 +154,27 @@ describe("evidence upload", () => {
       storage
     );
 
-    expect(result.storageKey).toBe("companies/company-1/shifts/shift-1/attachment-1-opening.jpg");
-    expect(result.uploadUrl).toBe("https://storage.example/signed-upload");
-    expect(mocks.prisma.evidenceAttachment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ companyId: "company-1" }) })
+    // The key is namespaced by company and shift, and carries the identifier
+    // the row was created with.
+    expect(result.storageKey).toMatch(
+      /^companies\/company-1\/shifts\/shift-1\/[0-9a-f-]{36}-opening\.jpg$/
     );
+    expect(result.uploadUrl).toBe("https://storage.example/signed-upload");
+
+    /**
+     * The row is written once, complete. It used to be inserted with an empty
+     * key and updated immediately after, which the tenant-prefix check
+     * constraint rejects outright — every upload request failed at the
+     * database, and this suite could not see it because Prisma is mocked here.
+     */
+    const [created] = mocks.prisma.evidenceAttachment.create.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(created.data.companyId).toBe("company-1");
+    expect(created.data.storageKey).toBe(result.storageKey);
+    expect(created.data.id).toBeTruthy();
+    expect(mocks.prisma.evidenceAttachment.update).not.toHaveBeenCalled();
+
     expect(audited()).toEqual(["evidence.upload_requested"]);
   });
 
