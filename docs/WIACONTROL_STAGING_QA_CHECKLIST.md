@@ -20,6 +20,13 @@ production credentials.
 Create company `Northstar Facility Services - QA YYYY-MM-DD` and customer
 `Redwood Offices Ltd.`. Use only fictitious addresses and a staging QR/PIN.
 
+**The addresses below are labels, not mailboxes.** Every account is created by
+invitation and the invited person sets their own password from the emailed
+link, so each address has to be one you can actually read. Use a plus-alias on
+a real domain you control — `developers+maya@your-domain.com` — and record the
+mapping here. `@northstar.example` cannot receive mail and will strand the
+invitation.
+
 | Account | Role | Profile requirement | Created |
 | --- | --- | --- | --- |
 | `qa.admin@northstar.example` | Administrator | Settings and exports | - [ ] |
