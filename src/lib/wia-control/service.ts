@@ -8,6 +8,7 @@ import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
 import { logEvent } from "@/lib/observability";
 import {
   assertClockTransition,
+  assertShiftWindow,
   clockCommandSchema,
   companySettingsSchema,
   computeIncidentDueAt,
@@ -93,7 +94,11 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
   const shifts = await getPrisma().plannedShift.findMany({
     where: {
       companyId: actor.companyId,
-      scheduledStart: { gte: dayStart, lt: dayEnd },
+      // Overlap, not "starts today": a 23:00-02:00 shift is part of both days,
+      // and a coordinator looking at the second one needs to see the person
+      // who is on site right now.
+      scheduledStart: { lt: dayEnd },
+      scheduledEnd: { gt: dayStart },
       ...(actor.role === "EMPLOYEE" ? { employeeId: actor.employeeId ?? "__missing_employee__" } : {}),
     },
     orderBy: { scheduledStart: "asc" },
@@ -1228,6 +1233,122 @@ export async function updateWorksite(actor: WiaActor, worksiteId: string, input:
   });
 }
 
+/**
+ * The one eligibility gate for putting a person on a shift.
+ *
+ * Coverage confirmation ran the full rule set — status, overlap, skills, zone,
+ * availability, daily limits — while direct planning checked only status and
+ * overlap. The same assignment was therefore allowed or refused depending on
+ * which screen a coordinator used, and the weaker door was the one used most.
+ * Both paths call this now.
+ *
+ * The overlap query is deliberately not bounded to the calendar day: a shift
+ * running 23:00-02:00 belongs to two of them, and a day-bounded query would
+ * miss the collision. The daily-load query stays day-bounded, because that is
+ * what "per day" means.
+ */
+async function assertEmployeeMayTakeShift(
+  transaction: WiaTransaction,
+  actor: WiaActor,
+  input: {
+    employeeId: string;
+    /** Excluded from the overlap search when editing an existing shift. */
+    shiftId?: string;
+    worksiteCity: string;
+    requiredSkills: string[];
+    scheduledStart: Date;
+    scheduledEnd: Date;
+  }
+) {
+  const employee = await transaction.employee.findFirst({
+    where: { id: input.employeeId, companyId: actor.companyId },
+    select: {
+      id: true,
+      fieldStatus: true,
+      skills: true,
+      zones: true,
+      availability: true,
+      maxHoursPerDay: true,
+      maxJobsPerDay: true,
+    },
+  });
+  if (!employee) {
+    throw new WiaDomainError("EMPLOYEE_UNAVAILABLE", "The selected person is unavailable.");
+  }
+
+  const company = await transaction.company.findUnique({
+    where: { id: actor.companyId },
+    select: { timezone: true },
+  });
+  const timeZone = company?.timezone ?? "UTC";
+  const { start: dayStart, end: dayEnd } = getZonedDayRange(
+    getZonedDateString(input.scheduledStart, timeZone),
+    timeZone
+  );
+  const excludeSelf = input.shiftId ? { id: { not: input.shiftId } } : {};
+
+  const [overlapping, dayShifts] = await Promise.all([
+    transaction.plannedShift.findMany({
+      where: {
+        companyId: actor.companyId,
+        employeeId: employee.id,
+        ...excludeSelf,
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
+        scheduledStart: { lt: input.scheduledEnd },
+        scheduledEnd: { gt: input.scheduledStart },
+      },
+      select: { scheduledStart: true, scheduledEnd: true },
+    }),
+    transaction.plannedShift.findMany({
+      where: {
+        companyId: actor.companyId,
+        employeeId: employee.id,
+        ...excludeSelf,
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
+        scheduledStart: { lt: dayEnd },
+        scheduledEnd: { gt: dayStart },
+      },
+      select: { scheduledStart: true, scheduledEnd: true },
+    }),
+  ]);
+
+  const hasOverlap = overlapping.some((shift) =>
+    rangesOverlap(input.scheduledStart, input.scheduledEnd, shift.scheduledStart, shift.scheduledEnd)
+  );
+  const existingDailyMinutes = dayShifts.reduce(
+    (total, shift) => total + (shift.scheduledEnd.getTime() - shift.scheduledStart.getTime()) / 60_000,
+    0
+  );
+
+  const eligibility = evaluateCoverageEligibility({
+    fieldStatus: employee.fieldStatus,
+    hasOverlap,
+    requiredSkills: input.requiredSkills,
+    employeeSkills: employee.skills,
+    worksiteCity: input.worksiteCity,
+    employeeZones: employee.zones,
+    availability: parseEmployeeAvailability(employee.availability),
+    shiftStart: input.scheduledStart,
+    shiftEnd: input.scheduledEnd,
+    existingDailyMinutes,
+    existingDailyJobs: dayShifts.length,
+    maxHoursPerDay: employee.maxHoursPerDay,
+    maxJobsPerDay: employee.maxJobsPerDay,
+    timeZone,
+  });
+
+  if (!eligibility.eligible) {
+    // One code for every hard constraint, with the specific reason as the
+    // message, so the caller can show a coordinator exactly what blocked it.
+    throw new WiaDomainError(
+      hasOverlap ? "SHIFT_OVERLAP" : "EMPLOYEE_NOT_ELIGIBLE",
+      eligibility.reason
+    );
+  }
+
+  return employee;
+}
+
 export async function createPlannedShift(actor: WiaActor, input: unknown) {
   assertCompany(actor);
   if (actor.role === "EMPLOYEE") {
@@ -1249,11 +1370,12 @@ async function createPlannedShiftWithin(
   {
     const worksite = await transaction.worksite.findFirst({
       where: { id: payload.worksiteId, companyId: actor.companyId, isActive: true },
-      select: { id: true, customerId: true },
+      select: { id: true, customerId: true, city: true },
     });
     if (!worksite) {
       throw new WiaDomainError("WORKSITE_NOT_FOUND", "The worksite does not belong to the company or is inactive.");
     }
+    assertShiftWindow(scheduledStart, scheduledEnd);
 
     if (payload.serviceId) {
       const service = await transaction.service.findFirst({
@@ -1272,31 +1394,13 @@ async function createPlannedShiftWithin(
     }
 
     if (payload.employeeId) {
-      const employee = await transaction.employee.findFirst({
-        where: { id: payload.employeeId, companyId: actor.companyId },
-        select: { id: true, fieldStatus: true },
+      await assertEmployeeMayTakeShift(transaction, actor, {
+        employeeId: payload.employeeId,
+        worksiteCity: worksite.city,
+        requiredSkills: payload.requiredSkills,
+        scheduledStart,
+        scheduledEnd,
       });
-      if (!employee || ["VACATION", "SICK_LEAVE", "INACTIVE"].includes(employee.fieldStatus)) {
-        throw new WiaDomainError("EMPLOYEE_UNAVAILABLE", "The selected person is unavailable.");
-      }
-
-      const possibleConflicts = await transaction.plannedShift.findMany({
-        where: {
-          companyId: actor.companyId,
-          employeeId: payload.employeeId,
-          status: { notIn: ["CANCELLED", "COMPLETED"] },
-          scheduledStart: { lt: scheduledEnd },
-          scheduledEnd: { gt: scheduledStart },
-        },
-        select: { scheduledStart: true, scheduledEnd: true },
-      });
-      if (
-        possibleConflicts.some((shift) =>
-          rangesOverlap(scheduledStart, scheduledEnd, shift.scheduledStart, shift.scheduledEnd)
-        )
-      ) {
-        throw new WiaDomainError("SHIFT_OVERLAP", "The person already has another shift in that interval.");
-      }
     }
 
     const shift = await transaction.plannedShift.create({
@@ -1361,23 +1465,26 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
     if (shift.status === "COMPLETED") {
       throw new WiaDomainError("SHIFT_CLOSED", "A completed shift cannot be modified.");
     }
-    if (shift.clockEvents.length > 0 && payload.status !== "CANCELLED") {
-      throw new WiaDomainError(
-        "SHIFT_ALREADY_STARTED",
-        "A shift with clock events can only be cancelled administratively."
-      );
+    if (shift.clockEvents.length > 0) {
+      // Cancelling is the one thing still allowed, and it must be the ONLY
+      // thing in the request. Otherwise a cancellation is a way to rewrite the
+      // time, person or service of a shift somebody already clocked into, and
+      // the attendance record would refer to something that never happened.
+      const cancellationOnly =
+        payload.status === "CANCELLED" && Object.keys(payload).length === 1;
+      if (!cancellationOnly) {
+        throw new WiaDomainError(
+          "SHIFT_ALREADY_STARTED",
+          "A shift with clock events can only be cancelled administratively, with no other change in the same request."
+        );
+      }
     }
 
     const scheduledStart = payload.scheduledStart
       ? new Date(payload.scheduledStart)
       : shift.scheduledStart;
     const scheduledEnd = payload.scheduledEnd ? new Date(payload.scheduledEnd) : shift.scheduledEnd;
-    if (scheduledEnd <= scheduledStart) {
-      throw new WiaDomainError(
-        "INVALID_SHIFT_RANGE",
-        "The end time must be later than the start time."
-      );
-    }
+    assertShiftWindow(scheduledStart, scheduledEnd);
 
     const serviceId = payload.serviceId === undefined ? shift.serviceId : payload.serviceId;
     if (serviceId && serviceId !== shift.serviceId) {
@@ -1405,31 +1512,18 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
 
     const employeeId = payload.employeeId === undefined ? shift.employeeId : payload.employeeId;
     if (employeeId) {
-      const employee = await transaction.employee.findFirst({
-        where: { id: employeeId, companyId: actor.companyId },
-        select: { id: true, fieldStatus: true },
+      const shiftWorksite = await transaction.worksite.findFirst({
+        where: { id: shift.worksiteId, companyId: actor.companyId },
+        select: { city: true },
       });
-      if (!employee || ["VACATION", "SICK_LEAVE", "INACTIVE"].includes(employee.fieldStatus)) {
-        throw new WiaDomainError("EMPLOYEE_UNAVAILABLE", "The selected person is unavailable.");
-      }
-      const conflicts = await transaction.plannedShift.findMany({
-        where: {
-          id: { not: shiftId },
-          companyId: actor.companyId,
-          employeeId,
-          status: { notIn: ["CANCELLED", "COMPLETED"] },
-          scheduledStart: { lt: scheduledEnd },
-          scheduledEnd: { gt: scheduledStart },
-        },
-        select: { scheduledStart: true, scheduledEnd: true },
+      await assertEmployeeMayTakeShift(transaction, actor, {
+        employeeId,
+        shiftId,
+        worksiteCity: shiftWorksite?.city ?? "",
+        requiredSkills: payload.requiredSkills ?? shift.requiredSkills ?? [],
+        scheduledStart,
+        scheduledEnd,
       });
-      if (
-        conflicts.some((candidate) =>
-          rangesOverlap(scheduledStart, scheduledEnd, candidate.scheduledStart, candidate.scheduledEnd)
-        )
-      ) {
-        throw new WiaDomainError("SHIFT_OVERLAP", "The person already has another shift in that interval.");
-      }
     }
 
     const isCancelled = payload.status === "CANCELLED";
@@ -1460,7 +1554,15 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
 
     if (isCancelled || employeeId) {
       await transaction.attendanceIncident.updateMany({
-        where: { shiftId, companyId: actor.companyId, status: { in: ["OPEN", "ACKNOWLEDGED"] } },
+        where: {
+          shiftId,
+          companyId: actor.companyId,
+          status: { in: ["OPEN", "ACKNOWLEDGED"] },
+          // Assigning somebody closes the gap, and nothing else. A late
+          // arrival or an out-of-radius clock is a separate finding that a
+          // coordinator has to work and close on its own.
+          ...(isCancelled ? {} : { type: "MISSING_CLOCK_IN" as const }),
+        },
         data: {
           status: isCancelled ? "DISMISSED" : "RESOLVED",
           resolvedAt: new Date(),

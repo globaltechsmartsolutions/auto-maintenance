@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     worksite: { findFirst: vi.fn() },
     service: { findFirst: vi.fn() },
     employee: { findFirst: vi.fn() },
+    company: { findUnique: vi.fn() },
     attendanceIncident: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     auditLog: { create: vi.fn() },
   };
@@ -36,6 +37,7 @@ function shift(overrides: Record<string, unknown> = {}) {
     employeeId: "employee-1",
     serviceId: "service-1",
     status: "PLANNED",
+    requiredSkills: [],
     scheduledStart: new Date("2026-08-20T07:00:00Z"),
     scheduledEnd: new Date("2026-08-20T11:00:00Z"),
     clockEvents: [],
@@ -53,9 +55,19 @@ beforeEach(() => {
   mocks.transaction.plannedShift.findFirst.mockResolvedValue(shift());
   mocks.transaction.plannedShift.findMany.mockResolvedValue([]);
   mocks.transaction.plannedShift.update.mockResolvedValue({ id: "shift-1" });
-  mocks.transaction.employee.findFirst.mockResolvedValue({ id: "employee-1", fieldStatus: "AVAILABLE" });
+  // The eligibility gate reads the whole operational profile, not just status.
+  mocks.transaction.employee.findFirst.mockResolvedValue({
+    id: "employee-1",
+    fieldStatus: "AVAILABLE",
+    skills: [],
+    zones: [],
+    availability: null,
+    maxHoursPerDay: null,
+    maxJobsPerDay: null,
+  });
   mocks.transaction.service.findFirst.mockResolvedValue({ id: "service-2", customerId: "customer-1" });
-  mocks.transaction.worksite.findFirst.mockResolvedValue({ customerId: "customer-1" });
+  mocks.transaction.worksite.findFirst.mockResolvedValue({ customerId: "customer-1", city: "Madrid" });
+  mocks.transaction.company.findUnique.mockResolvedValue({ timezone: "Europe/Madrid" });
   mocks.transaction.attendanceIncident.findFirst.mockResolvedValue(null);
 });
 
@@ -146,6 +158,9 @@ describe("coverage status through an edit", () => {
 
     expect(mocks.transaction.attendanceIncident.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        // Only the gap this assignment closed, never a late arrival or an
+        // out-of-radius clock that somebody still has to work.
+        where: expect.objectContaining({ type: "MISSING_CLOCK_IN" }),
         data: expect.objectContaining({
           status: "RESOLVED",
           resolutionNotes: expect.stringContaining("Closed automatically"),
@@ -169,6 +184,21 @@ describe("what an edit may not do", () => {
     ).resolves.toBeDefined();
   });
 
+  it("does not let a cancellation smuggle in other changes to a worked shift", async () => {
+    mocks.transaction.plannedShift.findFirst.mockResolvedValue(
+      shift({ status: "ACTIVE", clockEvents: [{ id: "event-1" }] })
+    );
+
+    await expect(
+      updatePlannedShift(manager, "shift-1", {
+        status: "CANCELLED",
+        scheduledStart: "2026-08-19T07:00:00.000Z",
+        scheduledEnd: "2026-08-19T11:00:00.000Z",
+      })
+    ).rejects.toThrow(/no other change in the same request/);
+    expect(mocks.transaction.plannedShift.update).not.toHaveBeenCalled();
+  });
+
   it("refuses to modify a completed shift at all", async () => {
     mocks.transaction.plannedShift.findFirst.mockResolvedValue(shift({ status: "COMPLETED" }));
 
@@ -177,15 +207,58 @@ describe("what an edit may not do", () => {
     );
   });
 
-  it("refuses an end before the start, and an unavailable person", async () => {
+  it("refuses an end before the start, and one longer than a day", async () => {
     await expect(
       updatePlannedShift(manager, "shift-1", { scheduledEnd: "2026-08-20T06:00:00.000Z" })
     ).rejects.toThrow(/end time must be later/);
 
-    mocks.transaction.employee.findFirst.mockResolvedValue({ id: "employee-1", fieldStatus: "VACATION" });
+    await expect(
+      updatePlannedShift(manager, "shift-1", { scheduledEnd: "2099-08-20T06:00:00.000Z" })
+    ).rejects.toThrow(/cannot be longer than 24 hours/);
+  });
+
+  it("applies the same hard constraints a coverage confirmation would", async () => {
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-1",
+      fieldStatus: "VACATION",
+      skills: [],
+      zones: [],
+      availability: null,
+      maxHoursPerDay: null,
+      maxJobsPerDay: null,
+    });
     await expect(
       updatePlannedShift(manager, "shift-1", { employeeId: "employee-1" })
-    ).rejects.toThrow(/person is unavailable/);
+    ).rejects.toThrow(/Currently on vacation/);
+
+    // The daily working-time limit is a hard constraint on this path too, not
+    // only when confirming a replacement.
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-1",
+      fieldStatus: "AVAILABLE",
+      skills: [],
+      zones: [],
+      availability: null,
+      maxHoursPerDay: 2,
+      maxJobsPerDay: null,
+    });
+    mocks.transaction.plannedShift.findMany.mockResolvedValue([]);
+    await expect(
+      updatePlannedShift(manager, "shift-1", { employeeId: "employee-1" })
+    ).rejects.toThrow(/daily working-time limit/);
+
+    mocks.transaction.employee.findFirst.mockResolvedValue({
+      id: "employee-1",
+      fieldStatus: "AVAILABLE",
+      skills: [],
+      zones: ["Barcelona"],
+      availability: null,
+      maxHoursPerDay: null,
+      maxJobsPerDay: null,
+    });
+    await expect(
+      updatePlannedShift(manager, "shift-1", { employeeId: "employee-1" })
+    ).rejects.toThrow(/does not usually work in this zone/i);
   });
 
   it("refuses an assignment that overlaps another shift of the same person", async () => {
@@ -198,7 +271,7 @@ describe("what an edit may not do", () => {
 
     await expect(
       updatePlannedShift(manager, "shift-1", { employeeId: "employee-1" })
-    ).rejects.toThrow(/already has another shift/);
+    ).rejects.toThrow(/overlapping shift/);
   });
 
   it("is not available to a field worker", async () => {

@@ -86,6 +86,8 @@ export function apiRoute<TArguments extends unknown[]>(
           "CORRECTION_NOT_REVIEWED",
           "INCIDENT_CLOSED",
           "NO_COVERAGE_CANDIDATE",
+          "EMPLOYEE_NOT_ELIGIBLE",
+          "SHIFT_TOO_LONG",
           "AI_DRAFT_CLOSED",
           "EVIDENCE_ALREADY_CONFIRMED",
           "EVIDENCE_LIMIT_REACHED",

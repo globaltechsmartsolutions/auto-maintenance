@@ -401,6 +401,30 @@ export function getShiftStatusAfterClock(type: ClockEventType): ShiftStatus {
   return "ACTIVE";
 }
 
+/**
+ * The longest a single planned shift may be.
+ *
+ * Without a bound, "end after start" accepts a shift running until 2099, which
+ * silently consumes every overlap and daily-limit check for that person from
+ * then on. Twenty-four hours is deliberately generous: it accommodates an
+ * overnight shift and any handover, while refusing a range that can only be a
+ * mistake.
+ */
+export const MAX_SHIFT_HOURS = 24;
+
+export function assertShiftWindow(scheduledStart: Date, scheduledEnd: Date) {
+  if (scheduledEnd.getTime() <= scheduledStart.getTime()) {
+    throw new WiaDomainError("INVALID_SHIFT_RANGE", "The end time must be later than the start time.");
+  }
+  const hours = (scheduledEnd.getTime() - scheduledStart.getTime()) / 3_600_000;
+  if (hours > MAX_SHIFT_HOURS) {
+    throw new WiaDomainError(
+      "SHIFT_TOO_LONG",
+      `A shift cannot be longer than ${MAX_SHIFT_HOURS} hours. Split it into separate shifts.`
+    );
+  }
+}
+
 export function rangesOverlap(
   firstStart: Date,
   firstEnd: Date,
