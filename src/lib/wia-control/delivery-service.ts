@@ -51,13 +51,29 @@ export async function submitDeliveryTemplate(actor: WiaActor, input: unknown) {
     select: {
       id: true,
       shiftId: true,
+      employeeId: true,
       templateKey: true,
       templateVersion: true,
       answers: true,
       submittedAt: true,
     },
   });
-  if (existing) return { submission: existing, created: false };
+  if (existing) {
+    // A resend is the same submission arriving twice, not any request carrying
+    // an identifier somebody else generated. Answering before this check would
+    // hand a colleague's answers to whoever guessed their submission id.
+    if (actor.role === "EMPLOYEE" && existing.employeeId !== actor.employeeId) {
+      throw new WiaDomainError("FORBIDDEN", "That submission belongs to another person's shift.");
+    }
+    if (existing.shiftId !== payload.shiftId) {
+      throw new WiaDomainError(
+        "SUBMISSION_ID_REUSED",
+        "That submission id was already used for a different shift. Generate a new one."
+      );
+    }
+    const { employeeId: _ownership, ...submission } = existing;
+    return { submission, created: false };
+  }
 
   const shift = await prisma.plannedShift.findFirst({
     where: shiftScope(actor, payload.shiftId),

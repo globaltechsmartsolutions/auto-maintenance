@@ -261,6 +261,37 @@ describe("evidence confirmation", () => {
     expect(audited()).toEqual(["evidence.rejected"]);
   });
 
+  it("refuses a file larger than the limit whatever the reservation declared", async () => {
+    mocks.prisma.evidenceAttachment.findFirst.mockResolvedValue(pending);
+    const oversized = new Uint8Array(21 * 1024 * 1024);
+    oversized.set(jpeg);
+    const storage = fakeStorage({ read: vi.fn(async () => oversized) });
+
+    await expect(confirmEvidenceUpload(manager, "attachment-1", storage)).rejects.toThrow(
+      /larger than the 20 MB limit/
+    );
+    expect(mocks.prisma.evidenceAttachment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "REJECTED" }) })
+    );
+  });
+
+  it("still marks a rejection when the file cannot be removed from storage", async () => {
+    mocks.prisma.evidenceAttachment.findFirst.mockResolvedValue(pending);
+    const storage = fakeStorage({
+      read: vi.fn(async () => windowsExecutable),
+      remove: vi.fn().mockRejectedValue(new Error("bucket unavailable")),
+    });
+
+    await expect(confirmEvidenceUpload(manager, "attachment-1", storage)).rejects.toThrow(/executable/);
+
+    // The record must not stay pending just because the cleanup failed.
+    expect(mocks.prisma.evidenceAttachment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "REJECTED", deletedAt: expect.any(Date) }),
+      })
+    );
+  });
+
   it("refuses evidence attached to another person's shift", async () => {
     mocks.prisma.evidenceAttachment.findFirst.mockResolvedValue({
       ...pending,

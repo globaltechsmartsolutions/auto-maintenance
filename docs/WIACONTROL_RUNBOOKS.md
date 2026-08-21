@@ -103,6 +103,21 @@ them produces an account nobody can reason about later.
 
 ---
 
+## 4c. A rejected evidence file left in the bucket
+
+**Symptom.** A log entry with `event: "evidence.orphaned_object"`.
+
+The file failed screening and its row was marked rejected, but the deletion from
+storage failed. The row is correct; the object is still there.
+
+1. Take the `attachmentId` from the log entry.
+2. Find its `storageKey` in `EvidenceAttachment` and delete that object from the
+   bucket.
+3. Do not clear the row. It is the record that somebody tried to upload
+   something the product refused.
+
+---
+
 ## 5. Somebody has lost access
 
 1. Confirm identity out of band. Never reset access on the strength of an email

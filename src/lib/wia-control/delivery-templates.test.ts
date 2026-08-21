@@ -176,6 +176,7 @@ describe("delivery capture", () => {
     mocks.prisma.templateSubmission.findFirst.mockResolvedValue({
       id: "submission-1",
       shiftId: "shift-1",
+      employeeId: "employee-1",
       templateKey: "OPENING_CHECK",
       templateVersion: 1,
       answers: openingAnswers,
@@ -186,6 +187,38 @@ describe("delivery capture", () => {
 
     expect(result).toEqual({ submission: expect.objectContaining({ id: "submission-1" }), created: false });
     expect(mocks.prisma.templateSubmission.create).not.toHaveBeenCalled();
+  });
+
+  it("does not hand somebody else's answers to whoever replays their submission id", async () => {
+    mocks.prisma.templateSubmission.findFirst.mockResolvedValue({
+      id: "submission-1",
+      shiftId: "shift-1",
+      employeeId: "employee-2",
+      templateKey: "OPENING_CHECK",
+      templateVersion: 1,
+      answers: openingAnswers,
+      submittedAt: new Date("2026-08-20T07:00:00Z"),
+    });
+
+    await expect(submitDeliveryTemplate(worker, submission())).rejects.toThrow(
+      /another person's shift/
+    );
+  });
+
+  it("refuses a submission id already used for a different shift", async () => {
+    mocks.prisma.templateSubmission.findFirst.mockResolvedValue({
+      id: "submission-1",
+      shiftId: "shift-other",
+      employeeId: "employee-1",
+      templateKey: "OPENING_CHECK",
+      templateVersion: 1,
+      answers: openingAnswers,
+      submittedAt: new Date("2026-08-20T07:00:00Z"),
+    });
+
+    await expect(submitDeliveryTemplate(worker, submission())).rejects.toThrow(
+      /already used for a different shift/
+    );
   });
 
   it("marks a submission carrying its own capture time as offline capture", async () => {

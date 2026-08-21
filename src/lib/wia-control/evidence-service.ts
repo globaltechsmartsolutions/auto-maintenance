@@ -2,12 +2,14 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { getPrisma } from "@/lib/prisma";
+import { logEvent } from "@/lib/observability";
 import { WiaDomainError } from "@/lib/wia-control/domain";
 import {
   assertEvidenceKeyBelongsToCompany,
   assertEvidenceUploadAllowed,
   buildEvidenceStorageKey,
   EVIDENCE_DOWNLOAD_TTL_SECONDS,
+  EVIDENCE_MAX_BYTES,
   EVIDENCE_MAX_FILES_PER_SHIFT,
   EVIDENCE_UPLOAD_TTL_SECONDS,
   evidenceRetentionUntil,
@@ -83,6 +85,10 @@ export async function requestEvidenceUpload(
     throw new WiaDomainError("SHIFT_CANCELLED", "A cancelled shift cannot receive evidence.");
   }
 
+  // A soft limit: two simultaneous reservations can both pass this check and
+  // land one or two files over. That is deliberate - the cap exists to stop a
+  // shift being used as file storage, not to be exact to the file, and the
+  // locking needed to make it exact would cost more than the overshoot.
   const existing = await prisma.evidenceAttachment.count({
     where: { shiftId: shift.id, deletedAt: null, status: { not: "REJECTED" } },
   });
@@ -206,14 +212,39 @@ export async function confirmEvidenceUpload(
   assertEvidenceKeyBelongsToCompany(attachment.storageKey, actor.companyId);
 
   const bytes = await storage.read(attachment.storageKey);
-  const screening = screenEvidenceBytes(attachment.contentType, bytes);
+  // The reservation declared a size; the upload went straight to the bucket and
+  // could have been anything. What is actually stored is what has to be within
+  // the limit. (The bucket must also carry its own size limit — a check here
+  // cannot prevent the upload itself, only its acceptance as evidence.)
+  const screening =
+    bytes.byteLength > EVIDENCE_MAX_BYTES
+      ? ({
+          status: "REJECTED",
+          detail: `The stored file is larger than the ${Math.round(EVIDENCE_MAX_BYTES / (1024 * 1024))} MB limit.`,
+        } as const)
+      : screenEvidenceBytes(attachment.contentType, bytes);
 
   if (screening.status === "REJECTED") {
-    await storage.remove([attachment.storageKey]);
+    // The row is marked first. If deletion then fails, the record still says
+    // rejected — previously a transient storage error aborted before the
+    // update, leaving a rejected file in the bucket and a row that still
+    // claimed to be pending, with retention years away.
     await prisma.evidenceAttachment.update({
       where: { id: attachment.id },
       data: { status: "REJECTED", scanDetail: screening.detail, deletedAt: new Date() },
     });
+    try {
+      await storage.remove([attachment.storageKey]);
+    } catch (removalError) {
+      logEvent({
+        level: "error",
+        event: "evidence.orphaned_object",
+        attachmentId: attachment.id,
+        reason: "A rejected file could not be removed from storage.",
+        errorDetail:
+          removalError instanceof Error ? removalError.message : "Unknown storage error.",
+      });
+    }
     await prisma.auditLog.create({
       data: {
         companyId: actor.companyId,
