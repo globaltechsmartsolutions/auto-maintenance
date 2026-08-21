@@ -753,31 +753,66 @@ export async function getCoverageRecoveryMetrics(actor: WiaActor, from: Date, to
   };
 }
 
+export type EmployeeListItem = {
+  id: string;
+  fieldStatus: string;
+  availability: Prisma.JsonValue;
+  skills: string[];
+  zones: string[];
+  maxHoursPerDay: number | null;
+  maxJobsPerDay: number | null;
+  position: string | null;
+  user: { firstName: string; lastName: string; email: string };
+  /** Coordinator-only, and absent rather than nulled for a field worker. */
+  performanceScore?: number;
+  internalNotes?: string | null;
+  jobs?: Array<{ service: { status: string; price: Prisma.Decimal } }>;
+};
+
+/**
+ * The team, as the caller is allowed to see it.
+ *
+ * A field worker gets their own row and only the operational half of it: the
+ * coordinator's private notes, the performance score, and the revenue behind
+ * their jobs are not fetched at all. Leaving that to whichever route remembers
+ * to strip the fields afterwards is one refactor away from a leak.
+ */
 export async function listEmployees(actor: WiaActor) {
   assertCompany(actor);
-  return getPrisma().employee.findMany({
-    where: {
-      companyId: actor.companyId,
-      ...(actor.role === "EMPLOYEE" ? { id: actor.employeeId ?? "__missing_employee__" } : {}),
-    },
-    select: {
-      id: true,
-      fieldStatus: true,
-      availability: true,
-      skills: true,
-      zones: true,
-      performanceScore: true,
-      maxHoursPerDay: true,
-      maxJobsPerDay: true,
-      internalNotes: true,
-      position: true,
-      user: { select: { firstName: true, lastName: true, email: true } },
-      jobs: {
-        select: { service: { select: { status: true, price: true } } },
-      },
-    },
-    orderBy: { user: { firstName: "asc" } },
-  });
+  const isCoordinator = actor.role !== "EMPLOYEE";
+  const where = {
+    companyId: actor.companyId,
+    ...(isCoordinator ? {} : { id: actor.employeeId ?? "__missing_employee__" }),
+  };
+  const orderBy = { user: { firstName: "asc" as const } };
+  const shared = {
+    id: true,
+    fieldStatus: true,
+    availability: true,
+    skills: true,
+    zones: true,
+    maxHoursPerDay: true,
+    maxJobsPerDay: true,
+    position: true,
+    user: { select: { firstName: true, lastName: true, email: true } },
+  } as const;
+
+  const rows = isCoordinator
+    ? await getPrisma().employee.findMany({
+        where,
+        orderBy,
+        select: {
+          ...shared,
+          performanceScore: true,
+          internalNotes: true,
+          jobs: { select: { service: { select: { status: true, price: true } } } },
+        },
+      })
+    : await getPrisma().employee.findMany({ where, orderBy, select: shared });
+
+  // One declared shape for both queries: the coordinator-only fields are simply
+  // absent for a field worker, so a caller cannot read what was never fetched.
+  return rows as EmployeeListItem[];
 }
 
 /**
@@ -879,6 +914,41 @@ export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string)
       );
     }
 
+    // Everything still ahead of them is released rather than left pointing at
+    // an account that can no longer clock in. Each released shift becomes a
+    // visible uncovered incident — the same thing the product does for a shift
+    // created without anyone on it — so the gap is worked, not discovered on
+    // the morning it fails.
+    const futureShifts = await transaction.plannedShift.findMany({
+      where: {
+        companyId: actor.companyId,
+        employeeId,
+        status: { notIn: ["CANCELLED", "COMPLETED"] },
+        scheduledStart: { gt: new Date() },
+      },
+      select: { id: true, worksiteId: true },
+    });
+
+    if (futureShifts.length) {
+      await transaction.plannedShift.updateMany({
+        where: { id: { in: futureShifts.map((shift) => shift.id) } },
+        data: { employeeId: null, status: "UNCOVERED" },
+      });
+      await transaction.attendanceIncident.createMany({
+        data: futureShifts.map((shift) => ({
+          companyId: actor.companyId,
+          shiftId: shift.id,
+          worksiteId: shift.worksiteId,
+          type: "MISSING_CLOCK_IN" as const,
+          status: "OPEN" as const,
+          title: "Uncovered shift",
+          detail: "The assigned person was removed from the field team.",
+        })),
+        // A shift that already had this incident keeps the original one.
+        skipDuplicates: true,
+      });
+    }
+
     await transaction.employee.update({
       where: { id: employeeId },
       data: { fieldStatus: "INACTIVE" },
@@ -894,10 +964,10 @@ export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string)
         action: "employee.deactivated",
         entity: "Employee",
         entityId: employeeId,
-        metadata: { email: employee.user.email },
+        metadata: { email: employee.user.email, releasedShifts: futureShifts.length },
       },
     });
-    return { id: employeeId };
+    return { id: employeeId, releasedShifts: futureShifts.length };
   });
 }
 
@@ -914,6 +984,15 @@ export async function updateEmployeeProfile(actor: WiaActor, employeeId: string,
     throw new WiaDomainError("FORBIDDEN", "An employee cannot edit employee profiles.");
   }
   const payload = employeeProfileUpdateSchema.parse(input);
+  if (payload.fieldStatus === "INACTIVE") {
+    // Otherwise this would be a second way out of the field team: one that
+    // skips the active-shift guard, leaves future shifts assigned, and leaves
+    // the login enabled.
+    throw new WiaDomainError(
+      "USE_DEACTIVATION",
+      "Remove someone from the field team through deactivation, which releases their shifts and disables their access."
+    );
+  }
 
   return getPrisma().$transaction(async (transaction) => {
     const employee = await transaction.employee.findFirst({

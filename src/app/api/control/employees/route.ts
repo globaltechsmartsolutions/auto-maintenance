@@ -4,6 +4,21 @@ import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-cont
 import { createEmployeeProfile, listEmployees } from "@/lib/wia-control/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+import type { EmployeeListItem } from "@/lib/wia-control/service";
+
+function coordinatorFields(record: EmployeeListItem) {
+  if (record.internalNotes === undefined && record.jobs === undefined) return {};
+  const jobs = record.jobs ?? [];
+  return {
+    performanceScore: record.performanceScore,
+    internalNotes: record.internalNotes ?? undefined,
+    servicesCount: jobs.length,
+    revenue: jobs
+      .filter((job) => job.service.status === "COMPLETED")
+      .reduce((total, job) => total + Number(job.service.price), 0),
+  };
+}
+
 export const GET = apiRoute(async (request: Request) => {
   const companyId = new URL(request.url).searchParams.get("companyId") ?? undefined;
   const context = await requireWiaApiContext(
@@ -28,16 +43,9 @@ export const GET = apiRoute(async (request: Request) => {
       availability: record.availability,
       maxHoursPerDay: record.maxHoursPerDay ?? undefined,
       maxJobsPerDay: record.maxJobsPerDay ?? undefined,
-      ...(context.actor.role === "EMPLOYEE"
-        ? {}
-        : {
-            performanceScore: record.performanceScore,
-            internalNotes: record.internalNotes ?? undefined,
-            servicesCount: record.jobs.length,
-            revenue: record.jobs
-              .filter((job) => job.service.status === "COMPLETED")
-              .reduce((total, job) => total + Number(job.service.price), 0),
-          }),
+      // listEmployees does not fetch these for a field worker at all, so this
+      // is presentation of what came back, not the access rule itself.
+      ...coordinatorFields(record),
     })),
   });
 });
