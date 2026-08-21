@@ -143,8 +143,7 @@ describe("operational CSV confirmation", () => {
     const rows = Array.from({ length: 2_001 }, (_, index) => `Site ${index},${index} Main Street,Madrid`);
 
     await expect(
-      confirmOperationalCsvImport(manager, "WORKSITES", [header, ...rows].join("
-"))
+      confirmOperationalCsvImport(manager, "WORKSITES", [header, ...rows].join("\n"))
     ).rejects.toThrow(/limited to 2000 rows/);
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
