@@ -16,9 +16,12 @@ function name(person?: { firstName: string; lastName: string } | null) {
 
 export const GET = apiRoute(async (request: Request) => {
   const url = new URL(request.url);
-  const payload = querySchema.parse(Object.fromEntries(url.searchParams));
-  const context = await requireWiaApiContext(["SUPER_ADMIN", "ADMIN", "MANAGER"], payload.companyId);
+  const context = await requireWiaApiContext(
+    ["SUPER_ADMIN", "ADMIN", "MANAGER"],
+    url.searchParams.get("companyId") ?? undefined
+  );
   if (context.response) return context.response;
+  const payload = querySchema.parse(Object.fromEntries(url.searchParams));
 
   const from = new Date(payload.from);
   const to = new Date(payload.to);

@@ -18,12 +18,12 @@ const querySchema = z.object({
 
 export const GET = apiRoute(async (request: Request) => {
     const url = new URL(request.url);
-    const query = querySchema.parse(Object.fromEntries(url.searchParams.entries()));
     const context = await requireWiaApiContext(
         ["SUPER_ADMIN", "ADMIN", "MANAGER"],
-        query.companyId
+        url.searchParams.get("companyId") ?? undefined
     );
     if (context.response) return context.response;
+    const query = querySchema.parse(Object.fromEntries(url.searchParams.entries()));
     if (context.demo) return Response.json({ incidents: [] });
 
     const ownerId =

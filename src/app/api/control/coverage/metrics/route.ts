@@ -10,9 +10,13 @@ const querySchema = z.object({
 });
 
 export const GET = apiRoute(async (request: Request) => {
-  const query = querySchema.parse(Object.fromEntries(new URL(request.url).searchParams));
-  const context = await requireWiaApiContext(["SUPER_ADMIN", "ADMIN", "MANAGER"], query.companyId);
+  const url = new URL(request.url);
+  const context = await requireWiaApiContext(
+    ["SUPER_ADMIN", "ADMIN", "MANAGER"],
+    url.searchParams.get("companyId") ?? undefined
+  );
   if (context.response) return context.response;
-  if (context.demo) return Response.json({ metrics: { incidentCount: 0, acknowledgedCount: 0, recoveredCount: 0, averageAcknowledgementMinutes: null, averageRecoveryMinutes: null } });
+  const query = querySchema.parse(Object.fromEntries(url.searchParams));
+  if (context.demo) return Response.json({ metrics: { incidentCount: 0, acknowledgedCount: 0, recoveredCount: 0, unresolvedCount: 0, oldestUnresolvedMinutes: null, averageAcknowledgementMinutes: null, averageRecoveryMinutes: null } });
   return Response.json({ metrics: await getCoverageRecoveryMetrics(context.actor, new Date(query.from), new Date(query.to)) });
 });

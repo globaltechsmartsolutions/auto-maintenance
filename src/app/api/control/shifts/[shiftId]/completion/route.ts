@@ -8,9 +8,9 @@ export const POST = apiRoute(async (
   routeContext: { params: Promise<{ shiftId: string }> }
 ) => {
   const { shiftId } = await routeContext.params;
-  const payload = shiftCompletionSchema.parse(await request.json());
   const context = await requireWiaApiContext(["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"]);
   if (context.response) return context.response;
+  const payload = shiftCompletionSchema.parse(await request.json());
   if (context.demo) return Response.json({ completion: { id: `demo-completion-${Date.now()}`, ...payload } }, { status: 201 });
   return Response.json({ completion: await completePlannedShift(context.actor, shiftId, payload) }, { status: 201 });
 });

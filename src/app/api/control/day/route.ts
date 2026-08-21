@@ -10,15 +10,15 @@ const querySchema = z.object({
 
 export const GET = apiRoute(async (request: Request) => {
   const url = new URL(request.url);
+  const context = await requireWiaApiContext(
+    ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"],
+    url.searchParams.get("companyId") ?? undefined
+  );
+  if (context.response) return context.response;
   const query = querySchema.parse({
     date: url.searchParams.get("date"),
     companyId: url.searchParams.get("companyId") ?? undefined,
   });
-  const context = await requireWiaApiContext(
-    ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"],
-    query.companyId
-  );
-  if (context.response) return context.response;
 
   if (context.demo) {
     return Response.json({
