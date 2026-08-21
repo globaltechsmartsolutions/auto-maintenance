@@ -153,7 +153,16 @@ pack is incomplete precisely when it matters.
   that gave up, or evidence past its retention that the job could not delete.
 - **503 `failing`** — the database or authentication is unreachable.
 
-Page on 503. Review 207 within the working day. The scheduled outbox worker
+The public answer carries only the reachability checks. Operational counts are
+business signal and cost a database query each, so they are returned only to a
+caller presenting the cron secret:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<staging>/api/health
+```
+
+Point the uptime monitor at the plain endpoint; use the authenticated form when
+investigating. Page on 503. Review 207 within the working day. The scheduled outbox worker
 answers 207 on the same condition, so a stuck queue is visible in the
 scheduler's log without anyone opening the app.
 

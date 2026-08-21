@@ -67,10 +67,13 @@ export async function signUpAction(formData: FormData) {
     email,
     password,
     options: {
+      // Only display data goes into Supabase user metadata. The role is
+      // deliberately NOT stored here: a user can edit their own metadata, so a
+      // role read from the token would be a privilege escalation. The role
+      // lives in Postgres and is read from there (see api-auth.ts, viewer.ts).
       data: {
         companyName,
         fullName,
-        role: "ADMIN",
       },
     },
   });

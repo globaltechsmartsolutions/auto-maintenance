@@ -1,19 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { can, isRole } from "@/lib/auth/roles";
+import { isRole, roles } from "@/lib/auth/roles";
 
-describe("roles and permissions", () => {
-  it("limits company writes to coordinators and administrators", () => {
-    expect(can("MANAGER", "company:write")).toBe(true);
-    expect(can("EMPLOYEE", "company:write")).toBe(false);
+describe("roles", () => {
+  it("recognises exactly the four roles the product defines", () => {
+    expect([...roles]).toEqual(["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"]);
+    expect(roles.every((role) => isRole(role))).toBe(true);
   });
 
-  it("reserves platform management for the super administrator", () => {
-    expect(can("SUPER_ADMIN", "platform:write")).toBe(true);
-    expect(can("ADMIN", "platform:write")).toBe(false);
-  });
-
-  it("rejects unknown roles", () => {
+  it("rejects anything else, including a plausible-looking role", () => {
     expect(isRole("OWNER")).toBe(false);
-    expect(isRole("EMPLOYEE")).toBe(true);
+    expect(isRole("admin")).toBe(false);
+    expect(isRole(undefined)).toBe(false);
+    expect(isRole({ role: "ADMIN" })).toBe(false);
   });
 });

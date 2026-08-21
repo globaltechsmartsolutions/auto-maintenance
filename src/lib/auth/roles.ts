@@ -2,23 +2,18 @@ export const roles = ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"] as const;
 
 export type Role = (typeof roles)[number];
 
-const permissions = {
-  SUPER_ADMIN: [
-    "platform:read",
-    "platform:write",
-    "company:read",
-    "company:write",
-    "billing:write",
-  ],
-  ADMIN: ["company:read", "company:write", "billing:write"],
-  MANAGER: ["company:read", "company:write"],
-  EMPLOYEE: ["company:read"],
-} satisfies Record<Role, string[]>;
-
-export function can(role: Role, permission: string) {
-  return permissions[role].includes(permission);
-}
-
+/**
+ * Authorisation is not expressed here.
+ *
+ * Every route states the roles it accepts, explicitly, at its own entry point
+ * (`requireWiaApiContext([...])`), and every service function re-checks the
+ * rule it cares about. That is deliberately more repetitive than a central
+ * permission table, and deliberately harder to get silently wrong: a reader of
+ * any endpoint can see who may call it without holding a second file in their
+ * head, and a new capability cannot inherit access by accident.
+ *
+ * This module only answers "is this string one of our four roles".
+ */
 export function isRole(value: unknown): value is Role {
   return typeof value === "string" && roles.includes(value as Role);
 }

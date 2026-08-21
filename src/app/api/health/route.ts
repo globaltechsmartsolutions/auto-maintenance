@@ -7,15 +7,26 @@ import { getGlobalCommunicationHealth } from "@/lib/wia-control/service";
 export const dynamic = "force-dynamic";
 
 /**
- * One answer for an uptime monitor, and enough detail for a person.
+ * Liveness for an uptime monitor, and operational detail for whoever operates
+ * the deployment.
  *
- * `failing` (503) means the product cannot serve its core promise and someone
- * should be paged. `degraded` (207) means it can, but something needs
- * attention — a message that gave up, an evidence file past retention that the
- * job could not delete. The distinction exists so an outbox backlog does not
- * wake anyone at 3am while a database outage does.
+ * The public answer is deliberately thin: whether the database and
+ * authentication are reachable, and nothing else. Counts of failed messages or
+ * pending evidence are business signal, and they cost a database query each, so
+ * an unauthenticated caller gets neither.
+ *
+ * Presenting the cron secret — the same one the scheduled jobs already use —
+ * adds the operational checks. **503** means the product cannot serve its core
+ * promise and someone should be paged; **207** means it is serving normally but
+ * something needs a person today. That distinction is why an outbox backlog
+ * does not wake anyone at 3am while a database outage does.
  */
-export const GET = apiRoute(async () => {
+function isOperator(request: Request) {
+  const expected = process.env.CRON_SECRET;
+  return Boolean(expected) && request.headers.get("authorization") === `Bearer ${expected}`;
+}
+
+export const GET = apiRoute(async (request: Request) => {
   if (isDemoMode()) {
     return Response.json(
       { status: "ok", mode: "demo", database: "local", checks: [] },
@@ -44,7 +55,9 @@ export const GET = apiRoute(async () => {
     }
   }
 
-  if (checks.every((check) => check.status === "ok")) {
+  // Only an operator gets the operational detail, and only once the basics are
+  // reachable — there is nothing to measure through a database that is down.
+  if (isOperator(request) && checks.every((check) => check.status === "ok")) {
     const outbox = await getGlobalCommunicationHealth();
     checks.push({
       name: "communications",

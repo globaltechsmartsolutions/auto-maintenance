@@ -16,6 +16,7 @@ const protectedPrefixes = [
   "/services",
   "/calendar",
   "/employees",
+  "/onboarding",
   "/invoices",
   "/payments",
   "/automations",
