@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { getPrisma } from "@/lib/prisma";
 import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
+import { logEvent } from "@/lib/observability";
 import {
   assertClockTransition,
   clockCommandSchema,
@@ -3319,9 +3320,26 @@ export async function confirmEmployeeCsvImport(
       } catch (profileError) {
         try {
           await provisioner.revoke(login.supabaseUserId);
-        } catch {
-          // An orphaned login is recoverable by hand; a hidden failure is not,
-          // so the original profile error is the one reported below.
+        } catch (cleanupError) {
+          // The rollback failed, so this row leaves a login with no profile.
+          // The row outcome has to say so: otherwise the obvious next move -
+          // fix the file and re-run it - fails on "already registered" with no
+          // explanation anywhere.
+          logEvent({
+            level: "error",
+            event: "auth.orphaned_login",
+            supabaseUserId: login.supabaseUserId,
+            reason: "A bulk invitation profile write failed and its rollback failed too.",
+            errorDetail: cleanupError instanceof Error ? cleanupError.message : "Unknown cleanup error.",
+          });
+          outcomes.push({
+            row: rowNumber,
+            status: "FAILED",
+            code: "ORPHANED_LOGIN",
+            message:
+              "The profile could not be written and the login could not be removed. Support must delete that login before this address can be invited again.",
+          });
+          continue;
         }
         throw profileError;
       }

@@ -190,6 +190,25 @@ describe("employee CSV invitations", () => {
     expect(login.invite).not.toHaveBeenCalled();
   });
 
+  it("reports a login it could not revoke, so the retry does not fail unexplained", async () => {
+    mocks.transaction.user.create
+      .mockRejectedValueOnce(new Error("duplicate key value"))
+      .mockResolvedValueOnce({ id: "user-2" });
+    mocks.transaction.employee.create.mockResolvedValue({ id: "employee-2" });
+    const login = provisioner({
+      revoke: vi.fn().mockRejectedValue(new Error("auth service unavailable")),
+    });
+
+    const result = await confirmEmployeeCsvImport(manager, employeesCsv, login);
+
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({ row: 2, status: "FAILED", code: "ORPHANED_LOGIN" })
+    );
+    expect(result.rows[0].message).toMatch(/Support must delete that login/);
+    // The rest of the file still processes.
+    expect(result.rows[1]).toEqual(expect.objectContaining({ row: 3, status: "IMPORTED" }));
+  });
+
   it("revokes the login it created when the profile cannot be written, and keeps going", async () => {
     mocks.transaction.user.create
       .mockRejectedValueOnce(new Error("duplicate key value violates unique constraint"))

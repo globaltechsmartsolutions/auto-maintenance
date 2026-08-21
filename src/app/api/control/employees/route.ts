@@ -3,6 +3,7 @@ import { employeeCreateSchema } from "@/lib/wia-control/domain";
 import { requireWiaApiContext, requestedCompanyIdFromBody } from "@/lib/wia-control/api-context";
 import { createEmployeeProfile, listEmployees } from "@/lib/wia-control/service";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logEvent } from "@/lib/observability";
 
 import type { EmployeeListItem } from "@/lib/wia-control/service";
 
@@ -98,16 +99,35 @@ export const POST = apiRoute(async (request: Request) => {
     });
     return Response.json({ employee, invitationSent: true }, { status: 201 });
   } catch (provisioningError) {
+    let orphanedLogin = false;
     try {
       await admin.auth.admin.deleteUser(data.user.id);
-    } catch {
-      // If cleanup itself fails, surface the original error below; an
-      // orphaned auth user is recoverable manually, a hidden failure is not.
+    } catch (cleanupError) {
+      // The rollback itself failed, so a login now exists with no profile
+      // behind it. Saying nothing would leave the next person to retry with
+      // the same address facing "user already exists" and no explanation.
+      orphanedLogin = true;
+      logEvent({
+        level: "error",
+        event: "auth.orphaned_login",
+        supabaseUserId: data.user.id,
+        reason: "The profile write failed and the login rollback failed too.",
+        errorDetail: cleanupError instanceof Error ? cleanupError.message : "Unknown cleanup error.",
+      });
     }
     const message =
       provisioningError instanceof Error
         ? provisioningError.message
         : "Could not create this employee's profile.";
-    return Response.json({ error: message }, { status: 400 });
+    return Response.json(
+      {
+        error: orphanedLogin
+          ? `${message} A login was created and could not be removed; support must delete it before this address can be invited again.`
+          : message,
+        code: orphanedLogin ? "ORPHANED_LOGIN" : "EMPLOYEE_PROVISIONING_FAILED",
+        orphanedLogin,
+      },
+      { status: 400 }
+    );
   }
 });

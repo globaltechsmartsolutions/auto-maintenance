@@ -84,6 +84,25 @@ enforces that the documentation matches.
 
 ---
 
+## 4b. An orphaned login
+
+**Symptom.** Inviting somebody fails with "already registered", but they do not
+appear in the team. Or an import row came back with code `ORPHANED_LOGIN`.
+
+This happens when the Postgres profile write failed *and* the automatic rollback
+of the Supabase login failed too. The login exists with nothing behind it.
+
+1. Search the logs for `event: "auth.orphaned_login"`. The entry carries the
+   `supabaseUserId` — that is the record to remove.
+2. Delete that user in Supabase Auth (Authentication → Users).
+3. Invite the person again through the normal flow.
+
+Do **not** create the Postgres profile by hand to match the stray login. The
+provisioning path exists so the two sides are created together; hand-stitching
+them produces an account nobody can reason about later.
+
+---
+
 ## 5. Somebody has lost access
 
 1. Confirm identity out of band. Never reset access on the strength of an email

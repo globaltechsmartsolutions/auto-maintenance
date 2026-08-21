@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { hasSupabaseConfig, isDemoMode } from "@/lib/demo-mode";
 import { getPrisma } from "@/lib/prisma";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logEvent } from "@/lib/observability";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function getString(formData: FormData, key: string) {
@@ -114,18 +115,27 @@ export async function signUpAction(formData: FormData) {
     try {
       const admin = createSupabaseAdminClient();
       await admin.auth.admin.deleteUser(supabaseUserId);
-    } catch {
-      // If cleanup itself fails, surface the original provisioning error;
-      // an orphaned auth user is recoverable manually, a hidden failure is not.
+    } catch (cleanupError) {
+      // The rollback failed, so a login exists with no company behind it.
+      // It is recoverable by hand, but only if somebody is told it happened.
+      logEvent({
+        level: "error",
+        event: "auth.orphaned_login",
+        supabaseUserId,
+        reason: "Company provisioning failed and the login rollback failed too.",
+        errorDetail: cleanupError instanceof Error ? cleanupError.message : "Unknown cleanup error.",
+      });
     }
 
-    console.error(JSON.stringify({
+    // Through the shared logger, so the provisioning error - which routinely
+    // quotes the input that caused it - passes redaction like everything else.
+    logEvent({
       level: "error",
       event: "signup.company_provisioning_failed",
       supabaseUserId,
-      errorMessage:
+      errorDetail:
         provisioningError instanceof Error ? provisioningError.message : "Unknown error",
-    }));
+    });
 
     redirect(
       "/register?error=Could%20not%20create%20the%20company.%20Please%20try%20again."
