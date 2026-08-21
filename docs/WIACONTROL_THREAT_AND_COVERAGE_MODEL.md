@@ -254,7 +254,31 @@ Ranked by consequence, before a single line of the second review pass:
 5. **The hash chain is written but never verified.** An integrity guarantee
    nobody checks is a claim, not a control.
 6. **No location-capture notice to the worker.** AEPD expects the worker to be
-   informed.
+   informed. *(Closed: the notice now sits on the clocking screen itself.)*
+
+### Decided: what a clock keeps about where it happened
+
+The exact position is now kept only for a configurable window, then reduced to
+the distance that justified the decision. The statutory record — time, person,
+worksite, verification outcome — is untouched and still kept for the full
+retention period.
+
+The reasoning, recorded because it will be asked about:
+
+- Keeping the coordinate for four years builds a location history of every
+  worker, which is a different thing from a time record and is the hardest
+  version to defend against the AEPD's proportionality test.
+- Keeping only the boolean makes a disputed clock unanswerable, and a
+  misconfigured worksite unrecoverable.
+- Distance plus the radius in force explains any decision to a worker or an
+  inspector without retaining where somebody was.
+- The window exists because a misconfigured worksite is only recomputable while
+  the raw point survives. It is configurable per company because how quickly a
+  dispute surfaces is a business fact.
+
+**Owner tasks that remain:** confirm the window value, and make the worker
+privacy notice and the retention policy say what the software now does. The
+software being correct does not help if the signed notice says something else.
 
 Items 1 to 3 are product scope decisions and belong on the roadmap. Items 4 to 6
 are review findings and belong in the block passes.

@@ -14,6 +14,7 @@ import {
   companySettingsSchema,
   computeIncidentDueAt,
   computeIncidentSeverity,
+  distanceInMeters,
   computeNextCommunicationAttempt,
   correctionAcknowledgementSchema,
   correctionRequestSchema,
@@ -155,6 +156,10 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
       occurredAt: event.occurredAt.toISOString(),
       recordedAt: event.recordedAt.toISOString(),
       locationVerified: event.locationVerified,
+      // What justified the decision, for the coordinator and for the worker
+      // themselves - never the coordinate that produced it.
+      distanceMeters: event.distanceMeters === null ? undefined : Number(event.distanceMeters),
+      verifiedAgainstRadiusMeters: event.verifiedAgainstRadiusMeters ?? undefined,
     })),
     incidents: shift.incidents.map((incident) => ({
       id: incident.id,
@@ -428,7 +433,21 @@ export async function getOperationalServiceDetail(actor: WiaActor, serviceId: st
         include: {
           worksite: { select: { id: true, name: true, city: true } },
           employee: { include: { user: { select: { firstName: true, lastName: true } } } },
-          clockEvents: { orderBy: { occurredAt: "asc" } },
+          clockEvents: {
+            orderBy: { occurredAt: "asc" },
+            select: {
+              id: true,
+              type: true,
+              method: true,
+              occurredAt: true,
+              recordedAt: true,
+              locationVerified: true,
+              distanceMeters: true,
+              verifiedAgainstRadiusMeters: true,
+              isOffline: true,
+              integrityHash: true,
+            },
+          },
           incidents: { orderBy: { detectedAt: "asc" } },
           coverageDecisions: { orderBy: { createdAt: "asc" } },
           communications: { orderBy: { createdAt: "asc" } },
@@ -1710,6 +1729,17 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
     assertClockTransition(previousEvent?.type, payload.type);
 
     const hasWorksiteCoordinates = shift.worksite.latitude !== null && shift.worksite.longitude !== null;
+    const hasReportedPosition = payload.latitude !== undefined && payload.longitude !== undefined;
+    // Written now, while both points are in hand. Once the exact position has
+    // been reduced away, this is what explains the verification to a worker who
+    // disputes it or to an inspector who asks.
+    const distanceMeters =
+      hasWorksiteCoordinates && hasReportedPosition
+        ? distanceInMeters(
+            { latitude: payload.latitude as number, longitude: payload.longitude as number },
+            { latitude: Number(shift.worksite.latitude), longitude: Number(shift.worksite.longitude) }
+          )
+        : undefined;
     const locationVerified = hasWorksiteCoordinates
       ? isLocationWithinWorksite(
         {
@@ -1746,6 +1776,8 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
         latitude: payload.latitude,
         longitude: payload.longitude,
         accuracyMeters: payload.accuracyMeters,
+        distanceMeters,
+        verifiedAgainstRadiusMeters: hasWorksiteCoordinates ? shift.worksite.radiusMeters : undefined,
         locationVerified,
         isOffline: payload.isOffline,
         deviceId: payload.deviceId,
@@ -2268,6 +2300,67 @@ export async function exportCoverageDecisions(actor: WiaActor, from: Date, to: D
   });
   await recordExport(actor, "coverage", from, to, decisions.length);
   return decisions;
+}
+
+/**
+ * Reduces an exact clock position to the distance that justified the decision.
+ *
+ * The statutory record is untouched: the time, the person, the worksite and the
+ * verification outcome all stay for the full retention period. What expires is
+ * the coordinate, because the purpose of a time record is when work started and
+ * stopped, not where somebody was — and a four-year trail of exact positions is
+ * a different thing from a time record.
+ *
+ * The distance and the radius in force were written at capture time, so nothing
+ * has to be recomputed here and a decision stays explainable afterwards. The
+ * reduction is deliberately one-way.
+ */
+export async function reduceClockLocationPrecision(now = new Date(), batchSize = 500) {
+  const prisma = getPrisma();
+  const companies = await prisma.company.findMany({
+    select: { id: true, clockLocationPrecisionDays: true },
+  });
+
+  let reduced = 0;
+  for (const company of companies) {
+    const days = Math.max(1, company.clockLocationPrecisionDays);
+    const before = new Date(now.getTime() - days * 24 * 60 * 60_000);
+
+    const result = await prisma.clockEvent.updateMany({
+      where: {
+        companyId: company.id,
+        occurredAt: { lt: before },
+        locationReducedAt: null,
+        latitude: { not: null },
+      },
+      data: {
+        latitude: null,
+        longitude: null,
+        locationReducedAt: now,
+      },
+    });
+
+    if (result.count) {
+      reduced += result.count;
+      await prisma.auditLog.create({
+        data: {
+          companyId: company.id,
+          action: "clock_location.reduced",
+          entity: "ClockEvent",
+          entityId: company.id,
+          metadata: {
+            events: result.count,
+            precisionDays: days,
+            olderThan: before.toISOString(),
+          },
+        },
+      });
+    }
+
+    if (reduced >= batchSize) break;
+  }
+
+  return { companies: companies.length, reduced };
 }
 
 export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
@@ -2978,6 +3071,7 @@ export async function getCompanySettings(actor: WiaActor) {
       name: true,
       timezone: true,
       clockRetentionYears: true,
+      clockLocationPrecisionDays: true,
       crmEnabled: true,
     },
   });

@@ -432,6 +432,18 @@ export function EmployeeClock() {
             </CardContent>
           </Card>
 
+          {/*
+            * Required by the AEPD: a worker must be told that their position is
+            * captured, when, and what is done with it. It sits on the screen
+            * where the capture actually happens, not in a policy nobody opens.
+            */}
+          <p className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+            <MapPin className="mr-1 inline size-3.5" />
+            Your location is checked only at the moment you clock, to confirm you are at the worksite.
+            It is never tracked between clocks. Your employer sees whether the check passed and how far
+            away you were, and the exact position is deleted after the period your company has set.
+          </p>
+
           {activeShift ? <DeliveryCapture shiftId={activeShift.id} /> : null}
 
           <Card className="border-border/70 bg-card/90 shadow-sm">

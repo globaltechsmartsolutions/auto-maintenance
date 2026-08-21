@@ -11,13 +11,21 @@ const mocks = vi.hoisted(() => {
   };
   const prisma = {
     $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction)),
+    company: { findMany: vi.fn() },
+    clockEvent: { updateMany: vi.fn() },
+    auditLog: { create: vi.fn() },
   };
   return { prisma, transaction };
 });
 
 vi.mock("@/lib/prisma", () => ({ getPrisma: () => mocks.prisma }));
 
-import { recordClockEvent, updateAttendanceIncident, type WiaActor } from "@/lib/wia-control/service";
+import {
+  recordClockEvent,
+  reduceClockLocationPrecision,
+  updateAttendanceIncident,
+  type WiaActor,
+} from "@/lib/wia-control/service";
 
 const manager: WiaActor = { companyId: "company-1", userId: "user-manager", role: "MANAGER" };
 const worker: WiaActor = {
@@ -276,6 +284,93 @@ describe("recording a clock event", () => {
       recordClockEvent(worker, command({ type: "CLOCK_OUT", idempotencyKey: "device-key-4" }))
     ).rejects.toThrow();
     expect(mocks.transaction.clockEvent.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("what a clock keeps about where it happened", () => {
+  it("records the distance and the radius in force, not only the verdict", async () => {
+    await recordClockEvent(worker, command({ latitude: 40.4172, longitude: -3.7038 }));
+
+    const written = (mocks.transaction.clockEvent.create.mock.calls[0][0] as {
+      data: { distanceMeters?: number; verifiedAgainstRadiusMeters?: number };
+    }).data;
+    expect(written.distanceMeters).toBeGreaterThan(0);
+    expect(written.verifiedAgainstRadiusMeters).toBe(100);
+  });
+
+  it("has nothing to explain when the worksite has no coordinates", async () => {
+    mocks.transaction.plannedShift.findFirst.mockResolvedValue(
+      shift({ worksite: { ...worksite, latitude: null, longitude: null } })
+    );
+
+    await recordClockEvent(worker, command({ method: "QR" }));
+
+    const written = (mocks.transaction.clockEvent.create.mock.calls[0][0] as {
+      data: { distanceMeters?: number; verifiedAgainstRadiusMeters?: number };
+    }).data;
+    expect(written.distanceMeters).toBeUndefined();
+    expect(written.verifiedAgainstRadiusMeters).toBeUndefined();
+  });
+});
+
+describe("reducing an exact position to the distance behind it", () => {
+  beforeEach(() => {
+    mocks.prisma.company.findMany.mockResolvedValue([
+      { id: "company-1", clockLocationPrecisionDays: 60 },
+    ]);
+    mocks.prisma.clockEvent.updateMany.mockResolvedValue({ count: 3 });
+  });
+
+  it("clears the coordinates of events past the company's own window", async () => {
+    const now = new Date("2026-08-20T08:00:00Z");
+
+    const result = await reduceClockLocationPrecision(now);
+
+    expect(result).toEqual({ companies: 1, reduced: 3 });
+    const call = mocks.prisma.clockEvent.updateMany.mock.calls[0][0] as {
+      where: { companyId: string; occurredAt: { lt: Date }; locationReducedAt: null };
+      data: Record<string, unknown>;
+    };
+    expect(call.where.companyId).toBe("company-1");
+    expect(call.where.occurredAt.lt).toEqual(new Date("2026-06-21T08:00:00Z"));
+    expect(call.data).toEqual({
+      latitude: null,
+      longitude: null,
+      locationReducedAt: now,
+    });
+  });
+
+  it("never touches the statutory fields, only the coordinate", async () => {
+    await reduceClockLocationPrecision(new Date("2026-08-20T08:00:00Z"));
+
+    const written = Object.keys(
+      (mocks.prisma.clockEvent.updateMany.mock.calls[0][0] as { data: Record<string, unknown> }).data
+    );
+    for (const field of ["occurredAt", "type", "employeeId", "locationVerified", "distanceMeters"]) {
+      expect(written).not.toContain(field);
+    }
+  });
+
+  it("records what it reduced, for each company that had anything to reduce", async () => {
+    await reduceClockLocationPrecision(new Date("2026-08-20T08:00:00Z"));
+
+    expect(mocks.prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "clock_location.reduced",
+          metadata: expect.objectContaining({ events: 3, precisionDays: 60 }),
+        }),
+      })
+    );
+  });
+
+  it("stays silent when a company has nothing past its window", async () => {
+    mocks.prisma.clockEvent.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await reduceClockLocationPrecision(new Date("2026-08-20T08:00:00Z"));
+
+    expect(result.reduced).toBe(0);
+    expect(mocks.prisma.auditLog.create).not.toHaveBeenCalled();
   });
 });
 

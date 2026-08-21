@@ -283,6 +283,13 @@ export const coverageRecommendationSchema = z.object({
 export const companySettingsSchema = z.object({
   timezone: z.string().trim().min(3).max(80),
   clockRetentionYears: z.number().int().min(4).max(10),
+  /**
+   * How long an exact clock position is kept before it is reduced to the
+   * distance that justified the decision. Bounded at both ends on purpose: too
+   * short and a disputed clock can no longer be recomputed against a corrected
+   * worksite, too long and the record becomes a location history.
+   */
+  clockLocationPrecisionDays: z.number().int().min(7).max(365).optional(),
   crmEnabled: z.boolean(),
   // Stage 3 incident policy. Optional so the existing settings form, which
   // does not send these, continues to work — omitted fields are left

@@ -243,6 +243,10 @@ model Company {
   trialEndsAt          DateTime?
    timezone             String             @default("Europe/Madrid")
   clockRetentionYears  Int                @default(4)
+  /// How long the exact clock-in position is kept before it is reduced to the
+  /// distance that justified the decision. The statutory record - time, person,
+  /// worksite - is unaffected and still kept for clockRetentionYears.
+  clockLocationPrecisionDays Int           @default(60)
   crmEnabled           Boolean            @default(false)
   /// AI features this company has explicitly turned on. Empty means no AI runs
   /// for this workspace, whatever the environment allows.
@@ -644,6 +648,15 @@ model ClockEvent {
   latitude          Decimal?       @db.Decimal(10, 7)
   longitude         Decimal?       @db.Decimal(10, 7)
   accuracyMeters    Decimal?       @db.Decimal(8, 2)
+  /// Metres between the reported position and the worksite, computed when the
+  /// event was written. This is what explains the verification decision once
+  /// the exact position has been reduced away.
+  distanceMeters    Decimal?       @db.Decimal(10, 2)
+  /// The worksite radius in force at that moment, so a later change to the
+  /// worksite cannot make a past decision look wrong.
+  verifiedAgainstRadiusMeters Int?
+  /// Set when the exact position was reduced to the distance above.
+  locationReducedAt DateTime?
   locationVerified  Boolean        @default(false)
   isOffline         Boolean        @default(false)
   deviceId          String?
