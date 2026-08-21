@@ -126,15 +126,34 @@ export const exportDefinitions: Record<ExportDataset, ExportDefinition> = {
   },
 };
 
+/**
+ * How much one export may cover. An unbounded range on a busy company loads
+ * every matching row into memory and builds one string from it; the answer to
+ * that is a narrower period, not a bigger server.
+ */
+export const MAX_EXPORT_DAYS = 366;
+export const MAX_EXPORT_ROWS = 100_000;
+
 /** Delimiter chosen for the spreadsheet software most pilots actually use. */
 const delimiter = ";";
 
 export type CsvValue = string | number | boolean | Date | null | undefined;
 
+/**
+ * Characters that make a spreadsheet treat a cell as a formula rather than
+ * text. Quoting is not enough: Excel and Sheets still evaluate a quoted cell
+ * that opens with one of these.
+ */
+const formulaLeaders = ["=", "+", "-", "@", "\t", "\r"];
+
 function csvCell(value: CsvValue) {
   if (value === null || value === undefined) return '""';
   const text = value instanceof Date ? value.toISOString() : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  // A worksite named `=HYPERLINK(...)` would otherwise run when a coordinator
+  // opens the export. The leading apostrophe is the spreadsheet convention for
+  // "this is text", and it is what a recipient of a CSV expects to see.
+  const safe = formulaLeaders.some((leader) => text.startsWith(leader)) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 /**

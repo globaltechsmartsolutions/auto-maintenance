@@ -138,6 +138,17 @@ describe("operational CSV confirmation", () => {
     expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("refuses a file with more rows than one transaction should carry", async () => {
+    const header = "name,address,city";
+    const rows = Array.from({ length: 2_001 }, (_, index) => `Site ${index},${index} Main Street,Madrid`);
+
+    await expect(
+      confirmOperationalCsvImport(manager, "WORKSITES", [header, ...rows].join("
+"))
+    ).rejects.toThrow(/limited to 2000 rows/);
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("refuses an employee file and a field worker", async () => {
     await expect(confirmOperationalCsvImport(manager, "EMPLOYEES", employeesCsv)).rejects.toThrow(
       /invitation workflow/

@@ -3,6 +3,14 @@ import { z } from "zod";
 export const importKindSchema = z.enum(["EMPLOYEES", "WORKSITES", "SERVICES", "SHIFTS"]);
 export type ImportKind = z.infer<typeof importKindSchema>;
 
+/**
+ * How many rows one import may carry. The whole file is written in a single
+ * transaction, which holds a database connection for its duration, so the
+ * answer to a very large file is to split it rather than to hold the
+ * connection longer.
+ */
+export const MAX_IMPORT_ROWS = 2_000;
+
 const requiredHeaders: Record<ImportKind, string[]> = {
   EMPLOYEES: ["firstName", "lastName", "email"],
   WORKSITES: ["name", "address", "city"],

@@ -3,8 +3,14 @@ import { requireWiaApiContext } from "@/lib/wia-control/api-context";
 import { getOperationalServiceDetail } from "@/lib/wia-control/service";
 import { listServiceSubmissions } from "@/lib/wia-control/delivery-service";
 
+const formulaLeaders = ["=", "+", "-", "@", "\t", "\r"];
+
 function cell(value: string | number | boolean | null | undefined) {
-  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const text = String(value ?? "");
+  // Same rule as the other exports: a cell opening with a formula character is
+  // marked as text, or a spreadsheet runs it when the file is opened.
+  const safe = formulaLeaders.some((leader) => text.startsWith(leader)) ? `'${text}` : text;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 export const GET = apiRoute(async (

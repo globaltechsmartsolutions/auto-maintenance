@@ -49,6 +49,20 @@ describe("CSV rendering", () => {
     );
   });
 
+  it("marks a cell that a spreadsheet would otherwise run as a formula", () => {
+    const csv = toCsv(
+      ["Worksite", "Notes"],
+      [['=HYPERLINK("https://attacker.example","open")', "+1 555 0100"]]
+    );
+    // Quoting alone does not stop Excel or Sheets evaluating these.
+    expect(csv).toContain("\"'=HYPERLINK");
+    expect(csv).toContain("\"'+1 555 0100\"");
+  });
+
+  it("leaves ordinary text untouched", () => {
+    expect(toCsv(["Name"], [["Redwood Central"]])).toContain('"Redwood Central"');
+  });
+
   it("produces byte-identical output for identical input", () => {
     const rows = [["a", 1, true]];
     expect(toCsv(["x", "y", "z"], rows)).toBe(toCsv(["x", "y", "z"], rows));
@@ -137,6 +151,22 @@ describe("export queries", () => {
     expect(
       mocks.prisma.auditLog.create.mock.calls.map((call) => (call[0] as { data: { action: string } }).data.action)
     ).toEqual(["incident_report.exported", "coverage_report.exported"]);
+  });
+
+  it("refuses a period too wide to answer in one file", async () => {
+    await expect(
+      exportIncidents(manager, new Date("2020-01-01T00:00:00Z"), new Date("2026-01-01T00:00:00Z"))
+    ).rejects.toThrow(/at most 366 days/);
+    expect(mocks.prisma.attendanceIncident.findMany).not.toHaveBeenCalled();
+  });
+
+  it("refuses a result set too large to build, naming the size", async () => {
+    mocks.prisma.attendanceIncident.findMany.mockResolvedValue(
+      Array.from({ length: 100_001 }, (_, index) => ({ id: `incident-${index}` }))
+    );
+
+    await expect(exportIncidents(manager, from, to)).rejects.toThrow(/more than the 100000/);
+    expect(mocks.prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("refuses a field worker and an inverted period", async () => {

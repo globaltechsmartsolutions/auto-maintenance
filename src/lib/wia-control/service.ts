@@ -47,7 +47,8 @@ import {
   type IncidentPolicy,
 } from "@/lib/wia-control/domain";
 import { deliverEmail, deliverInApp } from "@/lib/wia-control/communication-providers";
-import { csvRecords, previewCsvImport, type ImportKind } from "@/lib/wia-control/csv-import";
+import { csvRecords, MAX_IMPORT_ROWS, previewCsvImport, type ImportKind } from "@/lib/wia-control/csv-import";
+import { MAX_EXPORT_DAYS, MAX_EXPORT_ROWS } from "@/lib/wia-control/exports";
 import { describeRecovery, type RecoveryFacts } from "@/lib/wia-control/recovery-queue";
 import {
   activeCommunicationTemplate,
@@ -2292,6 +2293,23 @@ function assertExportRange(actor: WiaActor, from: Date, to: Date) {
   if (to <= from) {
     throw new WiaDomainError("INVALID_EXPORT_RANGE", "The end must be later than the start.");
   }
+  const days = (to.getTime() - from.getTime()) / 86_400_000;
+  if (days > MAX_EXPORT_DAYS) {
+    throw new WiaDomainError(
+      "EXPORT_RANGE_TOO_WIDE",
+      `An export covers at most ${MAX_EXPORT_DAYS} days. Request a narrower period.`
+    );
+  }
+}
+
+/** Refuses a result set too large to build in one response. */
+function assertExportSize(rows: number) {
+  if (rows > MAX_EXPORT_ROWS) {
+    throw new WiaDomainError(
+      "EXPORT_TOO_LARGE",
+      `That period contains ${rows} rows, more than the ${MAX_EXPORT_ROWS} an export can return. Request a narrower period.`
+    );
+  }
 }
 
 /**
@@ -2341,6 +2359,7 @@ export async function exportIncidents(actor: WiaActor, from: Date, to: Date) {
       },
     },
   });
+  assertExportSize(incidents.length);
   await recordExport(actor, "incident", from, to, incidents.length);
   return incidents;
 }
@@ -2368,6 +2387,7 @@ export async function exportCoverageDecisions(actor: WiaActor, from: Date, to: D
       actor: { select: { firstName: true, lastName: true } },
     },
   });
+  assertExportSize(decisions.length);
   await recordExport(actor, "coverage", from, to, decisions.length);
   return decisions;
 }
@@ -2451,6 +2471,7 @@ export async function exportClockEvents(actor: WiaActor, from: Date, to: Date) {
     },
     orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
   });
+  assertExportSize(events.length);
   await getPrisma().auditLog.create({
     data: {
       companyId: actor.companyId,
@@ -3307,6 +3328,15 @@ function validatedImportRows(kind: ImportKind, csv: string) {
   const rows = csvRecords(csv);
   if (!rows.length) {
     throw new WiaDomainError("CSV_EMPTY", "The file does not contain any data row.");
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    // Every row is a lookup and a write inside one transaction, and that
+    // transaction holds a database connection for as long as it runs. A file
+    // this size is split, not streamed.
+    throw new WiaDomainError(
+      "CSV_TOO_LARGE",
+      `A single import is limited to ${MAX_IMPORT_ROWS} rows. Split the file and import it in parts.`
+    );
   }
   return rows;
 }
