@@ -85,9 +85,11 @@ describe("creating a worksite", () => {
   it("stamps the company and audits the creation", async () => {
     await createWorksite(manager, worksiteInput);
 
-    expect(mocks.transaction.worksite.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ companyId: "company-1", name: "Redwood Central" }),
-    });
+    expect(mocks.transaction.worksite.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ companyId: "company-1", name: "Redwood Central" }),
+      })
+    );
     expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: "worksite.created" }) })
     );
@@ -168,6 +170,58 @@ describe("preserving worksite-to-customer history", () => {
       },
     });
     expect(mocks.transaction.service.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("what leaves the server", () => {
+  it("never returns the QR credential column when a worksite is created or edited", async () => {
+    await createWorksite(manager, worksiteInput);
+    await updateWorksite(manager, "worksite-1", { name: "Renamed" });
+
+    const created = mocks.transaction.worksite.create.mock.calls[0][0] as {
+      select: Record<string, unknown>;
+    };
+    const updated = mocks.transaction.worksite.update.mock.calls[0][0] as {
+      select: Record<string, unknown>;
+    };
+    expect(Object.keys(created.select)).not.toContain("qrSecretHash");
+    expect(Object.keys(updated.select)).not.toContain("qrSecretHash");
+    // Still returns what a client legitimately needs.
+    expect(Object.keys(created.select)).toEqual(expect.arrayContaining(["name", "address", "radiusMeters"]));
+  });
+
+  it("refuses to attach a worksite to an archived customer, on create and on edit", async () => {
+    mocks.transaction.customer.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createWorksite(manager, { ...worksiteInput, customerId: "customer-archived" })
+    ).rejects.toThrow(/does not belong to the company or is archived/);
+    await expect(
+      updateWorksite(manager, "worksite-1", { customerId: "customer-archived" })
+    ).rejects.toThrow(/does not belong to the company or is archived/);
+
+    for (const call of mocks.transaction.customer.findFirst.mock.calls) {
+      expect((call[0] as { where: { status?: unknown } }).where.status).toEqual({ not: "ARCHIVED" });
+    }
+  });
+
+  it("rejects an attempt to detach a worksite from its customer, rather than skipping the conflict guard", async () => {
+    // The update schema does not accept null here. That matters: a nullable
+    // field would slip past the `if (payload.customerId)` guard below it and
+    // detach a worksite whose shifts still serve the original customer.
+    await expect(updateWorksite(manager, "worksite-1", { customerId: null })).rejects.toThrow();
+    expect(mocks.transaction.worksite.update).not.toHaveBeenCalled();
+  });
+
+  it("scopes the nested shifts of a service timeline to the caller's company", async () => {
+    mocks.prisma.service.findFirst.mockResolvedValue({ id: "service-1", plannedShifts: [] });
+
+    await getOperationalServiceDetail(manager, "service-1");
+
+    const query = mocks.prisma.service.findFirst.mock.calls[0][0] as {
+      include: { plannedShifts: { where?: { companyId?: string } } };
+    };
+    expect(query.include.plannedShifts.where).toEqual({ companyId: "company-1" });
   });
 });
 

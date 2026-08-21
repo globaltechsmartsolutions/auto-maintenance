@@ -416,6 +416,7 @@ export async function getOperationalServiceDetail(actor: WiaActor, serviceId: st
     include: {
       customer: { select: { id: true, name: true } },
       plannedShifts: {
+        where: { companyId: actor.companyId },
         orderBy: { scheduledStart: "asc" },
         include: {
           worksite: { select: { id: true, name: true, city: true } },
@@ -1078,6 +1079,30 @@ export async function updateEmployeeProfile(actor: WiaActor, employeeId: string,
   });
 }
 
+/**
+ * Every column of a worksite that may leave the server. Written out rather than
+ * returned wholesale because `qrSecretHash` is a credential column: an implicit
+ * "return the row" hands it to the client the day QR verification is built.
+ */
+const worksiteReturnFields = {
+  id: true,
+  companyId: true,
+  customerId: true,
+  name: true,
+  address: true,
+  city: true,
+  province: true,
+  postalCode: true,
+  latitude: true,
+  longitude: true,
+  radiusMeters: true,
+  timezone: true,
+  verificationMode: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export async function createWorksite(actor: WiaActor, input: unknown) {
   assertCompany(actor);
   if (actor.role === "EMPLOYEE") {
@@ -1095,16 +1120,20 @@ async function createWorksiteWithin(
 ) {
   if (payload.customerId) {
     const customer = await transaction.customer.findFirst({
-      where: { id: payload.customerId, companyId: actor.companyId },
+      where: { id: payload.customerId, companyId: actor.companyId, status: { not: "ARCHIVED" } },
       select: { id: true },
     });
     if (!customer) {
-      throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+      throw new WiaDomainError(
+        "CUSTOMER_NOT_FOUND",
+        "The customer does not belong to the company or is archived."
+      );
     }
   }
 
   const worksite = await transaction.worksite.create({
     data: { ...payload, companyId: actor.companyId },
+    select: worksiteReturnFields,
   });
   await transaction.auditLog.create({
     data: {
@@ -1137,11 +1166,14 @@ export async function updateWorksite(actor: WiaActor, worksiteId: string, input:
 
     if (payload.customerId) {
       const customer = await transaction.customer.findFirst({
-        where: { id: payload.customerId, companyId: actor.companyId },
+        where: { id: payload.customerId, companyId: actor.companyId, status: { not: "ARCHIVED" } },
         select: { id: true },
       });
       if (!customer) {
-        throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+        throw new WiaDomainError(
+          "CUSTOMER_NOT_FOUND",
+          "The customer does not belong to the company or is archived."
+        );
       }
       if (payload.customerId !== worksite.customerId) {
         const conflictingServiceShifts = await transaction.plannedShift.count({
@@ -1179,6 +1211,7 @@ export async function updateWorksite(actor: WiaActor, worksiteId: string, input:
     const updated = await transaction.worksite.update({
       where: { id: worksiteId },
       data: payload,
+      select: worksiteReturnFields,
     });
     await transaction.auditLog.create({
       data: {
