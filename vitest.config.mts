@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
@@ -11,6 +11,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // Integration tests need a live database; they run as their own project.
+    exclude: [...configDefaults.exclude, "src/**/*.integration.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],

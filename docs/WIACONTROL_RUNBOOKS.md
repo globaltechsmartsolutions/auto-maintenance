@@ -204,3 +204,50 @@ Logs are one JSON line per event with a dotted `event` name. Every field passes
 redaction on the way out: names, addresses, coordinates, message bodies, CSV
 contents, prompts, and answers are replaced with `[redacted]` by field name, so
 a log platform never becomes a second, unmanaged copy of worker data.
+
+## 10. Running the database guarantee tests
+
+The strongest rules in this system are not in TypeScript. The exclusion
+constraint that stops a double booking, the partial unique indexes that keep a
+clock chain linear, and the append-only triggers on clock events, completions,
+submissions and the audit log all live in PostgreSQL, and they are the ones
+that hold when two requests race or when a server credential issues SQL
+directly.
+
+Unit tests cannot reach them: Prisma is mocked, so a blocked write still looks
+like a success. `npm run test:integration` runs them against a real database.
+
+**In CI** this happens on every pull request — the `database` job in
+`.github/workflows/quality.yml` starts PostgreSQL, applies all migrations from
+an empty database, and runs the suite. Nothing needs doing.
+
+**Locally**, start a throwaway database and point the suite at it:
+
+```bash
+docker run -d --name wiacontrol-test-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wia_control_test -p 127.0.0.1:55434:5432 postgres:16-alpine
+```
+
+```bash
+docker exec wiacontrol-test-db psql -U postgres -d wia_control_test -c "ALTER SYSTEM SET fsync='off'" -c "ALTER SYSTEM SET synchronous_commit='off'" -c "SELECT pg_reload_conf()"
+```
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55434/wia_control_test DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:55434/wia_control_test npx prisma migrate deploy
+```
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55434/wia_control_test npm run test:integration
+```
+
+The second command is what makes the suite finish in seconds instead of a
+minute: the tests truncate between cases, and a durable truncate costs ten
+times a throwaway one. Never apply it to a database you need.
+
+**The suite truncates every table it touches.** It refuses to start without
+`TEST_DATABASE_URL`, deliberately, so it can never inherit a connection string
+meant for staging. Point it only at a database you are willing to lose.
+
+**When one of these tests fails**, the guarantee is gone from the database, not
+from the test. Find which migration removed it before changing anything else —
+the first test in the suite lists every constraint, index and trigger that must
+exist and names the missing one.

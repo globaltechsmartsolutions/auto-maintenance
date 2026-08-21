@@ -27,3 +27,54 @@ jobs:
       - run: npm ci
       - run: npm run prisma:generate
       - run: npm run preprod:verify
+
+  # The guarantees that only a real PostgreSQL can prove: the exclusion
+  # constraint, the partial unique indexes and the append-only triggers. Kept as
+  # its own job so the fast gates above stay fast and still report on their own.
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wia_control_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/wia_control_ci
+      DIRECT_URL: postgresql://postgres:postgres@127.0.0.1:5432/wia_control_ci
+      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/wia_control_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.0
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+
+      # The suite truncates between tests, and a durable truncate costs ten
+      # times what a throwaway one does. Safe here and nowhere else: this
+      # database exists for the length of one job.
+      - name: Trade durability for speed on a disposable database
+        run: |
+          psql "$DATABASE_URL" -c "ALTER SYSTEM SET fsync='off'" \
+                               -c "ALTER SYSTEM SET synchronous_commit='off'" \
+                               -c "ALTER SYSTEM SET full_page_writes='off'" \
+                               -c "SELECT pg_reload_conf()"
+
+      # Applying every migration from an empty database is itself a check: a
+      # migration that no longer applies fails here rather than in production.
+      - name: Apply every migration from scratch
+        run: npx prisma migrate deploy
+
+      - name: Prove the database guarantees
+        run: npm run test:integration
