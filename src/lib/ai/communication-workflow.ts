@@ -188,6 +188,27 @@ export async function approveIncidentDraft(actor: WiaActor, draftId: string, inp
     }
 
     const approvedAt = new Date();
+
+    // Claim the draft before anything is queued. Two approvals arriving
+    // together both read DRAFT and both created an outbox message, so one
+    // draft produced two messages to a real person.
+    const claimed = await transaction.aiCommunicationDraft.updateMany({
+      where: { id: draft.id, status: "DRAFT" },
+      data: {
+        status: "APPROVED",
+        finalSubject: payload.subject,
+        finalMessage: payload.message,
+        approvedByUserId: actor.userId,
+        approvedAt,
+      },
+    });
+    if (claimed.count === 0) {
+      throw new WiaDomainError(
+        "AI_DRAFT_CLOSED",
+        "This draft was approved or cancelled while you were working on it."
+      );
+    }
+
     const dedupeKey = communicationDedupeKey({
       template: "coordinator_message",
       version: template.version,
@@ -214,14 +235,7 @@ export async function approveIncidentDraft(actor: WiaActor, draftId: string, inp
 
     const approved = await transaction.aiCommunicationDraft.update({
       where: { id: draft.id },
-      data: {
-        status: "APPROVED",
-        finalSubject: payload.subject,
-        finalMessage: payload.message,
-        approvedByUserId: actor.userId,
-        approvedAt,
-        outboxId: message.id,
-      },
+      data: { outboxId: message.id },
       select: { id: true, status: true, outboxId: true, approvedAt: true },
     });
 

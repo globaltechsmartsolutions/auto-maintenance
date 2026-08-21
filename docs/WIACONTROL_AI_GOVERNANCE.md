@@ -22,6 +22,18 @@ the reason is never guessed at.
 The gate itself is a pure function, `evaluateAiGate` in
 `src/lib/ai/governance.ts`, and every branch of it is covered by tests.
 
+**What the rate limit and the budget can and cannot promise.** A usage row is
+written before the provider is contacted, so a call in flight is visible to
+every other request's gate read: the hourly rate limit holds under concurrency.
+The token budget cannot, because the cost of a call is unknown until it returns
+— a simultaneous burst can overshoot by whatever those calls end up spending.
+Closing that needs a reserved-token counter, and is deliberately not claimed
+until it exists.
+
+**The kill switch stops work in flight.** It is re-read after the provider
+returns, so an output generated while somebody pulled the switch is refused
+rather than used.
+
 ## Two kill switches, on purpose
 
 `AI_KILL_SWITCH` stops every workspace at once and takes precedence over

@@ -2,6 +2,7 @@ import "server-only";
 
 import { getPrisma } from "@/lib/prisma";
 import { WiaDomainError } from "@/lib/wia-control/domain";
+import { redactLogFields } from "@/lib/observability";
 import type { WiaActor } from "@/lib/wia-control/service";
 import {
   aiAuditAction,
@@ -93,8 +94,14 @@ export async function recordAiUsage(input: {
       entity: input.entity?.entity ?? "AiUsageRecord",
       entityId: input.entity?.entityId ?? input.feature,
       // Never the prompt or the model's text: an audit entry records that a
-      // call happened and on what, not the personal data inside it.
-      metadata: { model: input.model, outcome: input.outcome, ...input.metadata },
+      // call happened and on what, not the personal data inside it. Caller
+      // metadata passes the same redaction as a log line, because "do not put
+      // personal data in here" cannot rely on every future caller remembering.
+      metadata: {
+        model: input.model,
+        outcome: input.outcome,
+        ...(redactLogFields(input.metadata ?? {}) as Record<string, unknown>),
+      },
     },
   });
 }
@@ -116,6 +123,7 @@ export async function runGuardedAiCall<TResult>(
   call: () => Promise<{ result: TResult; tokens?: AiTokenUsage }>
 ): Promise<TResult> {
   const now = input.now ?? new Date();
+  const prisma = getPrisma();
   const facts = await loadAiGateFacts(input.actor, input.feature, now);
 
   try {
@@ -133,30 +141,97 @@ export async function runGuardedAiCall<TResult>(
     throw error;
   }
 
+  // The usage row is written BEFORE the provider is contacted, so a call that
+  // is still in flight is visible to every other request's gate read. Without
+  // it, thirty simultaneous requests each read the same "29 so far" and all
+  // thirty went through.
+  //
+  // Honest about what this does and does not fix: the hourly rate limit is now
+  // enforced against calls in flight. The token budget still cannot be, because
+  // the cost of a call is not known until it returns, so a burst can overshoot
+  // the budget by whatever those concurrent calls end up spending. Closing that
+  // properly needs a reserved-token counter, and is recorded as such.
+  const reservation = await prisma.aiUsageRecord.create({
+    data: {
+      companyId: input.actor.companyId,
+      userId: input.actor.userId,
+      feature: input.feature,
+      model: input.model,
+      outcome: "started",
+    },
+    select: { id: true },
+  });
+
   try {
     const { result, tokens } = await call();
-    await recordAiUsage({
-      actor: input.actor,
-      feature: input.feature,
-      model: input.model,
-      outcome: "generated",
-      tokens,
-      entity: input.entity,
-      metadata: input.metadata,
+
+    // Re-read after the call: a kill switch pulled while the provider was
+    // working must stop the output being used, not merely the next request.
+    if (isGlobalAiKillSwitchOn()) {
+      await prisma.aiUsageRecord.update({
+        where: { id: reservation.id },
+        data: {
+          outcome: "refused",
+          detail: "Stopped by the kill switch while the call was in flight.",
+          promptTokens: tokens?.promptTokens ?? 0,
+          completionTokens: tokens?.completionTokens ?? 0,
+        },
+      });
+      await writeAiAudit(input, "refused");
+      throw new WiaDomainError(
+        "AI_KILL_SWITCH",
+        "AI features were stopped while this request was running."
+      );
+    }
+
+    await prisma.aiUsageRecord.update({
+      where: { id: reservation.id },
+      data: {
+        outcome: "generated",
+        promptTokens: tokens?.promptTokens ?? 0,
+        completionTokens: tokens?.completionTokens ?? 0,
+      },
     });
+    await writeAiAudit(input, "generated");
     return result;
   } catch (error) {
-    await recordAiUsage({
-      actor: input.actor,
-      feature: input.feature,
-      model: input.model,
-      outcome: "failed",
-      detail: error instanceof Error ? error.message : "The AI call failed.",
-      entity: input.entity,
-      metadata: input.metadata,
+    if (error instanceof WiaDomainError && error.code === "AI_KILL_SWITCH") throw error;
+    await prisma.aiUsageRecord.update({
+      where: { id: reservation.id },
+      data: {
+        outcome: "failed",
+        detail: (error instanceof Error ? error.message : "The AI call failed.").slice(0, 500),
+      },
     });
+    await writeAiAudit(input, "failed");
     throw error;
   }
+}
+
+async function writeAiAudit(
+  input: {
+    actor: WiaActor;
+    feature: AiFeature;
+    model: string;
+    entity?: { entity: string; entityId: string };
+    metadata?: Record<string, unknown>;
+  },
+  outcome: AiOutcome
+) {
+  await getPrisma().auditLog.create({
+    data: {
+      companyId: input.actor.companyId,
+      userId: input.actor.userId,
+      action: aiAuditAction(input.feature, outcome),
+      entity: input.entity?.entity ?? "AiUsageRecord",
+      entityId: input.entity?.entityId ?? input.feature,
+      metadata: {
+        model: input.model,
+        outcome,
+        ...(redactLogFields(input.metadata ?? {}) as Record<string, unknown>),
+      },
+    },
+  });
 }
 
 /** What the workspace has spent and how its calls ended, for the pilot review. */

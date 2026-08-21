@@ -12,40 +12,40 @@ import { WiaDomainError } from "@/lib/wia-control/domain-core";
 
 export type AiOutputIssue = { code: string; detail: string };
 
-/** Phrases that would claim an action the product never takes automatically. */
-const actionClaims = [
-  "i have assigned",
-  "we have assigned",
-  "has been assigned automatically",
-  "message was sent",
-  "message has been sent",
-  "we have notified",
-  "i have notified",
-  "we have sent",
-  "i have sent",
+/**
+ * Claims an output must not make.
+ *
+ * Patterns rather than fixed phrases, because "we sent a message" and "message
+ * was sent" are the same claim and a list of exact strings caught only one of
+ * them. This is a floor, not a proof: no pattern set catches every wording, so
+ * the screen exists to stop the obvious failures reaching a human reviewer,
+ * and the human approval step remains the actual control.
+ */
+const actionClaims: RegExp[] = [
+  /\b(i|we)\s+(have\s+)?(assigned|reassigned|scheduled)\b/i,
+  /\bhas\s+been\s+(assigned|reassigned)\s+automatically\b/i,
+  /\b(message|email|notification)\s+(was|has\s+been)\s+sent\b/i,
+  /\b(i|we)\s+(have\s+)?(sent|notified|informed|contacted)\b/i,
+  /\b(was|were|has\s+been|have\s+been)\s+notified\b/i,
 ];
 
-/** Phrases that would claim a legal conclusion this product cannot make. */
-const complianceClaims = [
-  "legally compliant",
-  "is compliant with",
-  "complies with the law",
-  "gdpr compliant",
-  "meets all legal",
-  "guarantees compliance",
+const complianceClaims: RegExp[] = [
+  /\b(legally|fully)\s+compliant\b/i,
+  /\bcomplies\s+with\b/i,
+  /\bis\s+compliant\s+with\b/i,
+  /\bgdpr\s+compliant\b/i,
+  /\b(meets|satisfies)\s+(all\s+)?(legal|statutory|regulatory)\b/i,
+  /\blegal\s+requirements\s+(are|have\s+been)\s+met\b/i,
+  /\bguarantees?\s+compliance\b/i,
 ];
 
-/** Phrases that would turn an operational note into an employment decision. */
-const employmentDecisionClaims = [
-  "should be dismissed",
-  "should be fired",
-  "disciplinary action",
-  "terminate this employee",
-  "deduct",
-  "penalise the employee",
-  "penalize the employee",
+const employmentDecisionClaims: RegExp[] = [
+  /\bshould\s+be\s+(dismissed|fired|sanctioned|suspended)\b/i,
+  /\bdisciplinary\s+(action|measure|procedure)\b/i,
+  /\bterminate\s+(this\s+)?(employee|worker|contract)\b/i,
+  /\bdeduct(ed|ion)?\b.{0,20}\b(pay|wage|salary|hours)\b/i,
+  /\bpenalis[ez]e?\b/i,
 ];
-
 export type AiOutputExpectation = {
   /** Identifiers the model was given. Anything else it cites is invented. */
   allowedIds?: string[];
@@ -53,8 +53,9 @@ export type AiOutputExpectation = {
   forbiddenTerms?: string[];
 };
 
-function findPhrase(haystack: string, phrases: string[]) {
-  return phrases.find((phrase) => haystack.includes(phrase));
+function findClaim(text: string, patterns: RegExp[]) {
+  const match = patterns.map((pattern) => pattern.exec(text)).find(Boolean);
+  return match ? match[0] : undefined;
 }
 
 export function checkAiOutput(text: string, expectation: AiOutputExpectation = {}): AiOutputIssue[] {
@@ -68,7 +69,7 @@ export function checkAiOutput(text: string, expectation: AiOutputExpectation = {
     issues.push({ code: "LEAKED_TERM", detail: `The output contains "${term}", which was not to be disclosed.` });
   }
 
-  const action = findPhrase(lower, actionClaims);
+  const action = findClaim(text, actionClaims);
   if (action) {
     issues.push({
       code: "CLAIMED_ACTION",
@@ -76,7 +77,7 @@ export function checkAiOutput(text: string, expectation: AiOutputExpectation = {
     });
   }
 
-  const compliance = findPhrase(lower, complianceClaims);
+  const compliance = findClaim(text, complianceClaims);
   if (compliance) {
     issues.push({
       code: "CLAIMED_COMPLIANCE",
@@ -84,7 +85,7 @@ export function checkAiOutput(text: string, expectation: AiOutputExpectation = {
     });
   }
 
-  const employment = findPhrase(lower, employmentDecisionClaims);
+  const employment = findClaim(text, employmentDecisionClaims);
   if (employment) {
     issues.push({
       code: "EMPLOYMENT_DECISION",

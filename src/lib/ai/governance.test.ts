@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const transaction = {
-    aiCommunicationDraft: { findFirst: vi.fn(), update: vi.fn() },
+    aiCommunicationDraft: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     employee: { findFirst: vi.fn() },
     communicationOutbox: { create: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -10,7 +10,13 @@ const mocks = vi.hoisted(() => {
   const prisma = {
     $transaction: vi.fn(async (callback: (client: typeof transaction) => unknown) => callback(transaction)),
     company: { findUnique: vi.fn() },
-    aiUsageRecord: { aggregate: vi.fn(), count: vi.fn(), create: vi.fn(), groupBy: vi.fn() },
+    aiUsageRecord: {
+      aggregate: vi.fn(),
+      count: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      groupBy: vi.fn(),
+    },
     aiCommunicationDraft: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
     attendanceIncident: { findFirst: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -66,6 +72,10 @@ beforeEach(() => {
     _count: 3,
   });
   mocks.prisma.aiUsageRecord.count.mockResolvedValue(0);
+  // A usage row is reserved before the provider is contacted, so concurrent
+  // calls can see each other.
+  mocks.prisma.aiUsageRecord.create.mockResolvedValue({ id: "usage-1" });
+  mocks.prisma.aiUsageRecord.update.mockResolvedValue({ id: "usage-1" });
 });
 
 describe("the AI gate", () => {
@@ -137,7 +147,11 @@ describe("guarded AI calls", () => {
     );
 
     expect(result).toEqual({ headline: "ok" });
+    // Reserved first, then settled with what it actually spent.
     expect(mocks.prisma.aiUsageRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ outcome: "started" }) })
+    );
+    expect(mocks.prisma.aiUsageRecord.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ outcome: "generated", promptTokens: 120, completionTokens: 40 }),
       })
@@ -154,11 +168,32 @@ describe("guarded AI calls", () => {
       })
     ).rejects.toThrow(/provider timeout/);
 
-    expect(mocks.prisma.aiUsageRecord.create).toHaveBeenCalledWith(
+    expect(mocks.prisma.aiUsageRecord.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ outcome: "failed", detail: "provider timeout" }),
       })
     );
+  });
+
+  it("stops an output being used when the kill switch is pulled mid-call", async () => {
+    process.env.AI_GATEWAY_API_KEY = "test-key";
+    process.env.AI_FEATURES_ENABLED = "true";
+
+    await expect(
+      runGuardedAiCall(
+        { actor: manager, feature: "operations_brief", model: "test-model", now },
+        async () => {
+          // Pulled while the provider is working.
+          process.env.AI_KILL_SWITCH = "true";
+          return { result: "generated anyway", tokens: {} };
+        }
+      )
+    ).rejects.toThrow(/stopped while this request was running/);
+
+    expect(mocks.prisma.aiUsageRecord.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ outcome: "refused" }) })
+    );
+    delete process.env.AI_KILL_SWITCH;
   });
 
   it("never writes the prompt or the generated text into the audit entry", async () => {
@@ -189,6 +224,13 @@ describe("AI output safety checks", () => {
       "CLAIMED_ACTION",
     ]);
     expect(checkAiOutput("This record is legally compliant.").map((issue) => issue.code)).toEqual([
+      "CLAIMED_COMPLIANCE",
+    ]);
+    // The same claims worded differently, which a fixed phrase list missed.
+    expect(checkAiOutput("We sent a message to the team.").map((issue) => issue.code)).toEqual([
+      "CLAIMED_ACTION",
+    ]);
+    expect(checkAiOutput("All legal requirements are met.").map((issue) => issue.code)).toEqual([
       "CLAIMED_COMPLIANCE",
     ]);
     expect(checkAiOutput("Disciplinary action is recommended.").map((issue) => issue.code)).toEqual([
@@ -252,6 +294,9 @@ describe("AI draft approval", () => {
     mocks.transaction.aiCommunicationDraft.findFirst.mockResolvedValue(openDraft);
     mocks.transaction.employee.findFirst.mockResolvedValue({ id: "employee-1" });
     mocks.transaction.communicationOutbox.create.mockResolvedValue({ id: "outbox-1" });
+    // The draft is claimed with a conditional update before anything is
+    // queued, so one draft cannot produce two messages.
+    mocks.transaction.aiCommunicationDraft.updateMany.mockResolvedValue({ count: 1 });
     mocks.transaction.aiCommunicationDraft.update.mockResolvedValue({
       id: "draft-1",
       status: "APPROVED",
@@ -291,11 +336,13 @@ describe("AI draft approval", () => {
       message: "A coordinator rewrote this message entirely before approving it for delivery.",
     });
 
-    const update = mocks.transaction.aiCommunicationDraft.update.mock.calls[0][0] as {
+    const claim = mocks.transaction.aiCommunicationDraft.updateMany.mock.calls[0][0] as {
+      where: { status: string };
       data: { finalMessage: string; approvedByUserId: string };
     };
-    expect(update.data.finalMessage).toContain("rewrote this message");
-    expect(update.data.approvedByUserId).toBe("user-manager");
+    expect(claim.where.status).toBe("DRAFT");
+    expect(claim.data.finalMessage).toContain("rewrote this message");
+    expect(claim.data.approvedByUserId).toBe("user-manager");
   });
 
   it("refuses to approve text that claims an action or a legal conclusion", async () => {
@@ -310,6 +357,7 @@ describe("AI draft approval", () => {
 
   it("refuses to approve, edit, or cancel a draft that is already closed", async () => {
     mocks.transaction.aiCommunicationDraft.findFirst.mockResolvedValue({ ...openDraft, status: "APPROVED" });
+    mocks.transaction.aiCommunicationDraft.updateMany.mockResolvedValue({ count: 0 });
     mocks.prisma.aiCommunicationDraft.findFirst.mockResolvedValue({ id: "draft-1", status: "CANCELLED" });
 
     await expect(
@@ -325,6 +373,19 @@ describe("AI draft approval", () => {
       })
     ).rejects.toThrow(/still open can be edited/);
     await expect(cancelIncidentDraft(manager, "draft-1")).rejects.toThrow(/already been approved or cancelled/);
+  });
+
+  it("cannot be approved twice at once, so one draft never becomes two messages", async () => {
+    // The claim lost the race: somebody else approved it first.
+    mocks.transaction.aiCommunicationDraft.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      approveIncidentDraft(manager, "draft-1", {
+        subject: "Cover needed",
+        message: "Two coordinators approving the same draft at the same moment.",
+      })
+    ).rejects.toThrow(/while you were working on it/);
+    expect(mocks.transaction.communicationOutbox.create).not.toHaveBeenCalled();
   });
 
   it("is not available to a field worker", async () => {
