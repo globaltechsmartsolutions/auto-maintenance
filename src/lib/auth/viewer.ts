@@ -37,8 +37,19 @@ export const getDashboardViewer = cache(async (): Promise<DashboardViewer> => {
     where: { supabaseUserId: user.id },
     include: { company: { select: { id: true, name: true, crmEnabled: true } } },
   });
-  if (!profile || !isRole(profile.role) || profile.status !== "ACTIVE") {
-    // The Supabase session is valid but there is no matching application
+  // Only the platform administrator legitimately belongs to no company. For
+  // anybody else a missing company means the profile is unusable, and the API
+  // layer already refuses them; the dashboard has to agree, or a tenantless
+  // account gets the shell of a workspace and the "WIA Administration" name
+  // that identifies platform staff.
+  const unusableProfile =
+    !profile ||
+    !isRole(profile.role) ||
+    profile.status !== "ACTIVE" ||
+    (profile.role !== "SUPER_ADMIN" && !profile.companyId);
+
+  if (unusableProfile) {
+    // The Supabase session is valid but there is no usable application
     // profile (e.g. an orphaned auth user, or provisioning failed).
     // Without signing out, middleware would see a live session on /login
     // and immediately bounce back to /control, creating an infinite
