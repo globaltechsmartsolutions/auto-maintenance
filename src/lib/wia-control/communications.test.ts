@@ -91,6 +91,22 @@ describe("channel consent", () => {
     expect(noAddress.skipped[0].reason).toMatch(/no email address/);
   });
 
+  it("treats two different messages as different, and identical ones as the same", () => {
+    const base = {
+      template: "coordinator_message",
+      version: 1,
+      channel: "IN_APP" as const,
+      shiftId: "shift-1",
+      recipientEmployeeId: "employee-1",
+    };
+    const first = communicationDedupeKey({ ...base, payload: { subject: "A", body: "First" } });
+    const second = communicationDedupeKey({ ...base, payload: { subject: "B", body: "Second" } });
+
+    expect(first).not.toBe(second);
+    // Same content, keys written in a different order, is still one message.
+    expect(communicationDedupeKey({ ...base, payload: { body: "First", subject: "A" } })).toBe(first);
+  });
+
   it("gives every event a stable identity that changes with the recipient", () => {
     const base = { template: "coverage_confirmed", version: 1, channel: "EMAIL" as const, shiftId: "shift-1" };
     const first = communicationDedupeKey({ ...base, recipientEmployeeId: "employee-1" });
@@ -209,7 +225,11 @@ describe("outbox worker", () => {
         payload: {},
         attempts: 0,
         nextAttemptAt: now,
-        recipientEmployee: { user: { email: "ana@example.com" } },
+        recipientEmployee: {
+          contactEmailOptIn: true,
+          contactSmsOptIn: false,
+          user: { email: "ana@example.com", phone: null },
+        },
       },
     ]);
 
@@ -233,7 +253,11 @@ describe("outbox worker", () => {
         payload: { scheduledStart: "2026-08-20T09:00:00Z" },
         attempts: 0,
         nextAttemptAt: now,
-        recipientEmployee: { user: { email: "ana@example.com" } },
+        recipientEmployee: {
+          contactEmailOptIn: true,
+          contactSmsOptIn: false,
+          user: { email: "ana@example.com", phone: null },
+        },
       },
     ]);
     mocks.providers.deliverEmail.mockResolvedValue({ success: true, providerReference: "resend-123" });
@@ -253,6 +277,42 @@ describe("outbox worker", () => {
   });
 });
 
+describe("consent at the moment of sending", () => {
+  it("cancels a queued email for somebody who has since opted out", async () => {
+    mocks.prisma.communicationOutbox.findMany.mockResolvedValue([
+      {
+        id: "outbox-1",
+        status: "PENDING",
+        channel: "EMAIL",
+        template: "coverage_confirmed",
+        templateVersion: 1,
+        payload: {},
+        attempts: 0,
+        nextAttemptAt: now,
+        recipientEmployee: {
+          contactEmailOptIn: false,
+          contactSmsOptIn: false,
+          user: { email: "ana@example.com", phone: null },
+        },
+      },
+    ]);
+
+    const result = await processCommunicationOutbox(now);
+
+    // Withdrawn consent is a decision, not a delivery failure to retry.
+    expect(result.results).toEqual([{ id: "outbox-1", status: "CANCELLED" }]);
+    expect(mocks.providers.deliverEmail).not.toHaveBeenCalled();
+    expect(mocks.prisma.communicationOutbox.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "CANCELLED",
+          lastError: expect.stringContaining("withdrawn consent"),
+        }),
+      })
+    );
+  });
+});
+
 describe("outbox health", () => {
   it("asks for attention when a message has given up or a queue is stuck", () => {
     expect(
@@ -260,6 +320,7 @@ describe("outbox health", () => {
         pending: 1,
         retrying: 0,
         processing: 0,
+        stuckProcessing: 0,
         failed: 0,
         sentLast24h: 4,
         unacknowledgedLast24h: 1,
@@ -273,6 +334,7 @@ describe("outbox health", () => {
         pending: 1,
         retrying: 0,
         processing: 0,
+        stuckProcessing: 0,
         failed: 0,
         sentLast24h: 0,
         unacknowledgedLast24h: 0,
@@ -286,6 +348,7 @@ describe("outbox health", () => {
         pending: 0,
         retrying: 0,
         processing: 0,
+        stuckProcessing: 0,
         failed: 2,
         sentLast24h: 0,
         unacknowledgedLast24h: 0,
@@ -293,6 +356,22 @@ describe("outbox health", () => {
         now,
       })
     ).toEqual(expect.objectContaining({ oldestPendingMinutes: null, needsAttention: true }));
+  });
+
+  it("does not call a queue healthy while a message sits abandoned mid-send", () => {
+    expect(
+      summariseCommunicationHealth({
+        pending: 0,
+        retrying: 0,
+        processing: 1,
+        stuckProcessing: 1,
+        failed: 0,
+        sentLast24h: 5,
+        unacknowledgedLast24h: 0,
+        oldestPendingAt: null,
+        now,
+      })
+    ).toEqual(expect.objectContaining({ stuckProcessing: 1, needsAttention: true }));
   });
 
   it("measures only the caller's own workspace and refuses a field worker", async () => {

@@ -656,7 +656,11 @@ describe("communications outbox worker (Stage 5)", () => {
           status: currentStatus,
           attempts: currentAttempts,
           nextAttemptAt: now,
-          recipientEmployee: { user: { email: "employee@example.com" } },
+          recipientEmployee: {
+            contactEmailOptIn: true,
+            contactSmsOptIn: false,
+            user: { email: "employee@example.com", phone: null },
+          },
         },
       ]);
       mocks.prisma.communicationOutbox.update.mockImplementationOnce(async (args) => {

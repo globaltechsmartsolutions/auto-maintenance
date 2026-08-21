@@ -54,6 +54,7 @@ import {
   communicationDedupeKey,
   renderCommunication,
   resolveCommunicationChannels,
+  OUTBOX_LEASE_MINUTES,
   summariseCommunicationHealth,
   type CommunicationTemplateKey,
 } from "@/lib/wia-control/communication-policy";
@@ -2816,6 +2817,7 @@ async function queueCommunicationWithin(
       shiftId: input.shiftId,
       recipientEmployeeId: recipient.id,
       discriminator: input.discriminator,
+      payload: input.payload,
     });
     const existing = await transaction.communicationOutbox.findFirst({
       where: { companyId: input.companyId, dedupeKey },
@@ -2882,11 +2884,29 @@ async function communicationHealthFor(scope: { companyId?: string }, now: Date) 
   const since = new Date(now.getTime() - 24 * 60 * 60_000);
   const where = scope.companyId ? { companyId: scope.companyId } : {};
 
-  const [pending, retrying, processing, failed, sentLast24h, unacknowledgedLast24h, oldestPending] =
-    await Promise.all([
+  // Past this, a claimed record was abandoned by whatever worker took it.
+  const leaseExpiredBefore = new Date(now.getTime() - OUTBOX_LEASE_MINUTES * 60_000);
+
+  const [
+    pending,
+    retrying,
+    processing,
+    stuckProcessing,
+    failed,
+    sentLast24h,
+    unacknowledgedLast24h,
+    oldestPending,
+  ] = await Promise.all([
       prisma.communicationOutbox.count({ where: { ...where, status: "PENDING" } }),
       prisma.communicationOutbox.count({ where: { ...where, status: "RETRYING" } }),
       prisma.communicationOutbox.count({ where: { ...where, status: "PROCESSING" } }),
+      prisma.communicationOutbox.count({
+        where: {
+          ...where,
+          status: "PROCESSING",
+          processingStartedAt: { lt: leaseExpiredBefore },
+        },
+      }),
       prisma.communicationOutbox.count({ where: { ...where, status: "FAILED" } }),
       prisma.communicationOutbox.count({ where: { ...where, status: "SENT", sentAt: { gte: since } } }),
       prisma.communicationOutbox.count({
@@ -2903,6 +2923,7 @@ async function communicationHealthFor(scope: { companyId?: string }, now: Date) 
     pending,
     retrying,
     processing,
+    stuckProcessing,
     failed,
     sentLast24h,
     unacknowledgedLast24h,
@@ -2942,7 +2963,7 @@ export async function listCommunicationOutbox(actor: WiaActor) {
  */
 export async function processCommunicationOutbox(now = new Date(), batchSize = 20) {
   const prisma = getPrisma();
-  const leaseExpiredBefore = new Date(now.getTime() - 15 * 60_000);
+  const leaseExpiredBefore = new Date(now.getTime() - OUTBOX_LEASE_MINUTES * 60_000);
   await prisma.communicationOutbox.updateMany({
     where: {
       status: "PROCESSING",
@@ -2964,7 +2985,11 @@ export async function processCommunicationOutbox(now = new Date(), batchSize = 2
     orderBy: { nextAttemptAt: "asc" },
     include: {
       recipientEmployee: {
-        include: { user: { select: { email: true } } },
+        select: {
+          contactEmailOptIn: true,
+          contactSmsOptIn: true,
+          user: { select: { email: true, phone: true } },
+        },
       },
     },
   });
@@ -3005,10 +3030,42 @@ export async function processCommunicationOutbox(now = new Date(), batchSize = 2
     if (record.channel === "IN_APP") {
       result = await deliverInApp();
     } else if (record.channel === "EMAIL") {
-      const email = record.recipientEmployee?.user.email;
-      result = email
-        ? await deliverEmail(record.id, content, email)
-        : { success: false, error: "Recipient has no email address on file." };
+      const recipient = record.recipientEmployee;
+      // Consent is re-read here, not trusted from when the message was queued.
+      // Somebody who opted out yesterday must not receive a message that was
+      // queued the day before, or one a coordinator resends next week.
+      const allowed = recipient
+        ? resolveCommunicationChannels(
+            record.template as CommunicationTemplateKey,
+            {
+              email: recipient.user.email,
+              phone: recipient.user.phone,
+              emailOptIn: recipient.contactEmailOptIn,
+              smsOptIn: recipient.contactSmsOptIn,
+            },
+            { smsProviderConfigured: false }
+          ).channels
+        : [];
+
+      if (!recipient?.user.email) {
+        result = { success: false, error: "Recipient has no email address on file." };
+      } else if (!allowed.includes("EMAIL")) {
+        // Withdrawn consent is not a delivery failure to retry. It is a
+        // decision, and the message is cancelled rather than left rattling
+        // around the outbox until it exhausts its attempts.
+        await prisma.communicationOutbox.update({
+          where: { id: record.id },
+          data: {
+            status: "CANCELLED",
+            processingStartedAt: null,
+            lastError: "The recipient has withdrawn consent for this channel.",
+          },
+        });
+        results.push({ id: record.id, status: "CANCELLED" });
+        continue;
+      } else {
+        result = await deliverEmail(record.id, content, recipient.user.email);
+      }
     } else {
       // SMS/WhatsApp are explicitly out of scope for this stage (see the
       // playbook: consent, cost, templates, and failure policy all need

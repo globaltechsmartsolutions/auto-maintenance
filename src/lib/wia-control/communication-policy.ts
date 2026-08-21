@@ -196,6 +196,13 @@ export function communicationDedupeKey(input: {
   shiftId?: string | null;
   recipientEmployeeId?: string | null;
   discriminator?: string;
+  /**
+   * What the message actually says. Two messages that differ only in their
+   * content are different messages: without this, a second coordinator note
+   * about the same shift would be silently swallowed as a duplicate of the
+   * first, which is the opposite failure from sending it twice.
+   */
+  payload?: unknown;
 }) {
   const digest = createHash("sha256")
     .update(
@@ -206,16 +213,29 @@ export function communicationDedupeKey(input: {
         input.shiftId ?? "",
         input.recipientEmployeeId ?? "",
         input.discriminator ?? "",
+        input.payload === undefined ? "" : stableStringify(input.payload),
       ].join("|")
     )
     .digest("hex");
   return `${input.template}:${input.channel}:${digest.slice(0, 32)}`;
 }
 
+/** Key order must not change the identity of a message. */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "";
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+    left.localeCompare(right)
+  );
+  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(",")}}`;
+}
+
 export type CommunicationHealth = {
   pending: number;
   retrying: number;
   processing: number;
+  /** Claimed by a worker that never came back. */
+  stuckProcessing: number;
   failed: number;
   sentLast24h: number;
   unacknowledgedLast24h: number;
@@ -224,6 +244,13 @@ export type CommunicationHealth = {
   needsAttention: boolean;
 };
 
+/**
+ * How long a worker may hold a claimed message before the claim is treated as
+ * abandoned. Shared with the health view so the two cannot disagree about what
+ * "stuck" means.
+ */
+export const OUTBOX_LEASE_MINUTES = 15;
+
 /** The threshold beyond which a queued message is considered stuck. */
 export const OUTBOX_STUCK_MINUTES = 30;
 
@@ -231,6 +258,8 @@ export function summariseCommunicationHealth(input: {
   pending: number;
   retrying: number;
   processing: number;
+  /** In PROCESSING past the lease, i.e. claimed by a worker that never returned. */
+  stuckProcessing: number;
   failed: number;
   sentLast24h: number;
   unacknowledgedLast24h: number;
@@ -244,11 +273,16 @@ export function summariseCommunicationHealth(input: {
     pending: input.pending,
     retrying: input.retrying,
     processing: input.processing,
+    stuckProcessing: input.stuckProcessing,
     failed: input.failed,
     sentLast24h: input.sentLast24h,
     unacknowledgedLast24h: input.unacknowledgedLast24h,
     oldestPendingMinutes,
     needsAttention:
-      input.failed > 0 || (oldestPendingMinutes !== null && oldestPendingMinutes >= OUTBOX_STUCK_MINUTES),
+      input.failed > 0 ||
+      // A record claimed by a worker that died sits in PROCESSING and is
+      // counted by nothing else. Healthy was the wrong answer for that.
+      input.stuckProcessing > 0 ||
+      (oldestPendingMinutes !== null && oldestPendingMinutes >= OUTBOX_STUCK_MINUTES),
   };
 }

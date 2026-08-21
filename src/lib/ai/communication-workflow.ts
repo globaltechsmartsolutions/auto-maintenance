@@ -195,6 +195,7 @@ export async function approveIncidentDraft(actor: WiaActor, draftId: string, inp
       shiftId: draft.incident.shiftId,
       recipientEmployeeId: recipient.id,
       discriminator: draft.id,
+      payload: { subject: payload.subject, body: payload.message },
     });
 
     const message = await transaction.communicationOutbox.create({
