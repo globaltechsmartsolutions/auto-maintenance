@@ -185,7 +185,13 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
  */
 export async function listWorksites(actor: WiaActor) {
   assertCompany(actor);
-  const where = { companyId: actor.companyId, isActive: true };
+  const where = {
+    companyId: actor.companyId,
+    isActive: true,
+    ...(actor.role === "EMPLOYEE"
+      ? { plannedShifts: { some: { employeeId: actor.employeeId ?? "__missing_employee__" } } }
+      : {}),
+  };
   const orderBy = [{ city: "asc" as const }, { name: "asc" as const }];
   const shared = {
     id: true,
@@ -352,6 +358,19 @@ export async function updateOperationalService(actor: WiaActor, serviceId: strin
       });
       if (!customer) {
         throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+      }
+      const conflictingWorksiteShifts = await transaction.plannedShift.count({
+        where: {
+          companyId: actor.companyId,
+          serviceId: service.id,
+          worksite: { customerId: { not: payload.customerId } },
+        },
+      });
+      if (conflictingWorksiteShifts > 0) {
+        throw new WiaDomainError(
+          "SERVICE_CUSTOMER_CHANGE_CONFLICT",
+          "This service has shifts at worksites for another customer. Create a new service instead."
+        );
       }
     }
     const scheduledStart = payload.scheduledStart ? new Date(payload.scheduledStart) : service.scheduledStart;
@@ -914,28 +933,27 @@ export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string)
       );
     }
 
-    // Everything still ahead of them is released rather than left pointing at
-    // an account that can no longer clock in. Each released shift becomes a
-    // visible uncovered incident — the same thing the product does for a shift
-    // created without anyone on it — so the gap is worked, not discovered on
-    // the morning it fails.
-    const futureShifts = await transaction.plannedShift.findMany({
+    // Every shift that has not actually started is released rather than left
+    // pointing at an account that can no longer clock in. Do not use its
+    // scheduled time as the boundary: a PLANNED shift may already be late and
+    // still has to become visible as uncovered. ACTIVE and PAUSED shifts were
+    // rejected above, while completed and cancelled shifts are history.
+    const unstartedShifts = await transaction.plannedShift.findMany({
       where: {
         companyId: actor.companyId,
         employeeId,
-        status: { notIn: ["CANCELLED", "COMPLETED"] },
-        scheduledStart: { gt: new Date() },
+        status: { notIn: ["CANCELLED", "COMPLETED", "ACTIVE", "PAUSED"] },
       },
       select: { id: true, worksiteId: true },
     });
 
-    if (futureShifts.length) {
+    if (unstartedShifts.length) {
       await transaction.plannedShift.updateMany({
-        where: { id: { in: futureShifts.map((shift) => shift.id) } },
+        where: { id: { in: unstartedShifts.map((shift) => shift.id) } },
         data: { employeeId: null, status: "UNCOVERED" },
       });
       await transaction.attendanceIncident.createMany({
-        data: futureShifts.map((shift) => ({
+        data: unstartedShifts.map((shift) => ({
           companyId: actor.companyId,
           shiftId: shift.id,
           worksiteId: shift.worksiteId,
@@ -964,10 +982,10 @@ export async function deleteEmployeeProfile(actor: WiaActor, employeeId: string)
         action: "employee.deactivated",
         entity: "Employee",
         entityId: employeeId,
-        metadata: { email: employee.user.email, releasedShifts: futureShifts.length },
+        metadata: { email: employee.user.email, releasedShifts: unstartedShifts.length },
       },
     });
-    return { id: employeeId, releasedShifts: futureShifts.length };
+    return { id: employeeId, releasedShifts: unstartedShifts.length };
   });
 }
 
@@ -1111,7 +1129,7 @@ export async function updateWorksite(actor: WiaActor, worksiteId: string, input:
   return getPrisma().$transaction(async (transaction) => {
     const worksite = await transaction.worksite.findFirst({
       where: { id: worksiteId, companyId: actor.companyId },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, customerId: true },
     });
     if (!worksite) {
       throw new WiaDomainError("WORKSITE_NOT_FOUND", "The worksite does not belong to the company.");
@@ -1124,6 +1142,21 @@ export async function updateWorksite(actor: WiaActor, worksiteId: string, input:
       });
       if (!customer) {
         throw new WiaDomainError("CUSTOMER_NOT_FOUND", "The customer does not belong to the company.");
+      }
+      if (payload.customerId !== worksite.customerId) {
+        const conflictingServiceShifts = await transaction.plannedShift.count({
+          where: {
+            companyId: actor.companyId,
+            worksiteId,
+            service: { customerId: { not: payload.customerId } },
+          },
+        });
+        if (conflictingServiceShifts > 0) {
+          throw new WiaDomainError(
+            "WORKSITE_CUSTOMER_CHANGE_CONFLICT",
+            "This worksite has shifts linked to services for another customer. Archive it and create a new worksite instead."
+          );
+        }
       }
     }
 
@@ -1479,6 +1512,13 @@ async function getIncidentPolicy(
 
 export async function recordClockEvent(actor: WiaActor, input: unknown) {
   assertCompany(actor);
+  // A clock event is the employee's own attestation of attendance. A
+  // coordinator who needs to correct time must use the separate, reviewable
+  // correction workflow; they must not be able to manufacture a QR/mobile/PIN
+  // event in another person's name.
+  if (actor.role !== "EMPLOYEE" || !actor.employeeId) {
+    throw new WiaDomainError("FORBIDDEN", "Only the assigned employee can record a clock event.");
+  }
   const payload = clockCommandSchema.parse(input);
 
   return getPrisma().$transaction(async (transaction) => {
@@ -1505,7 +1545,7 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
     if (!shift.employeeId) {
       throw new WiaDomainError("SHIFT_UNASSIGNED", "The shift does not yet have an assigned person.");
     }
-    if (actor.role === "EMPLOYEE" && actor.employeeId !== shift.employeeId) {
+    if (actor.employeeId !== shift.employeeId) {
       throw new WiaDomainError("FORBIDDEN", "You can only clock into your own shifts.");
     }
     if (["CANCELLED", "COMPLETED"].includes(shift.status)) {

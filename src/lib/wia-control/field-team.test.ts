@@ -102,7 +102,7 @@ describe("taking somebody out of the field team", () => {
     expect(mocks.transaction.employee.update).not.toHaveBeenCalled();
   });
 
-  it("releases their future shifts and opens an uncovered incident for each", async () => {
+  it("releases every shift that has not actually started and opens an uncovered incident for each", async () => {
     mocks.transaction.plannedShift.findMany.mockResolvedValue(futureShifts);
 
     const result = await deleteEmployeeProfile(manager, "employee-1");
@@ -111,8 +111,7 @@ describe("taking somebody out of the field team", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           employeeId: "employee-1",
-          status: { notIn: ["CANCELLED", "COMPLETED"] },
-          scheduledStart: { gt: expect.any(Date) },
+          status: { notIn: ["CANCELLED", "COMPLETED", "ACTIVE", "PAUSED"] },
         }),
       })
     );

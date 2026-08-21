@@ -185,14 +185,19 @@ describe("recording a clock event", () => {
     ).rejects.toThrow(/only clock into your own shifts/);
 
     mocks.transaction.plannedShift.findFirst.mockResolvedValue(shift({ employeeId: null }));
-    await expect(recordClockEvent(manager, command())).rejects.toThrow(/does not yet have an assigned person/);
+    await expect(recordClockEvent(worker, command())).rejects.toThrow(/does not yet have an assigned person/);
 
     mocks.transaction.plannedShift.findFirst.mockResolvedValue(shift({ status: "COMPLETED" }));
-    await expect(recordClockEvent(manager, command())).rejects.toThrow(/already closed/);
+    await expect(recordClockEvent(worker, command())).rejects.toThrow(/already closed/);
 
     mocks.transaction.plannedShift.findFirst.mockResolvedValue(null);
-    await expect(recordClockEvent(manager, command())).rejects.toThrow(/does not belong to the company/);
+    await expect(recordClockEvent(worker, command())).rejects.toThrow(/does not belong to the company/);
 
+    expect(mocks.transaction.clockEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("does not let a coordinator manufacture attendance for a field worker", async () => {
+    await expect(recordClockEvent(manager, command())).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(mocks.transaction.clockEvent.create).not.toHaveBeenCalled();
   });
 

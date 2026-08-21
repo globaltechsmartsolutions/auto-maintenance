@@ -24,6 +24,7 @@ import {
   getOperationalServiceDetail,
   listOperationalCustomers,
   listOperationalServices,
+  updateOperationalService,
   listWorksites,
   updateWorksite,
   type WiaActor,
@@ -64,9 +65,20 @@ beforeEach(() => {
     name: "Redwood Central",
     city: "Madrid",
   });
-  mocks.transaction.worksite.findFirst.mockResolvedValue({ id: "worksite-1", isActive: true });
+  mocks.transaction.worksite.findFirst.mockResolvedValue({
+    id: "worksite-1",
+    isActive: true,
+    customerId: "customer-1",
+  });
   mocks.transaction.worksite.update.mockResolvedValue({ id: "worksite-1" });
   mocks.transaction.plannedShift.count.mockResolvedValue(0);
+  mocks.transaction.service.findFirst.mockResolvedValue({
+    id: "service-1",
+    customerId: "customer-1",
+    scheduledStart: null,
+    scheduledEnd: null,
+  });
+  mocks.transaction.service.update.mockResolvedValue({ id: "service-1" });
 });
 
 describe("creating a worksite", () => {
@@ -123,6 +135,42 @@ describe("archiving a worksite", () => {
   });
 });
 
+describe("preserving worksite-to-customer history", () => {
+  it("refuses to move a worksite to another customer when linked shifts belong to the original one", async () => {
+    mocks.transaction.plannedShift.count.mockResolvedValue(1);
+
+    await expect(updateWorksite(manager, "worksite-1", { customerId: "customer-2" })).rejects.toMatchObject({
+      code: "WORKSITE_CUSTOMER_CHANGE_CONFLICT",
+    });
+
+    expect(mocks.transaction.plannedShift.count).toHaveBeenCalledWith({
+      where: {
+        companyId: "company-1",
+        worksiteId: "worksite-1",
+        service: { customerId: { not: "customer-2" } },
+      },
+    });
+    expect(mocks.transaction.worksite.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses to move a service to another customer when its shifts use the original customer's worksites", async () => {
+    mocks.transaction.plannedShift.count.mockResolvedValue(1);
+
+    await expect(updateOperationalService(manager, "service-1", { customerId: "customer-2" })).rejects.toMatchObject({
+      code: "SERVICE_CUSTOMER_CHANGE_CONFLICT",
+    });
+
+    expect(mocks.transaction.plannedShift.count).toHaveBeenCalledWith({
+      where: {
+        companyId: "company-1",
+        serviceId: "service-1",
+        worksite: { customerId: { not: "customer-2" } },
+      },
+    });
+    expect(mocks.transaction.service.update).not.toHaveBeenCalled();
+  });
+});
+
 describe("what each role receives", () => {
   it("never selects the QR credential column, for anybody", async () => {
     await listWorksites(manager);
@@ -143,10 +191,19 @@ describe("what each role receives", () => {
   it("gives a field worker where to go, and nothing about company workload", async () => {
     await listWorksites(worker);
 
-    const fields = selectedFields(mocks.prisma.worksite.findMany.mock.calls[0][0]);
+    const call = mocks.prisma.worksite.findMany.mock.calls[0][0] as {
+      where: Record<string, unknown>;
+      select: Record<string, unknown>;
+    };
+    const fields = Object.keys(call.select);
     expect(fields).toEqual(expect.arrayContaining(["name", "address", "city", "radiusMeters"]));
     expect(fields).not.toContain("_count");
     expect(fields).not.toContain("latitude");
+    expect(call.where).toEqual(
+      expect.objectContaining({
+        plannedShifts: { some: { employeeId: "employee-1" } },
+      })
+    );
   });
 
   it("shows a field worker only their own shifts inside a service", async () => {
