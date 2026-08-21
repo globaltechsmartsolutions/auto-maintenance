@@ -36,11 +36,20 @@ export default defineConfig({
         // Browser-only IndexedDB adapter; covered by the Playwright offline spec.
         "src/lib/offline-clock-queue-db.ts",
       ],
+      /**
+       * A ratchet, not a target. Each number sits one point under what the
+       * suite actually reaches, so coverage can only be raised deliberately
+       * and cannot rot quietly: deleting or weakening a test fails CI on the
+       * pull request that does it, rather than months later.
+       *
+       * When the real figures rise, raise these with them in the same commit.
+       * Never lower one to make a build pass.
+       */
       thresholds: {
-        statements: 75,
-        branches: 62,
-        functions: 78,
-        lines: 75,
+        statements: 85,
+        branches: 73,
+        functions: 87,
+        lines: 85,
       },
     },
   },
