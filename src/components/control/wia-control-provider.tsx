@@ -80,20 +80,20 @@ type WiaControlContextValue = WiaControlState & {
     endsAt: string;
     requiredSkills: string[];
     serviceId?: string;
-  }) => boolean;
+  }) => Promise<boolean>;
   addWorksite: (input: Omit<Worksite, "id">) => void;
-  archiveWorksite: (worksiteId: string) => boolean;
-  assignShift: (shiftId: string, employeeName?: string) => boolean;
+  archiveWorksite: (worksiteId: string) => Promise<boolean>;
+  assignShift: (shiftId: string, employeeName?: string) => Promise<boolean>;
   assignReplacement: (
     shiftId: string,
     employeeName?: string,
     overrideReason?: string
-  ) => boolean;
+  ) => Promise<boolean>;
   cancelShift: (shiftId: string) => void;
   exportClockReport: () => void;
   recordClockEvent: (shiftId: string, type: ClockEventType) => void;
   recommendCoverage: (incidentId: string) => void;
-  requestTimeCorrection: (clockEventId: string, correctedTime: string, reason: string) => boolean;
+  requestTimeCorrection: (clockEventId: string, correctedTime: string, reason: string) => Promise<boolean>;
   resetControl: () => void;
   reviewTimeCorrection: (correctionId: string, status: "APPROVED" | "REJECTED") => void;
   runIncidentDetection: () => number;
@@ -723,7 +723,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       } catch (error) {
         notify(
           "The operation could not be completed",
-          error instanceof Error ? error.message : "Vuelve a intentarlo."
+          error instanceof Error ? error.message : "Try again."
         );
         return false;
       }
@@ -801,7 +801,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   );
 
   const addShift = React.useCallback(
-    (input: {
+    async (input: {
       worksiteId: string;
       title: string;
       employeeName?: string;
@@ -841,7 +841,11 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       }
 
       if (!isBrowserDemo) {
-        void runRemoteMutation("/api/control/shifts", {
+        // Awaited, not fired and forgotten. Returning true here told the
+        // dialog the shift existed before the server had said so, which is why
+        // an overlap the server caught closed the form as a success and then
+        // arrived as an unexplained toast.
+        return runRemoteMutation("/api/control/shifts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -929,7 +933,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   );
 
   const archiveWorksite = React.useCallback(
-    (worksiteId: string) => {
+    async (worksiteId: string) => {
       const hasOpenShifts = state.shifts.some(
         (shift) =>
           shift.worksiteId === worksiteId &&
@@ -944,7 +948,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       }
 
       if (!isBrowserDemo) {
-        void runRemoteMutation(`/api/control/worksites/${worksiteId}`, {
+        return runRemoteMutation(`/api/control/worksites/${worksiteId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isActive: false }),
@@ -965,7 +969,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   );
 
   const assignShift = React.useCallback(
-    (shiftId: string, employeeName?: string) => {
+    async (shiftId: string, employeeName?: string) => {
       const shift = state.shifts.find((item) => item.id === shiftId);
       if (!shift) return false;
 
@@ -996,7 +1000,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
       }
 
       if (!isBrowserDemo) {
-        void runRemoteMutation(`/api/control/shifts/${shiftId}`, {
+        return runRemoteMutation(`/api/control/shifts/${shiftId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ employeeId: employee?.id ?? null }),
@@ -1087,7 +1091,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const assignReplacement = React.useCallback(
-    (shiftId: string, requestedEmployee?: string, overrideReason?: string) => {
+    async (shiftId: string, requestedEmployee?: string, overrideReason?: string) => {
       const shift = state.shifts.find((item) => item.id === shiftId);
       const incident = state.incidents.find((item) => item.shiftId === shiftId);
       const employeeName = requestedEmployee ?? incident?.recommendedEmployee;
@@ -1110,7 +1114,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           notify("Employee unavailable", "The selected profile could not be found.");
           return false;
         }
-        void runRemoteMutation("/api/control/coverage", {
+        return runRemoteMutation("/api/control/coverage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1397,7 +1401,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
   );
 
   const requestTimeCorrection = React.useCallback(
-    (clockEventId: string, correctedTime: string, reason: string) => {
+    async (clockEventId: string, correctedTime: string, reason: string) => {
       const event = state.clockEvents.find((item) => item.id === clockEventId);
       const proposed = new Date(correctedTime);
       if (!event || Number.isNaN(proposed.getTime()) || reason.trim().length < 10) {
@@ -1408,7 +1412,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         return false;
       }
       if (!isBrowserDemo) {
-        void runRemoteMutation("/api/control/corrections", {
+        return runRemoteMutation("/api/control/corrections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1632,7 +1636,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
         } catch (error) {
           notify(
             "Export failed",
-            error instanceof Error ? error.message : "Vuelve a intentarlo."
+            error instanceof Error ? error.message : "Try again."
           );
         }
       })();

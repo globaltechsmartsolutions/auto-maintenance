@@ -189,6 +189,13 @@ Checks 46 and 47 cover two of the four. These are the rest.
 | 99 | `/api/health` | Reports degraded when a dependency is down, rather than `ok`. | - [ ] | |
 | 100 | Communications channel health | A stuck outbox is visible here before anybody reports it. | - [ ] | |
 | 101 | Automated reminders | Fire once per shift, not once per run. | - [ ] | |
+| 108 | Administrator invites a manager | Invitation sent; the manager signs in and reaches operational routes only. | - [ ] | |
+| 109 | Administrator invites another administrator | Accepted. | - [ ] | |
+| 110 | Manager tries to invite anybody | Refused; the coordinator list is not shown to them at all. | - [ ] | |
+| 111 | Worker signs out on the employee screen | Session ends; the next person on that device must sign in before clocking. | - [ ] | |
+| 112 | Record a client | Client persists and becomes selectable for services and worksites. | - [ ] | |
+| 113 | Record a second client with the same name | Refused rather than merged. | - [ ] | |
+| 114 | Server rejects a form submission | The dialog stays open and states the reason; it never closes as a success. | - [ ] | |
 
 ## 6. Scheduled jobs that delete or narrow data
 
@@ -224,7 +231,7 @@ unticked is out of scope **by choice**, and that choice is on the record.
 
 ## 8. Final decision
 
-- [ ] Total PASS / FAIL / BLOCKED recorded, across all 107 checks.
+- [ ] Total PASS / FAIL / BLOCKED recorded, across all 114 checks.
 - [ ] Every critical/high defect linked.
 - [ ] Provider and AI configuration status recorded.
 - [ ] Section 7 decided: every out-of-scope item is unticked on purpose, not by omission.

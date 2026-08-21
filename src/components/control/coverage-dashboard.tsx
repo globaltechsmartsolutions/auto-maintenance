@@ -197,8 +197,8 @@ function ShiftCard({ shift }: { shift: PlannedShift }) {
     }
   }
 
-  function confirmDecision() {
-    const confirmed = assignReplacement(shift.id, selectedEmployee, overrideReason);
+  async function confirmDecision() {
+    const confirmed = await assignReplacement(shift.id, selectedEmployee, overrideReason);
     if (confirmed) setDecisionOpen(false);
   }
 

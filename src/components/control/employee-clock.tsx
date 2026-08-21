@@ -88,11 +88,11 @@ function CorrectionDialog({
 }) {
   const { requestTimeCorrection } = useWiaControl();
 
-  function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     if (!event) return;
     const data = new FormData(formEvent.currentTarget);
-    const created = requestTimeCorrection(
+    const created = await requestTimeCorrection(
       event.id,
       String(data.get("correctedTime") ?? ""),
       String(data.get("reason") ?? "")

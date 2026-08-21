@@ -109,12 +109,12 @@ function ShiftDialog({
     (service) => !selectedWorksite?.customerId || service.customerId === selectedWorksite.customerId
   );
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const date = String(data.get("date") ?? defaultDate);
     const employeeName = String(data.get("employeeName") ?? "").trim() || undefined;
-    const created = addShift({
+    const created = await addShift({
       worksiteId: String(data.get("worksiteId") ?? ""),
       serviceId: String(data.get("serviceId") ?? "").trim() || undefined,
       title: String(data.get("title") ?? "").trim(),
@@ -285,7 +285,7 @@ function ShiftRow({ shift }: { shift: PlannedShift }) {
         <select
           id={`assign-${shift.id}`}
           value={shift.employeeName ?? ""}
-          onChange={(event) => assignShift(shift.id, event.target.value || undefined)}
+          onChange={(event) => void assignShift(shift.id, event.target.value || undefined)}
           disabled={["ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"].includes(shift.status)}
           className="flex h-8 w-full min-w-48 rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-55"
         >

@@ -123,7 +123,7 @@ number is the recovery time you can honestly promise a customer.
 
 **Blocks:** the pilot decision. **Who:** the developer.
 
-The 107 checks in [`WIACONTROL_STAGING_QA_CHECKLIST.md`](WIACONTROL_STAGING_QA_CHECKLIST.md).
+The 114 checks in [`WIACONTROL_STAGING_QA_CHECKLIST.md`](WIACONTROL_STAGING_QA_CHECKLIST.md).
 Checks 74 to 107 were added after an audit of the product's own surface: the
 evidence attachments, the delivery answers, the three correction outcomes that
 are not approval, two of the four exports, and the scheduled jobs that delete.

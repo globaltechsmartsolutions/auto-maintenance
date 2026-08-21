@@ -287,7 +287,7 @@ function WorksiteCard({ worksite }: { worksite: Worksite }) {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Back</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={() => archiveWorksite(worksite.id)}>
+                  <AlertDialogAction variant="destructive" onClick={() => void archiveWorksite(worksite.id)}>
                     Archive
                   </AlertDialogAction>
                 </AlertDialogFooter>
