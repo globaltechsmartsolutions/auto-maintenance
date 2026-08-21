@@ -738,6 +738,10 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            // The client link is the whole point of a worksite belonging to
+            // somebody; omitting it here silently discarded what the form
+            // collected and left every worksite unattached.
+            customerId: input.customerId || undefined,
             name: input.name,
             address: input.address,
             city: input.city,
@@ -903,6 +907,7 @@ export function WiaControlProvider({ children }: { children: React.ReactNode }) 
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            customerId: input.customerId || undefined,
             name: input.name,
             address: input.address,
             city: input.city,

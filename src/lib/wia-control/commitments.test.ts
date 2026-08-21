@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const transaction = {
-    customer: { findFirst: vi.fn() },
+    customer: { findFirst: vi.fn(), create: vi.fn() },
     worksite: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     plannedShift: { count: vi.fn() },
     service: { findFirst: vi.fn(), update: vi.fn() },
@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/prisma", () => ({ getPrisma: () => mocks.prisma }));
 
 import {
+  createOperationalCustomer,
   createWorksite,
   getOperationalServiceDetail,
   listOperationalCustomers,
@@ -291,5 +292,91 @@ describe("what each role receives", () => {
     );
     expect(mocks.prisma.customer.findMany).not.toHaveBeenCalled();
     expect(mocks.prisma.service.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Recording a client is the first thing anybody does in a new workspace and
+ * the thing every other record hangs off. Until this existed, a worksite could
+ * not be linked to anyone and no service could be created at all.
+ */
+describe("recording a client", () => {
+  const input = { name: "Redwood Offices Ltd.", city: "Madrid" };
+
+  beforeEach(() => {
+    mocks.transaction.customer.findFirst.mockResolvedValue(null);
+    mocks.transaction.customer.create.mockResolvedValue({
+      id: "customer-1",
+      name: "Redwood Offices Ltd.",
+      city: "Madrid",
+      type: "BUSINESS",
+      status: "ACTIVE",
+    });
+  });
+
+  it("stores the client against the acting company, never a requested one", async () => {
+    await createOperationalCustomer(manager, { ...input, companyId: "company-2" });
+    expect(mocks.transaction.customer.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ companyId: "company-1", name: "Redwood Offices Ltd." }),
+      })
+    );
+  });
+
+  it("needs nothing but a name, so a pilot is not blocked on billing details", async () => {
+    await expect(createOperationalCustomer(manager, { name: "Redwood Offices Ltd." })).resolves.toMatchObject({
+      id: "customer-1",
+    });
+  });
+
+  it("stores an untouched optional field as absent rather than as an empty string", async () => {
+    await createOperationalCustomer(manager, { ...input, email: "", phone: "" });
+    const { data } = mocks.transaction.customer.create.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    };
+    expect(data.email).toBeNull();
+    expect(data.phone).toBeNull();
+  });
+
+  it("refuses a second client with the same name, whatever the casing", async () => {
+    mocks.transaction.customer.findFirst.mockResolvedValue({ id: "customer-existing" });
+    await expect(createOperationalCustomer(manager, { name: "redwood offices ltd." })).rejects.toMatchObject({
+      code: "CUSTOMER_ALREADY_EXISTS",
+    });
+    expect(mocks.transaction.customer.create).not.toHaveBeenCalled();
+  });
+
+  it("looks for that duplicate within the company only", async () => {
+    await createOperationalCustomer(manager, input);
+    expect(mocks.transaction.customer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ companyId: "company-1" }),
+      })
+    );
+  });
+
+  it("refuses a field worker, who has no reason to edit the client register", async () => {
+    await expect(createOperationalCustomer(worker, input)).rejects.toThrow(/cannot create customers/);
+    expect(mocks.transaction.customer.create).not.toHaveBeenCalled();
+  });
+
+  it("records the creation in the audit trail", async () => {
+    await createOperationalCustomer(manager, input);
+    expect(mocks.transaction.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "customer.created",
+          entity: "Customer",
+          entityId: "customer-1",
+          userId: "user-manager",
+        }),
+      })
+    );
+  });
+
+  it("refuses a name too short to identify anybody", async () => {
+    await expect(createOperationalCustomer(manager, { name: "R" })).rejects.toMatchObject({
+      name: "ZodError",
+    });
   });
 });

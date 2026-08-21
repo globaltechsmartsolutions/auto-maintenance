@@ -14,7 +14,10 @@ type ImportRow = { row: number; status: "IMPORTED" | "SKIPPED_DUPLICATE" | "FAIL
 type ImportResult = { kind: string; committed: boolean; replayed: boolean; totalRows: number; imported: number; skipped: number; failed: number; rows: ImportRow[] };
 
 const steps: Array<{ key: keyof Progress; label: string; description: string; href: Route }> = [
-  { key: "customers", label: "Add a customer", description: "Identify the client receiving the service.", href: "/crm" },
+  // Not /crm: that section is behind a commercial flag that is off for most
+  // workspaces, and a setup step that redirects somewhere else is worse than
+  // no step at all. Clients are recorded alongside the services they receive.
+  { key: "customers", label: "Add a customer", description: "Identify the client receiving the service.", href: "/services" },
   { key: "worksites", label: "Create a worksite", description: "Set the location and verification method.", href: "/worksites" },
   { key: "employees", label: "Invite the field team", description: "Add skills, zones, and availability.", href: "/employees" },
   { key: "services", label: "Create a client service", description: "Record the operational commitment.", href: "/services" },

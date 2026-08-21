@@ -55,6 +55,8 @@ const verificationModes = [
   "Location only",
 ] as const;
 
+type ClientOption = { id: string; name: string; city?: string | null };
+
 function WorksiteDialog({
   open,
   onOpenChange,
@@ -65,13 +67,39 @@ function WorksiteDialog({
   worksite?: Worksite;
 }) {
   const { addWorksite, updateWorksite } = useWiaControl();
+  const [clients, setClients] = React.useState<ClientOption[]>([]);
+
+  /**
+   * The client is chosen from the register, not typed. A name typed here used
+   * to go nowhere: the API links a worksite by identifier, so free text could
+   * never become a link however carefully it was spelled.
+   */
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/control/customers", { cache: "no-store" });
+        if (!response.ok) return;
+        const body = (await response.json()) as { customers?: ClientOption[] };
+        if (!cancelled) setClients(body.customers ?? []);
+      } catch {
+        // A worksite can still be recorded without a client; leave the list empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const customerId = String(data.get("customerId") ?? "").trim();
     const input: Omit<Worksite, "id"> = {
       name: String(data.get("name") ?? "").trim(),
-      customer: String(data.get("customer") ?? "").trim(),
+      customerId: customerId || undefined,
+      customer: clients.find((client) => client.id === customerId)?.name ?? "No linked customer",
       address: String(data.get("address") ?? "").trim(),
       city: String(data.get("city") ?? "").trim(),
       verificationMode: String(data.get("verificationMode") ?? "QR + location"),
@@ -107,16 +135,26 @@ function WorksiteDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="worksite-customer">Customer</Label>
-            <Input
+            <Label htmlFor="worksite-customer">Client</Label>
+            <select
               id="worksite-customer"
-              name="customer"
-              defaultValue={worksite?.customer}
-              placeholder="Agora Services Ltd"
-              minLength={2}
-              maxLength={140}
-              required
-            />
+              name="customerId"
+              defaultValue={worksite?.customerId ?? ""}
+              className="flex h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+            >
+              <option value="">No linked client</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                  {client.city ? ` · ${client.city}` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {clients.length === 0
+                ? "No clients recorded yet. Add one from Services to link this worksite."
+                : "Optional. A worksite can be recorded before its client is known."}
+            </p>
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="worksite-address">Address</Label>

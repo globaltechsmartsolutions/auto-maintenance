@@ -78,6 +78,26 @@ export const operationalServiceUpdateSchema = operationalServiceBaseSchema
     }
   });
 
+/**
+ * The client an operational service is delivered to.
+ *
+ * Only the name is required: a coordinator setting up a pilot knows who the
+ * client is long before they have the billing details, and a form that demands
+ * a tax number to record that fact is a form nobody completes.
+ */
+export const customerInputSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  type: z.enum(["RESIDENTIAL", "BUSINESS", "COMMUNITY", "INDUSTRIAL"]).default("BUSINESS"),
+  email: z.string().trim().email().max(160).optional().or(z.literal("")),
+  phone: z.string().trim().max(40).optional(),
+  nif: z.string().trim().max(20).optional(),
+  address: z.string().trim().max(240).optional(),
+  city: z.string().trim().max(100).optional(),
+  province: z.string().trim().max(100).optional(),
+  postalCode: z.string().trim().max(12).optional(),
+  notes: z.string().trim().max(2_000).optional(),
+});
+
 export const worksiteInputSchema = z.object({
   customerId: identifier.optional(),
   name: z.string().trim().min(2).max(140),

@@ -21,6 +21,7 @@ import {
   correctionReviewSchema,
   coverageDecisionSchema,
   coverageRecommendationSchema,
+  customerInputSchema,
   DEFAULT_INCIDENT_POLICY,
   employeeCreateSchema,
   employeeProfileUpdateSchema,
@@ -287,6 +288,75 @@ export async function listOperationalCustomers(actor: WiaActor) {
     where: { companyId: actor.companyId, status: { not: "ARCHIVED" } },
     select: { id: true, name: true, city: true },
     orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * Record a client.
+ *
+ * Everything a coordinator does in this product is eventually owed to
+ * somebody: a service is delivered to a client, a worksite belongs to one, an
+ * incident is explained to one. Nothing else can be created until this exists,
+ * which is why it is deliberately cheap — a name is enough.
+ *
+ * A duplicate name is refused rather than merged. Two clients called the same
+ * thing in one workspace is almost always the same client entered twice, and
+ * the coordinator is the only one who can tell.
+ */
+export async function createOperationalCustomer(actor: WiaActor, input: unknown) {
+  assertCompany(actor);
+  if (actor.role === "EMPLOYEE") {
+    throw new WiaDomainError("FORBIDDEN", "An employee cannot create customers.");
+  }
+  const payload = customerInputSchema.parse(input);
+
+  return getPrisma().$transaction(async (transaction) => {
+    const existing = await transaction.customer.findFirst({
+      where: {
+        companyId: actor.companyId,
+        name: { equals: payload.name, mode: "insensitive" },
+        status: { not: "ARCHIVED" },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new WiaDomainError(
+        "CUSTOMER_ALREADY_EXISTS",
+        "This workspace already has a client with that name."
+      );
+    }
+
+    const customer = await transaction.customer.create({
+      data: {
+        companyId: actor.companyId,
+        name: payload.name,
+        type: payload.type,
+        // An empty string is what a browser sends for an untouched optional
+        // field; storing it would make "has an email" true for nobody.
+        email: payload.email || null,
+        phone: payload.phone || null,
+        nif: payload.nif || null,
+        address: payload.address || null,
+        city: payload.city || null,
+        province: payload.province || null,
+        postalCode: payload.postalCode || null,
+        notes: payload.notes || null,
+      },
+      select: { id: true, name: true, city: true, type: true, status: true },
+    });
+
+    await transaction.auditLog.create({
+      data: {
+        companyId: actor.companyId,
+        userId: actor.userId,
+        action: "customer.created",
+        entity: "Customer",
+        entityId: customer.id,
+        metadata: { name: customer.name, type: customer.type },
+      },
+    });
+
+    return customer;
   });
 }
 

@@ -55,7 +55,9 @@ export function OperationalServicesDashboard() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string>();
   const [open, setOpen] = React.useState(false);
+  const [clientOpen, setClientOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [savingClient, setSavingClient] = React.useState(false);
   const [detail, setDetail] = React.useState<ServiceDetail>();
   const [detailLoading, setDetailLoading] = React.useState(false);
 
@@ -110,6 +112,36 @@ export function OperationalServicesDashboard() {
     }
   }
 
+  async function createClient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    setSavingClient(true);
+    setError(undefined);
+    try {
+      const response = await fetch("/api/control/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: String(data.get("name") ?? ""),
+          type: String(data.get("type") ?? "BUSINESS"),
+          email: String(data.get("email") ?? ""),
+          phone: String(data.get("phone") ?? ""),
+          nif: String(data.get("nif") ?? ""),
+          address: String(data.get("address") ?? ""),
+          city: String(data.get("city") ?? ""),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "The client could not be recorded.");
+      setClientOpen(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The client could not be recorded.");
+    } finally {
+      setSavingClient(false);
+    }
+  }
+
   async function viewDetail(serviceId: string) {
     setDetailLoading(true);
     setError(undefined);
@@ -142,10 +174,30 @@ export function OperationalServicesDashboard() {
             Link every shift to the client service it fulfils, then identify coverage risk before it affects the customer.
           </p>
         </div>
-        <Button type="button" onClick={() => setOpen(true)} disabled={customers.length === 0}>
-          <Plus className="size-4" /> Create service
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setClientOpen(true)}>
+            <Plus className="size-4" /> New client
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={customers.length === 0}
+            title={customers.length === 0 ? "Record a client first: every service is delivered to one." : undefined}
+          >
+            <Plus className="size-4" /> Create service
+          </Button>
+        </div>
       </div>
+
+      {!loading && customers.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">Record a client before creating a service.</p>
+          <p className="mt-1">
+            Every service is a commitment to somebody, so it cannot exist without them. Recording one
+            needs nothing but a name — the rest can wait.
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
@@ -181,6 +233,19 @@ export function OperationalServicesDashboard() {
           })}</div>}
         </CardContent>
       </Card>
+
+      <Dialog open={clientOpen} onOpenChange={setClientOpen}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>New client</DialogTitle><DialogDescription>The organisation the service is delivered to. Only the name is required.</DialogDescription></DialogHeader>
+        <form id="client-form" className="grid gap-4 sm:grid-cols-2" onSubmit={createClient}>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-name">Client name</Label><Input id="client-name" name="name" minLength={2} maxLength={160} placeholder="Redwood Offices Ltd." required /></div>
+          <div className="space-y-2"><Label htmlFor="client-type">Type</Label><select id="client-type" name="type" defaultValue="BUSINESS" className="flex h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option value="BUSINESS">Business</option><option value="COMMUNITY">Community of owners</option><option value="RESIDENTIAL">Residential</option><option value="INDUSTRIAL">Industrial</option></select></div>
+          <div className="space-y-2"><Label htmlFor="client-nif">Tax number</Label><Input id="client-nif" name="nif" maxLength={20} placeholder="Optional" /></div>
+          <div className="space-y-2"><Label htmlFor="client-email">Email</Label><Input id="client-email" name="email" type="email" maxLength={160} placeholder="Optional" /></div>
+          <div className="space-y-2"><Label htmlFor="client-phone">Phone</Label><Input id="client-phone" name="phone" maxLength={40} placeholder="Optional" /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-address">Address</Label><Input id="client-address" name="address" maxLength={240} placeholder="Optional" /></div>
+          <div className="space-y-2 sm:col-span-2"><Label htmlFor="client-city">City</Label><Input id="client-city" name="city" maxLength={100} placeholder="Optional" /></div>
+        </form>
+        <DialogFooter><Button type="button" variant="outline" onClick={() => setClientOpen(false)}>Cancel</Button><Button type="submit" form="client-form" disabled={savingClient}>{savingClient ? "Recording…" : "Record client"}</Button></DialogFooter>
+      </DialogContent></Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Create client service</DialogTitle><DialogDescription>Use a service for the contractual commitment; plan individual shifts afterwards.</DialogDescription></DialogHeader>
         <form id="service-form" className="grid gap-4 sm:grid-cols-2" onSubmit={createService}>
