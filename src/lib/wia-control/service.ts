@@ -7,6 +7,7 @@ import { getPrisma } from "@/lib/prisma";
 import { getZonedDateString, getZonedDayRange } from "@/lib/utils";
 import { logEvent } from "@/lib/observability";
 import {
+  assertClockTimestamp,
   assertClockTransition,
   assertShiftWindow,
   clockCommandSchema,
@@ -1666,7 +1667,24 @@ export async function recordClockEvent(actor: WiaActor, input: unknown) {
         },
       },
     });
-    if (existing) return { event: existing, created: false };
+    if (existing) {
+      // A replay is the same action arriving twice, not any request carrying a
+      // key somebody else used. Returning the stored event without these two
+      // checks would hand a colleague's attendance record - and the location
+      // on it - to whoever guessed the key.
+      if (actor.role === "EMPLOYEE" && existing.employeeId !== actor.employeeId) {
+        throw new WiaDomainError("FORBIDDEN", "You can only clock into your own shifts.");
+      }
+      if (existing.shiftId !== payload.shiftId || existing.type !== payload.type) {
+        throw new WiaDomainError(
+          "IDEMPOTENCY_KEY_REUSED",
+          "That key was already used for a different clock action. Generate a new one."
+        );
+      }
+      return { event: existing, created: false };
+    }
+
+    assertClockTimestamp(new Date(payload.occurredAt), new Date());
 
     const shift = await transaction.plannedShift.findFirst({
       where: { id: payload.shiftId, companyId: actor.companyId },

@@ -538,6 +538,56 @@ export function distanceInMeters(
   return 2 * earthRadiusMeters * Math.asin(Math.sqrt(haversine));
 }
 
+/**
+ * How much of the device's self-reported GPS imprecision we are willing to add
+ * to a worksite's radius. Bounded because the figure is supplied by the same
+ * device whose position we are checking.
+ */
+export const MAX_ACCURACY_TOLERANCE_METERS = 100;
+
+/** Beyond this, a reading is too imprecise to confirm presence at all. */
+export const MAX_ACCEPTABLE_ACCURACY_METERS = 200;
+
+/**
+ * How far a clock may be backdated, matching the offline queue's own expiry:
+ * an event older than this was not captured by the queue this product ships,
+ * and a statutory record that old belongs in a correction request, where a
+ * human reviews it, rather than arriving as a fresh clock.
+ */
+export const MAX_CLOCK_BACKDATE_HOURS = 24;
+
+/** Allowance for ordinary device clock drift. Nothing may be in the future. */
+export const MAX_CLOCK_FUTURE_SKEW_MINUTES = 2;
+
+/**
+ * Bounds a device-supplied clock time against the server's own clock.
+ *
+ * `occurredAt` comes from the phone so that offline capture keeps the moment
+ * the person actually acted. That is necessary, and it is also the classic
+ * attack on an attendance system: without bounds, anyone can write a statutory
+ * record for any moment in history or the future. The server cannot know the
+ * true time on the device, but it can refuse the times that cannot be honest.
+ */
+export function assertClockTimestamp(occurredAt: Date, now: Date) {
+  if (Number.isNaN(occurredAt.getTime())) {
+    throw new WiaDomainError("INVALID_CLOCK_TIME", "The clock time is not a valid moment.");
+  }
+  const minutesAhead = (occurredAt.getTime() - now.getTime()) / 60_000;
+  if (minutesAhead > MAX_CLOCK_FUTURE_SKEW_MINUTES) {
+    throw new WiaDomainError(
+      "CLOCK_TIME_IN_FUTURE",
+      "A clock cannot be recorded in the future. Check the time on the device."
+    );
+  }
+  const hoursBehind = (now.getTime() - occurredAt.getTime()) / 3_600_000;
+  if (hoursBehind > MAX_CLOCK_BACKDATE_HOURS) {
+    throw new WiaDomainError(
+      "CLOCK_TIME_TOO_OLD",
+      `A clock more than ${MAX_CLOCK_BACKDATE_HOURS} hours old cannot be submitted as a new event. Request a time correction instead.`
+    );
+  }
+}
+
 export function isLocationWithinWorksite(
   location: { latitude?: number; longitude?: number; accuracyMeters?: number },
   worksite: { latitude?: number; longitude?: number; radiusMeters: number }
@@ -551,10 +601,21 @@ export function isLocationWithinWorksite(
     return false;
   }
 
+  // The device reports its own accuracy, so an unbounded allowance is an
+  // unbounded radius: a phone claiming 10km of imprecision would verify a
+  // clock from 10km away and the whole check would mean nothing.
+  const reportedAccuracy = location.accuracyMeters ?? 0;
+  if (reportedAccuracy > MAX_ACCEPTABLE_ACCURACY_METERS) {
+    // A reading this imprecise cannot confirm presence anywhere. It is not
+    // rejected as an event - the clock still counts - it is simply not
+    // verified, which is what the incident is for.
+    return false;
+  }
+
   const distance = distanceInMeters(
     { latitude: location.latitude, longitude: location.longitude },
     { latitude: worksite.latitude, longitude: worksite.longitude }
   );
-  return distance <= worksite.radiusMeters + (location.accuracyMeters ?? 0);
+  return distance <= worksite.radiusMeters + Math.min(reportedAccuracy, MAX_ACCURACY_TOLERANCE_METERS);
 }
 import { getZonedWeekdayAndMinutes } from "@/lib/utils";

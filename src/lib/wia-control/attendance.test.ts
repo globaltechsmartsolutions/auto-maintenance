@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const transaction = {
@@ -73,6 +73,10 @@ function createdIncidents() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The server now bounds how far a device-supplied time may sit from its own
+  // clock, so these fixtures need a fixed "now" to sit inside.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-20T08:00:00Z"));
   mocks.transaction.clockEvent.findUnique.mockResolvedValue(null);
   mocks.transaction.plannedShift.findFirst.mockResolvedValue(shift());
   mocks.transaction.clockEvent.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -87,6 +91,10 @@ beforeEach(() => {
     incidentDueMinutesMedium: 1_440,
     incidentDueMinutesLow: 4_320,
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("recording a clock event", () => {
@@ -108,13 +116,71 @@ describe("recording a clock event", () => {
   });
 
   it("returns the existing event for a repeated idempotency key, without writing again", async () => {
-    mocks.transaction.clockEvent.findUnique.mockResolvedValue({ id: "event-1", type: "CLOCK_IN" });
+    const stored = { id: "event-1", type: "CLOCK_IN", shiftId: "shift-1", employeeId: "employee-1" };
+    mocks.transaction.clockEvent.findUnique.mockResolvedValue(stored);
 
     const result = await recordClockEvent(worker, command());
 
-    expect(result).toEqual({ event: { id: "event-1", type: "CLOCK_IN" }, created: false });
+    expect(result).toEqual({ event: stored, created: false });
     expect(mocks.transaction.clockEvent.create).not.toHaveBeenCalled();
     expect(mocks.transaction.plannedShift.update).not.toHaveBeenCalled();
+  });
+
+  it("does not hand somebody else's event to whoever replays their key", async () => {
+    mocks.transaction.clockEvent.findUnique.mockResolvedValue({
+      id: "event-1",
+      type: "CLOCK_IN",
+      shiftId: "shift-1",
+      employeeId: "employee-2",
+    });
+
+    await expect(recordClockEvent(worker, command())).rejects.toThrow(
+      /only clock into your own shifts/
+    );
+  });
+
+  it("refuses a key already used for a different action instead of pretending it replayed", async () => {
+    mocks.transaction.clockEvent.findUnique.mockResolvedValue({
+      id: "event-1",
+      type: "CLOCK_IN",
+      shiftId: "shift-other",
+      employeeId: "employee-1",
+    });
+
+    await expect(recordClockEvent(worker, command())).rejects.toThrow(/already used for a different/);
+  });
+
+  it("refuses a time in the future or older than the offline queue's own expiry", async () => {
+    await expect(
+      recordClockEvent(worker, command({ occurredAt: "2026-08-20T09:00:00.000Z" }))
+    ).rejects.toThrow(/cannot be recorded in the future/);
+
+    await expect(
+      recordClockEvent(worker, command({ occurredAt: "2026-08-18T07:00:00.000Z" }))
+    ).rejects.toThrow(/cannot be submitted as a new event/);
+
+    expect(mocks.transaction.clockEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("accepts a genuinely queued offline clock from earlier the same day", async () => {
+    await expect(
+      recordClockEvent(worker, command({ occurredAt: "2026-08-20T07:00:00.000Z", isOffline: true }))
+    ).resolves.toEqual(expect.objectContaining({ created: true }));
+  });
+
+  it("does not let a device widen the worksite radius with its own accuracy claim", async () => {
+    // 20km away, claiming 10km of imprecision. Previously the tolerance was
+    // added to the radius unbounded, so this verified.
+    await recordClockEvent(
+      worker,
+      command({ latitude: 40.6, longitude: -3.7, accuracyMeters: 10_000 })
+    );
+
+    expect(
+      (mocks.transaction.clockEvent.create.mock.calls[0][0] as { data: { locationVerified: boolean } })
+        .data.locationVerified
+    ).toBe(false);
+    expect(createdIncidents()).toEqual([expect.objectContaining({ type: "OUTSIDE_LOCATION" })]);
   });
 
   it("links each event to the previous one, so the chain can be checked later", async () => {
@@ -125,7 +191,7 @@ describe("recording a clock event", () => {
       })
     );
 
-    await recordClockEvent(worker, command({ type: "CLOCK_OUT", occurredAt: "2026-08-20T11:00:00.000Z", idempotencyKey: "device-key-2" }));
+    await recordClockEvent(worker, command({ type: "CLOCK_OUT", occurredAt: "2026-08-20T07:59:00.000Z", idempotencyKey: "device-key-2" }));
 
     const written = mocks.transaction.clockEvent.create.mock.calls[0][0] as {
       data: { previousEventHash: string };

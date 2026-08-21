@@ -659,6 +659,9 @@ model ClockEvent {
   corrections TimeCorrectionRequest[]
 
   @@unique([companyId, idempotencyKey])
+  /// The chain must stay linear: no two events on a shift may claim the same
+  /// parent. Enforced by partial unique indexes, which Prisma cannot express,
+  /// in 20260821150000_clock_chain_is_linear.
   @@index([companyId, occurredAt])
   @@index([shiftId, occurredAt])
   @@index([employeeId, occurredAt])
