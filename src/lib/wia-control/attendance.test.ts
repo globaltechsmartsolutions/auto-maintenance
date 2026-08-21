@@ -382,6 +382,7 @@ describe("working an incident", () => {
       status: "OPEN",
       severity: "MEDIUM",
       shiftId: "shift-1",
+      detectedAt: new Date("2026-08-20T07:30:00Z"),
     });
     mocks.transaction.attendanceIncident.update.mockResolvedValue({ id: "incident-1" });
     mocks.transaction.user.findFirst.mockResolvedValue({ id: "user-manager" });
@@ -415,9 +416,18 @@ describe("working an incident", () => {
       note: "The customer has called twice about this.",
     });
 
+    // The deadline follows the severity: an escalated incident must not keep
+    // the due time of the level it just left.
     expect(mocks.transaction.attendanceIncident.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { severity: "HIGH" } })
+      expect.objectContaining({
+        data: expect.objectContaining({ severity: "HIGH", dueAt: expect.any(Date) }),
+      })
     );
+    const { dueAt } = (mocks.transaction.attendanceIncident.update.mock.calls[0][0] as {
+      data: { dueAt: Date };
+    }).data;
+    // HIGH is 240 minutes from detection under the policy in this fixture.
+    expect(dueAt).toEqual(new Date("2026-08-20T11:30:00Z"));
   });
 
   it("refuses to touch an incident that is already closed, and refuses a field worker", async () => {

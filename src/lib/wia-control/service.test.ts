@@ -95,17 +95,19 @@ describe("coverage recovery metrics", () => {
 
   it("calculates acknowledgement and recovery time from persisted timestamps", async () => {
     mocks.prisma.attendanceIncident.findMany.mockResolvedValue([
-      { id: "one", detectedAt: new Date("2026-08-20T08:00:00Z"), acknowledgedAt: new Date("2026-08-20T08:10:00Z"), coverageDecisions: [{ createdAt: new Date("2026-08-20T08:30:00Z") }] },
-      { id: "two", detectedAt: new Date("2026-08-20T09:00:00Z"), acknowledgedAt: null, coverageDecisions: [] },
+      { id: "one", status: "RESOLVED", detectedAt: new Date("2026-08-20T08:00:00Z"), acknowledgedAt: new Date("2026-08-20T08:10:00Z"), coverageDecisions: [{ createdAt: new Date("2026-08-20T08:30:00Z") }] },
+      { id: "two", status: "OPEN", detectedAt: new Date("2026-08-20T09:00:00Z"), acknowledgedAt: null, coverageDecisions: [] },
     ]);
     await expect(getCoverageRecoveryMetrics(manager, new Date("2026-08-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).resolves.toEqual({
       incidentCount: 2, acknowledgedCount: 1, recoveredCount: 1, averageAcknowledgementMinutes: 10, averageRecoveryMinutes: 30,
+      // A recovery average means nothing without what is still open beside it.
+      unresolvedCount: 1, oldestUnresolvedMinutes: 16_740,
     });
     expect(mocks.prisma.attendanceIncident.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ companyId: "company-1" }) }));
   });
 
   it("does not hide unresolved incidents by counting them as zero minutes", async () => {
-    mocks.prisma.attendanceIncident.findMany.mockResolvedValue([{ id: "one", detectedAt: new Date(), acknowledgedAt: null, coverageDecisions: [] }]);
+    mocks.prisma.attendanceIncident.findMany.mockResolvedValue([{ id: "one", status: "OPEN", detectedAt: new Date(), acknowledgedAt: null, coverageDecisions: [] }]);
     await expect(getCoverageRecoveryMetrics(manager, new Date("2026-08-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).resolves.toEqual(expect.objectContaining({ averageAcknowledgementMinutes: null, averageRecoveryMinutes: null }));
   });
 });

@@ -780,7 +780,7 @@ export async function getCoverageRecoveryMetrics(actor: WiaActor, from: Date, to
   }
   const incidents = await getPrisma().attendanceIncident.findMany({
     where: { companyId: actor.companyId, detectedAt: { gte: from, lt: to } },
-    select: { id: true, detectedAt: true, acknowledgedAt: true, coverageDecisions: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 } },
+    select: { id: true, status: true, detectedAt: true, acknowledgedAt: true, coverageDecisions: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 } },
   });
   const averageMinutes = (values: number[]) => values.length
     ? Math.round(values.reduce((total, value) => total + value, 0) / values.length)
@@ -791,10 +791,27 @@ export async function getCoverageRecoveryMetrics(actor: WiaActor, from: Date, to
   const recoveryMinutes = incidents
     .filter((incident) => incident.coverageDecisions[0])
     .map((incident) => Math.max(0, (incident.coverageDecisions[0]!.createdAt.getTime() - incident.detectedAt.getTime()) / 60_000));
+  // An average over only the incidents that recovered says nothing on its own:
+  // one recovered in a minute and ninety-nine still open reads as excellent.
+  // The unresolved count and the oldest open age travel with it so the figure
+  // cannot be quoted alone.
+  const unresolved = incidents.filter(
+    (incident) => !["RESOLVED", "DISMISSED"].includes(incident.status)
+  );
+  const oldestUnresolvedMinutes = unresolved.length
+    ? Math.max(
+        ...unresolved.map((incident) =>
+          Math.round((to.getTime() - incident.detectedAt.getTime()) / 60_000)
+        )
+      )
+    : null;
+
   return {
     incidentCount: incidents.length,
     acknowledgedCount: acknowledgementMinutes.length,
     recoveredCount: recoveryMinutes.length,
+    unresolvedCount: unresolved.length,
+    oldestUnresolvedMinutes,
     averageAcknowledgementMinutes: averageMinutes(acknowledgementMinutes),
     averageRecoveryMinutes: averageMinutes(recoveryMinutes),
   };
@@ -2114,9 +2131,16 @@ export async function updateAttendanceIncident(
 
     if ("action" in payload && payload.action === "ESCALATE") {
       const nextSeverity = escalateSeverity(incident.severity);
+      // The due time comes from the severity, so leaving it behind would let an
+      // escalated incident keep the deadline of the level it just left - and
+      // the queue would order and alert on the lower risk.
+      const policy = await getIncidentPolicy(transaction, actor.companyId);
       const updated = await transaction.attendanceIncident.update({
         where: { id: incident.id },
-        data: { severity: nextSeverity },
+        data: {
+          severity: nextSeverity,
+          dueAt: computeIncidentDueAt(nextSeverity, incident.detectedAt, policy),
+        },
       });
       await transaction.auditLog.create({
         data: {
@@ -2553,8 +2577,13 @@ export async function confirmCoverage(actor: WiaActor, input: unknown) {
     await transaction.attendanceIncident.update({
       where: { id: incident.id },
       data: {
-        status: "RESOLVED",
-        resolvedAt: new Date(),
+        // Acknowledged, not resolved. A confirmed replacement who has not seen
+        // the message is still a service at risk, and the recovery queue's own
+        // next action for exactly this state - chase the acknowledgement - was
+        // unreachable while confirmation closed the incident outright. It
+        // resolves when the person acknowledges.
+        status: "ACKNOWLEDGED",
+        acknowledgedAt: incident.acknowledgedAt ?? new Date(),
         resolutionNotes: acceptedRecommendation
           ? "WIA recommendation confirmed."
           : payload.overrideReason,
@@ -3090,10 +3119,29 @@ export async function acknowledgeCommunication(actor: WiaActor, outboxId: string
       );
     }
 
+    const acknowledgedAt = new Date();
     const updated = await transaction.communicationOutbox.update({
       where: { id: record.id },
-      data: { acknowledgedAt: new Date() },
+      data: { acknowledgedAt },
     });
+
+    // The loop closes here: coverage was confirmed by a coordinator and has now
+    // been seen by the person taking the shift, which is the point at which the
+    // service stops being at risk.
+    if (record.shiftId && record.template === "coverage_confirmed") {
+      await transaction.attendanceIncident.updateMany({
+        where: {
+          companyId: actor.companyId,
+          shiftId: record.shiftId,
+          status: "ACKNOWLEDGED",
+        },
+        data: {
+          status: "RESOLVED",
+          resolvedAt: acknowledgedAt,
+        },
+      });
+    }
+
     await transaction.auditLog.create({
       data: {
         companyId: actor.companyId,
