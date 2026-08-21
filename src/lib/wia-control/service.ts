@@ -1312,6 +1312,30 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
       );
     }
 
+    const serviceId = payload.serviceId === undefined ? shift.serviceId : payload.serviceId;
+    if (serviceId && serviceId !== shift.serviceId) {
+      const service = await transaction.service.findFirst({
+        where: { id: serviceId, companyId: actor.companyId, status: { not: "CANCELLED" } },
+        select: { id: true, customerId: true },
+      });
+      if (!service) {
+        throw new WiaDomainError(
+          "SERVICE_NOT_FOUND",
+          "The service does not belong to the company or is cancelled."
+        );
+      }
+      const worksite = await transaction.worksite.findFirst({
+        where: { id: shift.worksiteId, companyId: actor.companyId },
+        select: { customerId: true },
+      });
+      if (worksite?.customerId && worksite.customerId !== service.customerId) {
+        throw new WiaDomainError(
+          "SERVICE_WORKSITE_MISMATCH",
+          "The selected service belongs to a different customer than this worksite."
+        );
+      }
+    }
+
     const employeeId = payload.employeeId === undefined ? shift.employeeId : payload.employeeId;
     if (employeeId) {
       const employee = await transaction.employee.findFirst({
@@ -1342,19 +1366,22 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
     }
 
     const isCancelled = payload.status === "CANCELLED";
-    const wasUncovered = shift.status === "UNCOVERED";
+    // Assigning somebody to an uncovered shift is a recovery, and COVERED is
+    // the record of that. Any other edit leaves the status alone rather than
+    // quietly turning a recovered shift back into an ordinary planned one.
     const nextStatus = isCancelled
       ? "CANCELLED"
-      : employeeId
-        ? wasUncovered
+      : !employeeId
+        ? "UNCOVERED"
+        : shift.status === "UNCOVERED"
           ? "COVERED"
-          : "PLANNED"
-        : "UNCOVERED";
+          : shift.status;
 
     const updated = await transaction.plannedShift.update({
       where: { id: shiftId },
       data: {
         employeeId,
+        serviceId,
         title: payload.title,
         scheduledStart,
         scheduledEnd,
@@ -1367,7 +1394,15 @@ export async function updatePlannedShift(actor: WiaActor, shiftId: string, input
     if (isCancelled || employeeId) {
       await transaction.attendanceIncident.updateMany({
         where: { shiftId, companyId: actor.companyId, status: { in: ["OPEN", "ACKNOWLEDGED"] } },
-        data: { status: isCancelled ? "DISMISSED" : "RESOLVED", resolvedAt: new Date() },
+        data: {
+          status: isCancelled ? "DISMISSED" : "RESOLVED",
+          resolvedAt: new Date(),
+          // Closed as a consequence of an edit, not by someone working it.
+          // Saying so keeps "resolved" from meaning two different things.
+          resolutionNotes: isCancelled
+            ? "Closed automatically: the shift was cancelled."
+            : "Closed automatically: the shift was assigned to somebody.",
+        },
       });
     } else {
       const existingIncident = await transaction.attendanceIncident.findFirst({
