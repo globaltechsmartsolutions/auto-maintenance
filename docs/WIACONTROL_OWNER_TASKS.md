@@ -23,7 +23,8 @@ upload, but it cannot prevent the object being written in the first place —
 only the bucket can. Without this limit, a client can put arbitrary volume into
 storage before anything rejects it.
 
-**Done when:** uploading a file larger than the limit fails at the bucket.
+**Done when:** check 78 in the QA checklist passes — uploading a file larger
+than the limit fails **at the bucket**, not only in the application.
 
 ---
 
@@ -122,7 +123,10 @@ number is the recovery time you can honestly promise a customer.
 
 **Blocks:** the pilot decision. **Who:** the developer.
 
-The 73 checks in [`WIACONTROL_STAGING_QA_CHECKLIST.md`](WIACONTROL_STAGING_QA_CHECKLIST.md).
+The 107 checks in [`WIACONTROL_STAGING_QA_CHECKLIST.md`](WIACONTROL_STAGING_QA_CHECKLIST.md).
+Checks 74 to 107 were added after an audit of the product's own surface: the
+evidence attachments, the delivery answers, the three correction outcomes that
+are not approval, two of the four exports, and the scheduled jobs that delete.
 
 Section 1's automated gate is already covered: `npm run preprod:verify` passes —
 lint, type-check, 385 tests, Prisma validation, coverage thresholds, production
@@ -152,6 +156,49 @@ different piece of work. That question is for whoever reads the published text,
 not for an engineer to assume.
 
 ---
+
+---
+
+## 9 · Prove the two deleting jobs before they run against real data
+
+**Blocks:** turning the scheduler on over anything you need to keep.
+**Who:** the developer, against staging.
+
+Item 2 proves the four jobs *run*. Two of them — `purge-evidence` and
+`reduce-clock-location` — permanently remove personal data, and nothing has yet
+proved they remove **the right thing**. Their authentication and their failure
+reporting are covered by automated tests; the retention arithmetic that decides
+*which* rows they touch has never been exercised against a database.
+
+The failure mode is quiet and unrecoverable: a window computed wrongly deletes a
+statutory record early, the job answers 200, and the loss surfaces months later
+when somebody asks for the record. The backup does not help — it restores the
+row the job was supposed to have kept only if the backup predates the mistake,
+and nobody knows to look.
+
+Checks **104 to 107** in the QA checklist cover it: one record inside the window
+and one past it, for each job. Create those records for the purpose; do not run
+either job for the first time against data you need.
+
+**Done when:** all four checks pass, and the two jobs have each reported at
+least one deliberate deletion whose scope was verified by hand.
+
+---
+
+## 10 · Decide whether billing is in scope for the pilot
+
+**Blocks:** nothing technically. **Who:** you.
+
+`stripe/checkout`, `stripe/portal`, `webhooks/stripe`, `invoices` and `leads`
+exist in the product and are covered by no check, no test, and — until now — no
+task. It is the only part of the system that moves money.
+
+That is defensible if the pilot customer is invoiced outside the product, which
+is the usual shape of a first pilot. It is not defensible by accident. Section 7
+of the QA checklist now carries the box; tick it if billing stays out, or say so
+and the checks get written.
+
+**Done when:** section 7 of the checklist records the decision either way.
 
 ## What is already done, for contrast
 

@@ -1,7 +1,9 @@
 # WIAControl Staging QA Checklist
 
 **Purpose:** Prove the fictional-company workflow before any customer pilot.
-Run only in staging. Never use real employees, customers, contact details, or
+Sections 3 and 4 cover the operational core; sections 5 to 7 cover every other
+surface the product exposes, so that anything left untested is left untested on
+purpose. Run only in staging. Never use real employees, customers, details, or
 production credentials.
 
 ## 1. Test record
@@ -122,12 +124,112 @@ Run this section only after its named integration is configured in staging.
 | 72 | Error simulation | Capture request ID | Privacy-safe log/request ID available. | - [ ] |
 | 73 | Real staging backup | Restore rehearsal | Restore result documented. | - [ ] |
 
-## 5. Final decision
+## 5. Extended checklist
 
-- [ ] Total PASS / FAIL / BLOCKED recorded.
+Everything below is a surface the product exposes that sections 3 and 4 never
+reach. Same rules: mark `PASS`, `FAIL`, or `BLOCKED`, with evidence.
+
+### 5.1 Evidence attachments
+
+Prerequisite: the evidence bucket exists and its file size limit is set
+(owner task 1). The application accepts JPEG, PNG, WebP, HEIC and PDF, between
+64 bytes and 20 MB, at most 20 files per shift.
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 74 | Maya requests an upload for her own shift | Signed link issued; attachment stays pending and is not yet visible as proof. | - [ ] | |
+| 75 | Maya requests an upload for Liam's shift | Denied; no storage key reserved. | - [ ] | |
+| 76 | Confirm a valid JPEG | Attachment visible on the shift; checksum of the stored bytes recorded. | - [ ] | |
+| 77 | Confirm a file whose bytes contradict its declared type (an executable renamed `.jpg`) | Rejected on confirmation; the object is removed from storage; the rejection stays visible. | - [ ] | |
+| 78 | Upload a file larger than the bucket limit | Refused **by the bucket**, not only by the application. This is the check that closes owner task 1. | - [ ] | |
+| 79 | Attach a 21st file to one shift | Refused. | - [ ] | |
+| 80 | Manager downloads evidence | Short-lived link (120 s); the read is audited. | - [ ] | |
+| 81 | Reuse the download link after it expires | Refused. | - [ ] | |
+| 82 | Second-company user requests the same attachment | Denied. | - [ ] | |
+
+### 5.2 Delivery answers and templates
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 83 | Publish a delivery template with one required question | Template offered to the assigned worker on that service. | - [ ] | |
+| 84 | Maya submits answers for her own shift | Submission recorded once and attributed to her. | - [ ] | |
+| 85 | Retry the same submission with the same idempotency key | Exactly one submission after the retry. | - [ ] | |
+| 86 | Submit with the required question unanswered | Rejected; nothing stored. | - [ ] | |
+| 87 | Edit or delete a stored submission | Refused as append-only. | - [ ] | |
+
+### 5.3 Correction outcomes
+
+Check 30 approves a correction. These are the other three ways one ends.
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 88 | Reject a correction with a reason | Rejection, reason and reviewer recorded; the original clock event is unchanged. | - [ ] | |
+| 89 | Worker accepts the outcome | Acceptance recorded against the same correction. | - [ ] | |
+| 90 | Worker disputes the outcome | Dispute recorded and the stated reason still readable after the correction is closed. | - [ ] | |
+
+### 5.4 Remaining exports
+
+Checks 46 and 47 cover two of the four. These are the rest.
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 91 | Incident export | Company-scoped rows matching the incident inbox for the same range. | - [ ] | |
+| 92 | Coverage-decision export | One row per decision, showing recommended against selected employee and any override reason. | - [ ] | |
+| 93 | Export field dictionary | Every column produced by the exports is described. | - [ ] | |
+| 94 | Export a range containing reduced clock locations | Distance and radius present; exact coordinates absent; the record still reads as complete. | - [ ] | |
+
+### 5.5 Surfaces with no other check
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 95 | Guided onboarding for a new company | Steps reflect real state; completing a step never skips its validation. | - [ ] | |
+| 96 | Coverage queue | Shifts at risk ordered by urgency, each with its reason stated. | - [ ] | |
+| 97 | Coverage metrics | Figures agree with the incidents and decisions behind them. | - [ ] | |
+| 98 | Deactivate an employee | Future shifts flagged as uncovered; past attendance untouched; sign-in refused. | - [ ] | |
+| 99 | `/api/health` | Reports degraded when a dependency is down, rather than `ok`. | - [ ] | |
+| 100 | Communications channel health | A stuck outbox is visible here before anybody reports it. | - [ ] | |
+| 101 | Automated reminders | Fire once per shift, not once per run. | - [ ] | |
+
+## 6. Scheduled jobs that delete or narrow data
+
+Two of the four jobs remove personal data permanently. Owner task 2 proves they
+*run*; this section proves they remove **the right thing**. A wrong retention
+window here deletes a statutory record early, and no backup restores what the
+job was supposed to keep.
+
+Run 104 to 107 against records created for this purpose, on a database copy or
+on QA data you are willing to lose. Do not run them for the first time against
+a database holding anything you need.
+
+| ID | Check | Expected result | Status | Evidence / defect |
+| ---: | --- | --- | --- | --- |
+| 102 | Call each of the four jobs with no `CRON_SECRET` set | 500, and nothing executed. | - [ ] | |
+| 103 | Call each of the four jobs with a wrong secret | 401, and nothing executed. | - [ ] | |
+| 104 | `reduce-clock-location` against an event inside the company's window | Coordinates untouched. | - [ ] | |
+| 105 | `reduce-clock-location` against an event past the window | Latitude and longitude removed; distance, radius and verification outcome intact; `clock_location.reduced` audited with a count. | - [ ] | |
+| 106 | `purge-evidence` against an attachment still inside retention | Untouched. | - [ ] | |
+| 107 | `purge-evidence` against an attachment past retention | Both the row and the stored file are gone; a file that could not be deleted is reported as 207, never as 200. | - [ ] | |
+
+## 7. Deliberately out of scope
+
+Record a decision here rather than leaving these unmentioned. Anything left
+unticked is out of scope **by choice**, and that choice is on the record.
+
+- [ ] **Billing and subscriptions** — `stripe/checkout`, `stripe/portal`,
+      `webhooks/stripe`, `invoices`, `leads`. Not exercised by this QA. Tick
+      this box only if the pilot is invoiced outside the product; otherwise
+      billing needs its own checks before a paying customer touches it.
+- [ ] **Remote Inspectorate access, signed PDF and XML export, worker
+      four-year history** — not built. See owner task 8.
+
+## 8. Final decision
+
+- [ ] Total PASS / FAIL / BLOCKED recorded, across all 107 checks.
 - [ ] Every critical/high defect linked.
 - [ ] Provider and AI configuration status recorded.
+- [ ] Section 7 decided: every out-of-scope item is unticked on purpose, not by omission.
 - [ ] Recommendation selected: `DO NOT PILOT` / `FIX AND RETEST` / `READY FOR CONTROLLED PILOT`.
 
 Do not approve a customer pilot while a tenant-isolation, attendance-integrity,
-duplicate-clock, incomplete-import, or unauthorised-send defect remains open.
+duplicate-clock, incomplete-import, unauthorised-send, or wrong-deletion defect
+remains open.
