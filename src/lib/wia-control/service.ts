@@ -174,13 +174,44 @@ export async function listControlDay(actor: WiaActor, date: Date | string) {
   }));
 }
 
+/**
+ * The worksites a caller may see, with the columns that caller actually needs.
+ *
+ * Selected explicitly rather than included wholesale: `qrSecretHash` is a
+ * credential column, and an `include` would hand it to the browser the moment
+ * QR verification is implemented. A field worker also gets neither the
+ * coordinates nor the company-wide shift and incident counts — they need to
+ * know where they are going, not how loaded every site in the company is.
+ */
 export async function listWorksites(actor: WiaActor) {
   assertCompany(actor);
+  const where = { companyId: actor.companyId, isActive: true };
+  const orderBy = [{ city: "asc" as const }, { name: "asc" as const }];
+  const shared = {
+    id: true,
+    name: true,
+    address: true,
+    city: true,
+    province: true,
+    postalCode: true,
+    radiusMeters: true,
+    timezone: true,
+    verificationMode: true,
+    isActive: true,
+    customer: { select: { id: true, name: true } },
+  } as const;
+
+  if (actor.role === "EMPLOYEE") {
+    return getPrisma().worksite.findMany({ where, orderBy, select: shared });
+  }
+
   return getPrisma().worksite.findMany({
-    where: { companyId: actor.companyId, isActive: true },
-    orderBy: [{ city: "asc" }, { name: "asc" }],
-    include: {
-      customer: { select: { id: true, name: true } },
+    where,
+    orderBy,
+    select: {
+      ...shared,
+      latitude: true,
+      longitude: true,
       _count: { select: { shifts: true, incidents: true } },
     },
   });
@@ -204,6 +235,13 @@ export async function listOperationalServices(actor: WiaActor) {
     include: {
       customer: { select: { id: true, name: true } },
       plannedShifts: {
+        // A field worker sees the services they are actually on, and within
+        // them only their own shifts. Without this filter they would also see
+        // every sibling shift of that service, which is the company register
+        // by another route.
+        ...(actor.role === "EMPLOYEE"
+          ? { where: { employeeId: actor.employeeId ?? "__missing_employee__" } }
+          : {}),
         select: {
           id: true,
           title: true,
