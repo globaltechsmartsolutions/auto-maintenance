@@ -543,6 +543,15 @@ export function distanceInMeters(
  * to a worksite's radius. Bounded because the figure is supplied by the same
  * device whose position we are checking.
  */
+/**
+ * How far a proposed correction may sit from the event it corrects.
+ *
+ * A correction is not a free-text time entry: it proposes a different moment
+ * for one specific clock. Wide enough for a wrong-day mistake, narrow enough
+ * that the correction path is not a way around the bounds the clock enforces.
+ */
+export const MAX_CORRECTION_DRIFT_HOURS = 48;
+
 export const MAX_ACCURACY_TOLERANCE_METERS = 100;
 
 /** Beyond this, a reading is too imprecise to confirm presence at all. */

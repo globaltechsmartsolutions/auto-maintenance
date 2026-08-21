@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const transaction = {
     clockEvent: { findFirst: vi.fn() },
-    timeCorrectionRequest: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    timeCorrectionRequest: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
     auditLog: { create: vi.fn() },
   };
   const prisma = {
@@ -39,7 +44,12 @@ const worker: WiaActor = {
  * decision, which is what keeps the original attendance trail trustworthy.
  */
 
-const clockEvent = { id: "event-1", companyId: "company-1", employeeId: "employee-1" };
+const clockEvent = {
+  id: "event-1",
+  companyId: "company-1",
+  employeeId: "employee-1",
+  occurredAt: new Date("2026-08-20T07:00:00Z"),
+};
 
 function auditActions() {
   return mocks.transaction.auditLog.create.mock.calls.map(
@@ -52,6 +62,7 @@ beforeEach(() => {
   mocks.transaction.clockEvent.findFirst.mockResolvedValue(clockEvent);
   mocks.transaction.timeCorrectionRequest.create.mockResolvedValue({ id: "correction-1" });
   mocks.transaction.timeCorrectionRequest.update.mockResolvedValue({ id: "correction-1" });
+  mocks.transaction.timeCorrectionRequest.updateMany.mockResolvedValue({ count: 1 });
   mocks.prisma.timeCorrectionRequest.findMany.mockResolvedValue([]);
   mocks.prisma.attendanceIncident.findMany.mockResolvedValue([]);
 });
@@ -60,16 +71,41 @@ describe("requesting a correction", () => {
   it("records the request against the event without touching the event itself", async () => {
     await requestTimeCorrection(worker, {
       clockEventId: "event-1",
-      proposedOccurredAt: "2026-08-20T07:00:00.000Z",
+      proposedOccurredAt: "2026-08-20T07:15:00.000Z",
       reason: "The phone had no signal when I arrived.",
     });
 
     expect(mocks.transaction.timeCorrectionRequest.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ clockEventId: "event-1", employeeId: "employee-1" }),
+        data: expect.objectContaining({
+          clockEventId: "event-1",
+          employeeId: "employee-1",
+          // Who actually raised it, which is not always the affected worker.
+          requestedByUserId: "user-worker",
+        }),
       })
     );
     expect(auditActions()).toEqual(["time_correction.requested"]);
+  });
+
+  it("refuses a proposed time in the future or unrelated to the event it corrects", async () => {
+    await expect(
+      requestTimeCorrection(worker, {
+        clockEventId: "event-1",
+        proposedOccurredAt: "2099-08-20T07:00:00.000Z",
+        reason: "Trying to propose a time that has not happened yet.",
+      })
+    ).rejects.toThrow(/cannot propose a time in the future/);
+
+    await expect(
+      requestTimeCorrection(worker, {
+        clockEventId: "event-1",
+        proposedOccurredAt: "2026-08-10T07:00:00.000Z",
+        reason: "Trying to move the event a week and a half away.",
+      })
+    ).rejects.toThrow(/within 48 hours of the event/);
+
+    expect(mocks.transaction.timeCorrectionRequest.create).not.toHaveBeenCalled();
   });
 
   it("refuses a correction against somebody else's event, or one from another company", async () => {
@@ -78,7 +114,7 @@ describe("requesting a correction", () => {
         { ...worker, employeeId: "employee-2" },
         {
           clockEventId: "event-1",
-          proposedOccurredAt: "2026-08-20T07:00:00.000Z",
+          proposedOccurredAt: "2026-08-20T07:15:00.000Z",
           reason: "Not my event, but let me try anyway.",
         }
       )
@@ -88,7 +124,7 @@ describe("requesting a correction", () => {
     await expect(
       requestTimeCorrection(manager, {
         clockEventId: "event-other-company",
-        proposedOccurredAt: "2026-08-20T07:00:00.000Z",
+        proposedOccurredAt: "2026-08-20T07:15:00.000Z",
         reason: "An event that belongs to another workspace entirely.",
       })
     ).rejects.toThrow(/does not belong to the company/);
@@ -108,22 +144,67 @@ describe("reviewing a correction", () => {
     });
   });
 
-  it("records the decision, the reviewer, and clears any previous acknowledgement", async () => {
+  it("records the decision, its reason, the reviewer, and clears any previous acknowledgement", async () => {
     await reviewTimeCorrection(manager, "correction-1", {
       status: "APPROVED",
       note: "Checked against the worksite log.",
     });
 
-    expect(mocks.transaction.timeCorrectionRequest.update).toHaveBeenCalledWith(
+    expect(mocks.transaction.timeCorrectionRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: "APPROVED",
           reviewedByUserId: "user-manager",
+          reviewNote: "Checked against the worksite log.",
           employeeAcknowledgedAt: null,
         }),
       })
     );
     expect(auditActions()).toEqual(["time_correction.approved"]);
+  });
+
+  it("never erases the worker's own dispute while closing it", async () => {
+    mocks.transaction.timeCorrectionRequest.findFirst.mockResolvedValue({
+      id: "correction-1",
+      companyId: "company-1",
+      employeeId: "employee-1",
+      status: "DISPUTED",
+      disagreementReason: "I arrived at 07:00, not 07:20.",
+    });
+
+    await reviewTimeCorrection(manager, "correction-1", {
+      status: "REJECTED",
+      note: "The worksite log shows 07:20.",
+    });
+
+    const written = (mocks.transaction.timeCorrectionRequest.updateMany.mock.calls[0][0] as {
+      data: Record<string, unknown>;
+    }).data;
+    expect(written).not.toHaveProperty("disagreementReason");
+  });
+
+  it("refuses a decision made against a status somebody else already changed", async () => {
+    mocks.transaction.timeCorrectionRequest.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      reviewTimeCorrection(manager, "correction-1", { status: "APPROVED" })
+    ).rejects.toThrow(/decided this request first/);
+  });
+
+  it("refuses to let a coordinator decide a correction to their own attendance", async () => {
+    await expect(
+      reviewTimeCorrection(
+        { ...manager, employeeId: "employee-1" },
+        "correction-1",
+        { status: "APPROVED" }
+      )
+    ).rejects.toThrow(/Somebody else has to review/);
+  });
+
+  it("refuses a rejection with no reason given", async () => {
+    await expect(
+      reviewTimeCorrection(manager, "correction-1", { status: "REJECTED" })
+    ).rejects.toThrow();
   });
 
   it("reopens the review path for a disputed request but refuses a settled one", async () => {
@@ -133,7 +214,10 @@ describe("reviewing a correction", () => {
       status: "DISPUTED",
     });
     await expect(
-      reviewTimeCorrection(manager, "correction-1", { status: "REJECTED" })
+      reviewTimeCorrection(manager, "correction-1", {
+        status: "REJECTED",
+        note: "The worksite log contradicts the proposed time.",
+      })
     ).resolves.toBeDefined();
 
     mocks.transaction.timeCorrectionRequest.findFirst.mockResolvedValue({
@@ -142,7 +226,10 @@ describe("reviewing a correction", () => {
       status: "APPROVED",
     });
     await expect(
-      reviewTimeCorrection(manager, "correction-1", { status: "REJECTED" })
+      reviewTimeCorrection(manager, "correction-1", {
+        status: "REJECTED",
+        note: "The worksite log contradicts the proposed time.",
+      })
     ).rejects.toThrow(/already has an active decision/);
   });
 

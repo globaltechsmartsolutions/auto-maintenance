@@ -162,10 +162,22 @@ export const correctionRequestSchema = z.object({
   reason: z.string().trim().min(10).max(1_000),
 });
 
-export const correctionReviewSchema = z.object({
-  status: z.enum(["APPROVED", "REJECTED"]),
-  note: z.string().trim().min(5).max(1_000).optional(),
-});
+export const correctionReviewSchema = z
+  .object({
+    status: z.enum(["APPROVED", "REJECTED"]),
+    note: z.string().trim().min(5).max(1_000).optional(),
+  })
+  .superRefine((value, context) => {
+    // Refusing a worker's correction is exactly the decision the traceability
+    // rules are about. It cannot be a bare verdict.
+    if (value.status === "REJECTED" && !value.note) {
+      context.addIssue({
+        code: "custom",
+        path: ["note"],
+        message: "Give the reason for rejecting the correction.",
+      });
+    }
+  });
 
 export const correctionAcknowledgementSchema = z
   .object({

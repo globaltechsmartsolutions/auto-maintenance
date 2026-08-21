@@ -315,6 +315,7 @@ model User {
   assignedLeads           Lead[]                  @relation("LeadOwner")
   auditLogs               AuditLog[]
     coverageDecisions       CoverageDecision[]      @relation("CoverageDecisionActor")
+  requestedTimeCorrections TimeCorrectionRequest[] @relation("TimeCorrectionRequester")
   reviewedTimeCorrections TimeCorrectionRequest[] @relation("TimeCorrectionReviewer")
   ownedIncidents          AttendanceIncident[]    @relation("IncidentOwner")
   completedShifts        ShiftCompletion[]       @relation("ShiftCompletionActor")
@@ -726,7 +727,14 @@ model TimeCorrectionRequest {
   companyId              String
   clockEventId           String
   employeeId             String
+  /// Who actually raised it. A coordinator may raise one on a worker's behalf,
+  /// and the record has to say so rather than reading as the worker's own
+  /// request.
+  requestedByUserId      String?
   reviewedByUserId       String?
+  /// The reason the coordinator gave for the decision, kept on the record
+  /// itself and not only in the audit log.
+  reviewNote             String?
   proposedOccurredAt     DateTime
   reason                 String
   status                 TimeCorrectionStatus @default(PENDING)
@@ -739,6 +747,7 @@ model TimeCorrectionRequest {
   company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   clockEvent ClockEvent @relation(fields: [clockEventId], references: [id], onDelete: Restrict)
   employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  requestedBy User?     @relation("TimeCorrectionRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
   reviewedBy User?      @relation("TimeCorrectionReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId, status, createdAt])

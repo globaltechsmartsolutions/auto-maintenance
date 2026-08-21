@@ -31,6 +31,7 @@ import {
   isLocationWithinWorksite,
   incidentUpdateSchema,
   lateMinutes,
+  MAX_CORRECTION_DRIFT_HOURS,
   operationalServiceInputSchema,
   operationalServiceUpdateSchema,
   parseEmployeeAvailability,
@@ -1871,12 +1872,34 @@ export async function requestTimeCorrection(actor: WiaActor, input: unknown) {
       throw new WiaDomainError("FORBIDDEN", "You can only correct your own clock events.");
     }
 
+    // A correction proposes a different time for a specific event, so it has to
+    // stay near that event. Without this, the correction path is a way around
+    // the bounds the clock itself enforces.
+    const proposedOccurredAt = new Date(payload.proposedOccurredAt);
+    if (proposedOccurredAt.getTime() > Date.now()) {
+      throw new WiaDomainError(
+        "INVALID_CORRECTION_TIME",
+        "A correction cannot propose a time in the future."
+      );
+    }
+    const hoursFromEvent =
+      Math.abs(proposedOccurredAt.getTime() - clockEvent.occurredAt.getTime()) / 3_600_000;
+    if (hoursFromEvent > MAX_CORRECTION_DRIFT_HOURS) {
+      throw new WiaDomainError(
+        "INVALID_CORRECTION_TIME",
+        `A correction must stay within ${MAX_CORRECTION_DRIFT_HOURS} hours of the event it corrects.`
+      );
+    }
+
     const correction = await transaction.timeCorrectionRequest.create({
       data: {
         companyId: actor.companyId,
         clockEventId: clockEvent.id,
         employeeId: clockEvent.employeeId,
-        proposedOccurredAt: new Date(payload.proposedOccurredAt),
+        // A coordinator may raise one for somebody else; the record says who
+        // actually raised it rather than reading as the worker's own request.
+        requestedByUserId: actor.userId,
+        proposedOccurredAt,
         reason: payload.reason,
       },
     });
@@ -1933,16 +1956,38 @@ export async function reviewTimeCorrection(
     if (correction.status !== "PENDING" && correction.status !== "DISPUTED") {
       throw new WiaDomainError("CORRECTION_CLOSED", "The request already has an active decision.");
     }
+    // A coordinator with a field profile could otherwise approve their own
+    // correction to their own attendance.
+    if (actor.employeeId && actor.employeeId === correction.employeeId) {
+      throw new WiaDomainError(
+        "SELF_REVIEW_FORBIDDEN",
+        "Somebody else has to review a correction to your own attendance."
+      );
+    }
 
-    const reviewed = await transaction.timeCorrectionRequest.update({
-      where: { id: correction.id },
+    const claimed = await transaction.timeCorrectionRequest.updateMany({
+      // The status the decision was made against is part of the condition, so
+      // two coordinators deciding at once cannot silently overwrite each other.
+      where: { id: correction.id, status: correction.status },
       data: {
         status: payload.status,
         reviewedByUserId: actor.userId,
         companyReviewedAt: new Date(),
+        reviewNote: payload.note,
+        // The acknowledgement is cleared because there is a new decision to
+        // answer. The worker's own words are NOT cleared: erasing a dispute
+        // while closing it is precisely what the record exists to prevent.
         employeeAcknowledgedAt: null,
-        disagreementReason: null,
       },
+    });
+    if (claimed.count === 0) {
+      throw new WiaDomainError(
+        "CORRECTION_CLOSED",
+        "Somebody else decided this request first. Reload it before deciding again."
+      );
+    }
+    const reviewed = await transaction.timeCorrectionRequest.findFirst({
+      where: { id: correction.id },
     });
     await transaction.auditLog.create({
       data: {
